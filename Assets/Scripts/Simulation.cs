@@ -422,8 +422,7 @@ public class Simulation : MonoBehaviour
             OnConverged?.Invoke();
         }
 
-        int framesPerTest = bouncesThisFrame == 0 ? 0 : 10 * textureResolution * textureResolution / (int)bouncesThisFrame;
-        framesPerTest = Math.Max(framesPerTest, 10);
+        int framesPerTest = 100;
         if(!awaitingConvergenceResult && framesPerTest != 0 && framesSinceClear % framesPerTest == 0) {
             awaitingConvergenceResult = true;
 
@@ -440,27 +439,13 @@ public class Simulation : MonoBehaviour
             AsyncGPUReadback.Request(_measureConvergenceResultBuffer, (r) =>
             {
                 if(recentSceneId != _sceneId) return;
-
                 awaitingConvergenceResult = false;
                 if(!r.done || r.hasError) return;
 
-                NativeArray<uint> feedback = r.GetData<uint>(0);
-
-                var totalPixels = photonsPerThread * threadCount;
-                double eps = totalPixels * 1e-8;
-
-                float nextConvergenceProgress;
-                if(convergenceProgress != -1) {
-                    nextConvergenceProgress = convergenceProgress * 0.9f + 0.1f * Math.Max(0, (float)((double)feedback[0] / eps - 1));
-                    hasConverged = nextConvergenceProgress < 1000 && (nextConvergenceProgress + 1e-8f > convergenceProgress);
-
-                    if(hasConverged) {
-                        OnConverged?.Invoke();
-                    }
-                } else {
-                    nextConvergenceProgress = Math.Max(0, (float)((double)feedback[0] / eps - 1));
+                convergenceProgress = r.GetData<uint>(0)[0] / 100.0f;
+                if(hasConverged = convergenceProgress < 1) {
+                    OnConverged?.Invoke();
                 }
-                convergenceProgress = nextConvergenceProgress;
             });
         }
     }

@@ -370,12 +370,9 @@ void ToneMap (uint3 id : SV_DispatchThreadID) {
 void MeasureConvergence (uint3 id : SV_DispatchThreadID) {
     float4 a = pow(g_result[id.xy], 1/2.2);
     float4 b = pow(g_previousResult[id.xy], 1/2.2);
-
     float4 delta = abs(a - b) * 256;
-
-    if(max(delta.r, max(delta.g, delta.b)) > 1) {
-        InterlockedAdd(g_convergenceResult[0], 1);
-    }
+    uint diff = (uint)(dot(delta,1) * 100.0);
+    InterlockedAdd(g_convergenceResult[0], diff);
 }
 
 
