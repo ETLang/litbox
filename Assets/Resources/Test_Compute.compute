@@ -8,6 +8,14 @@
 #pragma kernel Simulate_AmbientLight
 #pragma kernel Simulate_FieldLight
 #pragma kernel Simulate_DirectionalLight
+#pragma kernel Simulate_DefaultLight_Forward
+#pragma kernel Simulate_PointLight_Forward
+#pragma kernel Simulate_SpotLight_Forward
+#pragma kernel Simulate_LaserLight_Forward
+#pragma kernel Simulate_AmbientLight_Forward
+#pragma kernel Simulate_FieldLight_Forward
+#pragma kernel Simulate_DirectionalLight_Forward
+#pragma kernel Simulate_View_Backward
 #pragma kernel ConvertToHDR
 #pragma kernel ToneMap
 #pragma kernel MeasureConvergence
@@ -29,7 +37,7 @@ struct Ray {
 };
 
 RWStructuredBuffer<uint4> g_rand;
-RWTexture2D<uint> g_photons;
+RWTexture2D<uint> g_photons_final;
 Texture2D<float4> g_albedo;
 Texture2D<float4> g_transmissibility;
 SamplerState samplerg_transmissibility;
@@ -45,6 +53,7 @@ RWStructuredBuffer<uint> g_traversalCount;
 
 uint g_time_ms;
 uint g_photons_per_thread;
+uint g_samples_per_pixel;
 uint2 g_target_size;
 float g_energy_norm;
 uint g_bounces;
@@ -117,21 +126,44 @@ float2 Rand_Scatter_Mie_(inout RandomContext __rc, float2 incomingDirection) {
 // SIMULATION
 ////////////////
 
-void WritePhoton(float2 location, uint3 energy) {
-    const uint EnergyMax = (1 << 31);
-    uint2 pixel = (location * (g_target_size-1) - 0.5f);
-
-    if(any(location < 0)) return;
+RWTexture2D<uint> g_photons_forward;
+uint3 ReadForwardPhoton_Indexed(uint2 pixel) {
+    uint3 output;
 
     pixel.x *= 3;
-    if(g_photons[pixel] < EnergyMax)
-        InterlockedAdd(g_photons[pixel], energy.r);
+    output.r = g_photons_forward[pixel];
     pixel.x++;
-    if(g_photons[pixel] < EnergyMax)
-        InterlockedAdd(g_photons[pixel], energy.g);
+    output.g = g_photons_forward[pixel];
     pixel.x++;
-    if(g_photons[pixel] < EnergyMax)
-        InterlockedAdd(g_photons[pixel], energy.b);
+    output.b = g_photons_forward[pixel];
+    
+    return output;
+}
+
+uint3 ReadForwardPhoton(float2 location) {
+    return ReadForwardPhoton_Indexed(location * (g_target_size-1) - 0.5f);
+}
+
+void WritePhoton_Indexed(uint2 pixel, uint3 energy) {
+    const uint EnergyMax = (1 << 31);
+
+    pixel.x *= 3;
+    if(g_photons_final[pixel] < EnergyMax)
+        InterlockedAdd(g_photons_final[pixel], energy.r);
+    pixel.x++;
+    if(g_photons_final[pixel] < EnergyMax)
+        InterlockedAdd(g_photons_final[pixel], energy.g);
+    pixel.x++;
+    if(g_photons_final[pixel] < EnergyMax)
+        InterlockedAdd(g_photons_final[pixel], energy.b);
+}
+
+void WritePhoton(float2 location, uint3 energy) {
+    if(any(location < 0)) return;
+    WritePhoton_Indexed(location * (g_target_size-1) - 0.5f, energy);
+}
+
+float2 teardrop_test(float u) {
 }
 
 Ray EmitPointLight(inout RandomContext __rc) {
@@ -226,78 +258,84 @@ Ray EmitDefaultLight(inout RandomContext __rc) {
     return emitted;
 }
 
+Ray EmitPath(uint2 pixel, inout RandomContext __rc) {
+    Ray emitted;
 
-void SimulateOne(Ray photon, inout RandomContext __rc) {
+    emitted.Origin = ((float2)pixel + RAND2()) / (g_target_size - 1);
+    emitted.Direction = RAND_DIRECTION();
+    emitted.Energy = 0;
+    emitted.Reserved = 0;
+
+    return emitted;
+}
+
+float HitTest(Ray photon, out float uHit, inout RandomContext __rc) {
+    float2 pixelSize = 1.0 / g_target_size;
+
+    if(photon.Direction.x == 0) photon.Direction.x = 1e-8;
+    if(photon.Direction.y == 0) photon.Direction.y = 1e-8;
+
+    float4 uBoundaryBox = (float4(0,1,0,1) - photon.Origin.xxyy) / photon.Direction.xxyy;
+    float uEscape = min(max(uBoundaryBox[0], uBoundaryBox[1]), max(uBoundaryBox[2], uBoundaryBox[3]));
+
+    // Raycast to find collision or escape point
+    float uCollision = 10;
+    float uEnd = min(uEscape, uCollision);
+    
+    // Substrate traversal to collision point
+    float substrateTransmitPotential =  RAND();
+    float uTarget = RAND() * uEnd;
+    float netTransmissibility = 1;
+
+    uHit = 0;
+    for(int steps = 0;steps < 2000;steps++) {
+        float2 pSample = photon.Origin + photon.Direction * uHit;
+        uint lod = g_quadTreeLeaves.SampleLevel(sampler_point_clamp, pSample, 0).x;
+    
+        float4 T = g_transmissibility.SampleLevel(samplerg_transmissibility, pSample, lod);
+        float minimumTransmissibility = T.y;
+        while(minimumTransmissibility * netTransmissibility < substrateTransmitPotential && lod > 0) {
+            lod--;
+            T = g_transmissibility.SampleLevel(samplerg_transmissibility, pSample, lod);
+            minimumTransmissibility = T.y;
+        }
+    
+        float transmissibility = T.x;
+        netTransmissibility *= transmissibility;
+
+        if(substrateTransmitPotential > netTransmissibility) { // Scatter occurs within this sample
+            // The following line finds the hit point at sub-pixel accuracy
+            //uHit += w * log2(substrateTransmitPotential / netTransmissibility) / log2(transmissibility);
+            return true;
+        } else { // Keep propagating
+            uHit += pixelSize.x * (1 << lod);
+
+            if(uHit > uEnd) {
+                return false;
+            }
+        }
+    }
+
+    // Fail condition... traversal took too many steps
+    WritePhoton(photon.Origin, uint3(1000000000, 1000000000, 0));
+    return false;
+}
+
+void SimulateLight(Ray photon, inout RandomContext __rc) {
     if(g_lightEmissionOutscatter != 0) {
         uint3 emissionOutscatter = photon.Energy * g_lightEmissionOutscatter;
         WritePhoton(photon.Origin, emissionOutscatter);
     }
 
-    float2 pixelSize = 1.0 / g_target_size;
-
     for(uint bounce = 0;bounce < g_bounces;bounce++) {
+        float uScatter;
+        bool hit = HitTest(photon, uScatter, __rc);
 
-        if(photon.Direction.x == 0) photon.Direction.x = 1e-8;
-        if(photon.Direction.y == 0) photon.Direction.y = 1e-8;
-
-        float4 uBoundaryBox = (float4(0,1,0,1) - photon.Origin.xxyy) / photon.Direction.xxyy;
-        float uEscape = min(max(uBoundaryBox[0], uBoundaryBox[1]), max(uBoundaryBox[2], uBoundaryBox[3]));
-
-        float w = pixelSize.x * (1 << 0);
-        uint lod = 0+0;
-
-        // Raycast to find collision or escape point
-        float uCollision = 10;
-        float uEnd = min(uEscape, uCollision);
-        
-        // Substrate traversal to collision point
-        float substrateTransmitPotential =  RAND();
-        float uTarget = RAND() * uEnd;
-        float netTransmissibility = 1;
-
-        float uScatter = 0;
-        bool wentToHigherLOD = false;
-
-        int steps;
-        for(steps = 0;steps < 2000;steps++) {
-            float minimumTransmissibility = 0;
-            float4 T;
-
-            float2 pSample = photon.Origin + photon.Direction * uScatter;
-            uint4 quadTree = g_quadTreeLeaves.SampleLevel(sampler_point_clamp, pSample, 0);
-            lod = quadTree.x;
-            lod++;
-            while(minimumTransmissibility * netTransmissibility < substrateTransmitPotential && lod > 0) {
-                lod--;
-                T = g_transmissibility.SampleLevel(samplerg_transmissibility, pSample, lod);
-                minimumTransmissibility = T.y;
-            }
-            float transmissibility = T.x;
-            //float transmissibility = sqrt(T.x);  // Distributes samples more evenly, but energy needs to compensate.
-            netTransmissibility *= transmissibility;
-
-            if(substrateTransmitPotential > netTransmissibility) { // Scatter occurs within this sample
-                // The following line finds the scatter point at sub-pixel accuracy
-                //uScatter += w * log2(substrateTransmitPotential / netTransmissibility) / log2(transmissibility);
-                break;
-            } else { // Keep propagating
-                uScatter += w * (1 << lod);
-
-                if(uScatter > uEnd) {
-                    break;
-                }
-            }
-        }
-
-        if(uEnd < uScatter) break;
+        if(!hit) break;
 
         photon.Origin += photon.Direction * uScatter;
 
-        if(steps == 2000)
-            WritePhoton(photon.Origin, uint3(1000000000, 1000000000, 0));
-
         float3 albedo = g_albedo.SampleLevel(sampler_point_clamp, photon.Origin, 0).rgb;
-
         photon.Energy *= albedo;
 
         uint3 outScatter = photon.Energy * g_outscatterCoefficient;
@@ -308,15 +346,48 @@ void SimulateOne(Ray photon, inout RandomContext __rc) {
     }
 }
 
-#define SIMULATION_IMPLEMENTATION(lightType)                    \
+void SimulateForward(Ray photon, inout RandomContext __rc) {
+    float uScatter;
+    bool hit = HitTest(photon, uScatter, __rc);
+
+    if(hit) {
+        photon.Energy *= g_albedo.SampleLevel(sampler_point_clamp, photon.Origin, 0).rgb;
+        WritePhoton(photon.Origin + photon.Direction * uScatter, photon.Energy * g_outscatterCoefficient);
+    }
+}
+
+uint3 SimulateBackward(Ray path, inout RandomContext __rc) {
+    float uScatter;
+    bool hit = HitTest(path, uScatter, __rc);
+    
+    if(hit) {
+        return ReadForwardPhoton(path.Origin + path.Direction * uScatter);
+    } else {
+        return 0;
+    }
+}
+
+#define SIMULATION_IMPLEMENTATION_LIGHT(lightType)              \
 [numthreads(64,1,1)]                                            \
 void Simulate_##lightType (uint3 id : SV_DispatchThreadID) {    \
     INIT_RAND(g_rand[id.x])                                     \
     for(uint i = 0;i < g_photons_per_thread;i++) {              \
-        SimulateOne(Emit##lightType(__rc), __rc); }             \
+        SimulateLight(Emit##lightType(__rc), __rc); }           \
     SAVE_RAND(g_rand[id.x])                                     \
 }
 
+#define SIMULATION_IMPLEMENTATION_FORWARD(lightType)                        \
+[numthreads(64,1,1)]                                                        \
+void Simulate_##lightType##_Forward (uint3 id : SV_DispatchThreadID) {      \
+    INIT_RAND(g_rand[id.x])                                                 \
+    for(uint i = 0;i < g_photons_per_thread;i++) {                          \
+        SimulateForward(Emit##lightType(__rc), __rc); }                     \
+    SAVE_RAND(g_rand[id.x])                                                 \
+}
+
+#define SIMULATION_IMPLEMENTATION(lightType)        \
+    SIMULATION_IMPLEMENTATION_LIGHT(lightType)      \
+    SIMULATION_IMPLEMENTATION_FORWARD(lightType)
 
 SIMULATION_IMPLEMENTATION(DefaultLight)
 SIMULATION_IMPLEMENTATION(PointLight)
@@ -325,6 +396,21 @@ SIMULATION_IMPLEMENTATION(LaserLight)
 SIMULATION_IMPLEMENTATION(AmbientLight)
 SIMULATION_IMPLEMENTATION(FieldLight)
 SIMULATION_IMPLEMENTATION(DirectionalLight)
+
+[numthreads(8,8,1)]
+void Simulate_View_Backward (uint3 id : SV_DispatchThreadID) {
+    uint randIndex = id.x + g_target_size.x * id.y; // need wigth * height rand contexts
+    INIT_RAND(g_rand[randIndex])
+    uint3 sum = 0;
+    for(uint i = 0;i < g_samples_per_pixel;i++) {
+        sum += SimulateBackward(EmitPath(id.xy, __rc), __rc); 
+    }
+    sum *= g_albedo.Load(uint3(id.xy,0)).rgb / g_samples_per_pixel;
+
+    sum += ReadForwardPhoton_Indexed(id.xy);
+    WritePhoton_Indexed(id.xy, sum);
+    SAVE_RAND(g_rand[randIndex])
+}
 
 RWTexture2D<float4> g_hdrResult;
 
@@ -335,11 +421,11 @@ void ConvertToHDR (uint3 id : SV_DispatchThreadID) {
 
     float3 output;
 
-    output.r = g_photons[photonLoc] / g_energy_norm;
+    output.r = g_photons_final[photonLoc] / g_energy_norm;
     photonLoc.x++;
-    output.g = g_photons[photonLoc] / g_energy_norm;
+    output.g = g_photons_final[photonLoc] / g_energy_norm;
     photonLoc.x++;
-    output.b = g_photons[photonLoc] / g_energy_norm;
+    output.b = g_photons_final[photonLoc] / g_energy_norm;
 
     g_hdrResult[id.xy] = float4(output, 1);
 }
@@ -356,11 +442,11 @@ void ToneMap (uint3 id : SV_DispatchThreadID) {
 
     float3 output;
 
-    output.r = g_photons[photonLoc] / g_energy_norm;
+    output.r = g_photons_final[photonLoc] / g_energy_norm;
     photonLoc.x++;
-    output.g = g_photons[photonLoc] / g_energy_norm;
+    output.g = g_photons_final[photonLoc] / g_energy_norm;
     photonLoc.x++;
-    output.b = g_photons[photonLoc] / g_energy_norm;
+    output.b = g_photons_final[photonLoc] / g_energy_norm;
     
     //g_result[id.xy] = float4(ToneMap_ApproximationA(output.rgb), 1);
     g_result[id.xy] = float4(smoothstep(-4, 2, log10(output)), 1); // bit silly but... works?

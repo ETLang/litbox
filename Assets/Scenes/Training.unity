@@ -1478,15 +1478,15 @@ MonoBehaviour:
   m_Name: 
   m_EditorClassIdentifier: 
   _train: 1
-  _continuePreviousSession: 1
+  _continuePreviousSession: 0
   outputFolder: /home/evan/Pictures/training_output
-  _samplesToGenerate: 3000
+  _samplesToGenerate: 1
   inputProfiles:
   - frameLimit: 1
     resolution: 512
     threadCount: 4096
     photonsPerThread: 2
-    photonBounces: 10
+    photonBounces: 5
     energyUnit: 10000000
     transmissibilityVariationEps: 0.0000001
     outscatterCoefficient: 0.01
@@ -1494,23 +1494,23 @@ MonoBehaviour:
     resolution: 512
     threadCount: 4096
     photonsPerThread: 32
-    photonBounces: 10
+    photonBounces: 5
     energyUnit: 10000000
     transmissibilityVariationEps: 0.0000001
     outscatterCoefficient: 0.01
   - frameLimit: 1
     resolution: 512
     threadCount: 4096
-    photonsPerThread: 256
-    photonBounces: 10
+    photonsPerThread: 128
+    photonBounces: 5
     energyUnit: 10000000
     transmissibilityVariationEps: 0.0000001
     outscatterCoefficient: 0.01
   - frameLimit: 20
     resolution: 512
     threadCount: 4096
-    photonsPerThread: 256
-    photonBounces: 10
+    photonsPerThread: 128
+    photonBounces: 5
     energyUnit: 10000000
     transmissibilityVariationEps: 0.0000001
     outscatterCoefficient: 0.01
@@ -1518,8 +1518,8 @@ MonoBehaviour:
     frameLimit: -1
     resolution: 512
     threadCount: 4096
-    photonsPerThread: 256
-    photonBounces: 10
+    photonsPerThread: 128
+    photonBounces: 5
     energyUnit: 10000000
     transmissibilityVariationEps: 0.0000001
     outscatterCoefficient: 0.01
@@ -1589,12 +1589,15 @@ MonoBehaviour:
     m_Bits: 64
   frameLimit: -1
   textureResolution: 512
+  strategy: 2
   threadCount: 4096
-  photonsPerThread: 256
+  photonsPerThread: 128
   photonBounces: -1
+  pathSamples: 10
   energyUnit: 10000000
-  transmissibilityVariationEpsilon: 0.1
+  transmissibilityVariationEpsilon: 0.01
   outscatterCoefficient: 0.01
+  _convergenceThreshold: 3
   framesSinceClear: 0
   convergenceProgress: 100000
   hasConverged: 0
@@ -1708,7 +1711,7 @@ MonoBehaviour:
   m_EditorClassIdentifier: 
   simulation: {fileID: 923172386}
   aiAccelerator: {fileID: 0}
-  type: 0
+  type: 2
 --- !u!114 &933397738 stripped
 MonoBehaviour:
   m_CorrespondingSourceObject: {fileID: 7211980385114862445, guid: 6a50d69d76eca14f99a3a4adbf059f94, type: 3}

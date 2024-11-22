@@ -7,7 +7,7 @@ public class RTObject : MonoBehaviour
 {
     [SerializeField] public Texture2D normal;
 
-    [Range(-5,0)]
+    [Range(-5,5)]
     [SerializeField] public float substrateLogDensity;
 
     [Range(0,1)]

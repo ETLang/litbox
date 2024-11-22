@@ -618,9 +618,11 @@ MonoBehaviour:
     m_Bits: 64
   frameLimit: -1
   textureResolution: 512
+  strategy: 2
   threadCount: 4096
   photonsPerThread: 128
-  photonBounces: -1
+  photonBounces: 10
+  pathSamples: 10
   energyUnit: 100000
   transmissibilityVariationEpsilon: 0.1
   outscatterCoefficient: 0.01
@@ -733,7 +735,7 @@ MonoBehaviour:
   m_EditorClassIdentifier: 
   simulation: {fileID: 923172386}
   aiAccelerator: {fileID: 0}
-  type: 0
+  type: 2
 --- !u!1 &961628824
 GameObject:
   m_ObjectHideFlags: 0

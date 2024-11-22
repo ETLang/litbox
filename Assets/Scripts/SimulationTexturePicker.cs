@@ -3,6 +3,8 @@ using UnityEngine;
 [RequireComponent(typeof(Renderer))]
 public class SimulationTexturePicker : MonoBehaviour {
     public enum TextureType {
+        Photons_Forward,
+        Photons_Raw,
         ToneMapped,
         HDR,
         AI_ToneMapped,
@@ -30,6 +32,12 @@ public class SimulationTexturePicker : MonoBehaviour {
         Texture value = null;
 
         switch(type) {
+        case TextureType.Photons_Forward:
+            value = simulation?.SimulationForwardOfHybrid;
+            break;
+        case TextureType.Photons_Raw:
+            value = simulation?.SimulationOutputRaw;
+            break;
         case TextureType.ToneMapped:
             value = simulation?.SimulationOutputToneMapped;
             break;
