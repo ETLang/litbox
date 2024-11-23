@@ -626,6 +626,7 @@ MonoBehaviour:
   energyUnit: 100000
   transmissibilityVariationEpsilon: 0.1
   outscatterCoefficient: 0.01
+  _convergenceThreshold: 3
   framesSinceClear: 0
   convergenceProgress: 100000
   hasConverged: 0

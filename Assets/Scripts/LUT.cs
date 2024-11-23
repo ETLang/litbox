@@ -16,16 +16,16 @@ static class LUT
         return table;
     }
 
-    public static bool NormalizeDistribution(float[] distribution, float[] outNormalized) {
+    public static float NormalizeDistribution(float[] distribution, float[] outNormalized) {
         float sum = distribution.Sum();
 
-        if(sum == 0) return false;
+        if(sum == 0) return 0;
 
         for(int i = 0;i < distribution.Length;i++) {
             outNormalized[i] = distribution[i] / sum;
         }
 
-        return true;
+        return sum / distribution.Length;
     }
 
     public static void IntegrateDistribution(float[] distribution, float[] outIntegral) {
@@ -66,7 +66,7 @@ static class LUT
                 float tween = outInverse[lastOutIndex] + 
                     (x - outInverse[lastOutIndex]) * (float)(j - lastOutIndex) / (float)(nearestOutIndex - lastOutIndex);
 
-                outInverse[j] = tween;
+                outInverse[j] = x;//tween;
             }
 
             lastOutIndex = nearestOutIndex;
@@ -81,6 +81,12 @@ static class LUT
             var x = Mathf.Cos(angle);
             var y = Mathf.Sin(angle);
             outVectorFunction[i] = new float2(x, y);
+        }
+    }
+
+    public static void ComponentwiseGlue(float2[] xy, float[] z, float3[] outGlued) {
+        for(int i = 0;i < outGlued.Length;i++) {
+            outGlued[i] = new float3(xy[i], z[i]);
         }
     }
 
@@ -99,7 +105,7 @@ static class LUT
     }
 
     public static Texture LoadLUTAsTexture(float3[] lut) {
-        var texture = new Texture2D(lut.Length, 1, TextureFormat.RGFloat, false, true);
+        var texture = new Texture2D(lut.Length, 1, TextureFormat.RGBAFloat, false, true);
         texture.SetPixels(lut.Select(v => new Color(v.x, v.y, v.z, 0)).ToArray());
         texture.Apply();
         return texture;
@@ -145,5 +151,30 @@ static class LUT
         AngleFunctionToVectorFunction(inverted, vectorTable);
 
         return LoadLUTAsTexture(vectorTable);
+    }
+
+    public static Texture CreateTeardropScatteringLUT() {
+        Func<float,float> teardrop = (float theta) => {
+            var x = theta / Mathf.PI - 1;
+            return 0.3f + Mathf.Pow(x,6);
+        };
+
+        var table = GenerateFunctionTable(teardrop, 0, 2 * Mathf.PI, 65536);
+        var normalizedTable = new float[table.Length];
+        var avg = NormalizeDistribution(table, normalizedTable);
+        var integral = new float[table.Length];
+        IntegrateDistribution(normalizedTable, integral);
+        var inverted = new float[2048];
+        Invert(integral, 0, 2*Mathf.PI, inverted, out float inverseStart, out float inverseEnd);
+        var vectorTable = new float2[inverted.Length];
+        AngleFunctionToVectorFunction(inverted, vectorTable);
+        var finalTable = new float3[inverted.Length];
+        ComponentwiseGlue(vectorTable, inverted, finalTable);
+
+        for(int i = 0;i < finalTable.Length;i++) {
+            finalTable[i].z = avg / teardrop(finalTable[i].z);
+        }
+
+        return LoadLUTAsTexture(finalTable);
     }
 }

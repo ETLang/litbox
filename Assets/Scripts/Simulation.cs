@@ -56,6 +56,7 @@ public class Simulation : MonoBehaviour
     private int _currentRenderTextureIndex = 0;
     private RenderBuffer[][] _gBuffer;
     private Texture _mieScatteringLUT;
+    private Texture _teardropScatteringLUT;
     private int[] _kernelsHandles;
 
     private Renderer _renderer;
@@ -198,6 +199,7 @@ public class Simulation : MonoBehaviour
         GBufferQuadTreeLeaves.Create();
 
         _mieScatteringLUT = LUT.CreateMieScatteringLUT();
+        _teardropScatteringLUT = LUT.CreateTeardropScatteringLUT();
 
         _realContentCamera = new GameObject("__Simulation_Camera", typeof(Camera), typeof(SimulationCamera)).GetComponent<Camera>();
         _realContentCamera.transform.parent = transform;
@@ -275,6 +277,9 @@ public class Simulation : MonoBehaviour
 
         DestroyImmediate(_mieScatteringLUT);
         _mieScatteringLUT = null;
+
+        DestroyImmediate(_teardropScatteringLUT);
+        _teardropScatteringLUT = null;
 
         _randomBuffer.Release();
         _randomBuffer = null;
@@ -439,6 +444,7 @@ public class Simulation : MonoBehaviour
                 _computeShader.SetTexture(simulateViewBackwardKernel, "g_normalSlope", GBufferNormalSlope);
                 _computeShader.SetTexture(simulateViewBackwardKernel, "g_quadTreeLeaves", GBufferQuadTreeLeaves);
                 _computeShader.SetTexture(simulateViewBackwardKernel, "g_mieScatteringLUT", _mieScatteringLUT);
+                _computeShader.SetTexture(simulateViewBackwardKernel, "g_teardropScatteringLUT", _teardropScatteringLUT);
                 _computeShader.Dispatch(simulateViewBackwardKernel, (textureResolution - 1) / 8 + 1, (textureResolution - 1) / 8 + 1, 1);
                 break;
         }
@@ -555,6 +561,7 @@ public class Simulation : MonoBehaviour
         _computeShader.SetTexture(simulateKernel, "g_normalSlope", GBufferNormalSlope);
         _computeShader.SetTexture(simulateKernel, "g_quadTreeLeaves", GBufferQuadTreeLeaves);
         _computeShader.SetTexture(simulateKernel, "g_mieScatteringLUT", _mieScatteringLUT);
+        _computeShader.SetTexture(simulateKernel, "g_teardropScatteringLUT", _teardropScatteringLUT);
 
         _computeShader.Dispatch(simulateKernel, threadCount / 64, 1, 1);
     }

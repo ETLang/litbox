@@ -44,6 +44,8 @@ SamplerState samplerg_transmissibility;
 Texture2D<float4> g_normalSlope;
 Texture2D<float4> g_quadTreeLeaves;
 Texture2D<float2> g_mieScatteringLUT;
+Texture2D<float3> g_teardropScatteringLUT;
+SamplerState samplerg_teardropScatteringLUT;
 //RWTexture2D<float> g_importancePDF;
 
 RWTexture2D<float4> g_result;
@@ -122,6 +124,21 @@ float2 Rand_Scatter_Mie_(inout RandomContext __rc, float2 incomingDirection) {
     return scatter.x * incomingDirection + scatter.y * perp;
 }
 
+float3 Rand_Scatter_Importance(inout RandomContext __rc, float2 origin) {
+    float2 important_direction = float2(0.5,0.5) - origin;
+    float lsq = dot(important_direction, important_direction);
+
+    if(false && dot(important_direction, important_direction) < 1/16.0) {
+        return float3(RAND_DIRECTION(), 1);
+    } else {
+        important_direction /= sqrt(lsq);
+        float2 perp = float2(important_direction.y, -important_direction.x);
+        float3 sample = g_teardropScatteringLUT.SampleLevel(samplerg_teardropScatteringLUT, float2(RAND(), 0), 0);
+
+        return float3(important_direction * sample.x + perp * sample.y, sample.z);
+    }
+}
+
 ////////////////
 // SIMULATION
 ////////////////
@@ -163,8 +180,10 @@ void WritePhoton(float2 location, uint3 energy) {
     WritePhoton_Indexed(location * (g_target_size-1) - 0.5f, energy);
 }
 
-float2 teardrop_test(float u) {
+float3 test_teardrop(float u) {
+    return g_teardropScatteringLUT.SampleLevel(samplerg_teardropScatteringLUT, float2(u, 0), 0);
 }
+
 
 Ray EmitPointLight(inout RandomContext __rc) {
     Ray emitted;
@@ -172,8 +191,10 @@ Ray EmitPointLight(inout RandomContext __rc) {
     float2 pos = RAND_CIRCLE();
 
     emitted.Origin = mul(float4(pos, 0, 1), g_lightToTarget).xy;
-    emitted.Direction = RAND_DIRECTION();
-    emitted.Energy = g_lightEnergy;
+
+    float3 important_direction = Rand_Scatter_Importance(__rc, emitted.Origin);
+    emitted.Direction = important_direction.xy;
+    emitted.Energy = g_lightEnergy * important_direction.z;
     emitted.Reserved = 0;
 
     return emitted;
@@ -262,8 +283,9 @@ Ray EmitPath(uint2 pixel, inout RandomContext __rc) {
     Ray emitted;
 
     emitted.Origin = ((float2)pixel + RAND2()) / (g_target_size - 1);
-    emitted.Direction = RAND_DIRECTION();
-    emitted.Energy = 0;
+    float3 important_direction = Rand_Scatter_Importance(__rc, emitted.Origin);
+    emitted.Direction = important_direction.xy; // RAND_DIRECTION();
+    emitted.Energy.x = important_direction.z;
     emitted.Reserved = 0;
 
     return emitted;
@@ -341,8 +363,10 @@ void SimulateLight(Ray photon, inout RandomContext __rc) {
         uint3 outScatter = photon.Energy * g_outscatterCoefficient;
         
         WritePhoton(photon.Origin, outScatter);
-        photon.Direction = RAND_SCATTER_MIE(photon.Direction);
-        photon.Energy -= outScatter;
+        float3 important_direction = Rand_Scatter_Importance(__rc, photon.Origin);
+        photon.Direction = important_direction.xy; //RAND_DIRECTION();
+        photon.Energy *= important_direction.z;
+        //photon.Energy -= outScatter;
     }
 }
 
@@ -361,7 +385,7 @@ uint3 SimulateBackward(Ray path, inout RandomContext __rc) {
     bool hit = HitTest(path, uScatter, __rc);
     
     if(hit) {
-        return ReadForwardPhoton(path.Origin + path.Direction * uScatter);
+        return ReadForwardPhoton(path.Origin + path.Direction * uScatter) * path.Energy.x;
     } else {
         return 0;
     }
