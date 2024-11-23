@@ -309,6 +309,9 @@ float HitTest(Ray photon, out float uHit, inout RandomContext __rc) {
     float uTarget = RAND() * uEnd;
     float netTransmissibility = 1;
 
+    // Quantum tunneling for dense fogs
+    substrateTransmitPotential *= substrateTransmitPotential;
+
     uHit = 0;
     for(int steps = 0;steps < 2000;steps++) {
         float2 pSample = photon.Origin + photon.Direction * uHit;
@@ -358,7 +361,11 @@ void SimulateLight(Ray photon, inout RandomContext __rc) {
         photon.Origin += photon.Direction * uScatter;
 
         float3 albedo = g_albedo.SampleLevel(sampler_point_clamp, photon.Origin, 0).rgb;
-        photon.Energy *= albedo;
+
+        // Quantum tunneling energy scale
+        float quantumTunnelingScale = 2 * sqrt(substrateTransmitPotential);
+
+        photon.Energy *= albedo * quantumTunnelingScale;
 
         uint3 outScatter = photon.Energy * g_outscatterCoefficient;
         
