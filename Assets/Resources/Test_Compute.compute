@@ -291,7 +291,7 @@ Ray EmitPath(uint2 pixel, inout RandomContext __rc) {
     return emitted;
 }
 
-float HitTest(Ray photon, out float uHit, inout RandomContext __rc) {
+float HitTest(Ray photon, out float uHit, float substrateTransmitPotential) {
     float2 pixelSize = 1.0 / g_target_size;
 
     if(photon.Direction.x == 0) photon.Direction.x = 1e-8;
@@ -304,13 +304,8 @@ float HitTest(Ray photon, out float uHit, inout RandomContext __rc) {
     float uCollision = 10;
     float uEnd = min(uEscape, uCollision);
     
-    // Substrate traversal to collision point
-    float substrateTransmitPotential =  RAND();
-    float uTarget = RAND() * uEnd;
+    // float uTarget = RAND() * uEnd;
     float netTransmissibility = 1;
-
-    // Quantum tunneling for dense fogs
-    substrateTransmitPotential *= substrateTransmitPotential;
 
     uHit = 0;
     for(int steps = 0;steps < 2000;steps++) {
@@ -346,6 +341,11 @@ float HitTest(Ray photon, out float uHit, inout RandomContext __rc) {
     return false;
 }
 
+void GetSubstrateTransmitPDF(float rand, out float substrateTransmitPotential, out float quantumScale) {
+    substrateTransmitPotential = rand * rand;
+    quantumScale = 2 * rand;
+}
+
 void SimulateLight(Ray photon, inout RandomContext __rc) {
     if(g_lightEmissionOutscatter != 0) {
         uint3 emissionOutscatter = photon.Energy * g_lightEmissionOutscatter;
@@ -354,7 +354,11 @@ void SimulateLight(Ray photon, inout RandomContext __rc) {
 
     for(uint bounce = 0;bounce < g_bounces;bounce++) {
         float uScatter;
-        bool hit = HitTest(photon, uScatter, __rc);
+        float substrateTransmitPotential;
+        float quantumScale;
+        GetSubstrateTransmitPDF(RAND(), substrateTransmitPotential, quantumScale);
+
+        bool hit = HitTest(photon, uScatter, substrateTransmitPotential);
 
         if(!hit) break;
 
@@ -362,10 +366,7 @@ void SimulateLight(Ray photon, inout RandomContext __rc) {
 
         float3 albedo = g_albedo.SampleLevel(sampler_point_clamp, photon.Origin, 0).rgb;
 
-        // Quantum tunneling energy scale
-        float quantumTunnelingScale = 2 * sqrt(substrateTransmitPotential);
-
-        photon.Energy *= albedo * quantumTunnelingScale;
+        photon.Energy *= albedo * quantumScale;
 
         uint3 outScatter = photon.Energy * g_outscatterCoefficient;
         
@@ -379,20 +380,28 @@ void SimulateLight(Ray photon, inout RandomContext __rc) {
 
 void SimulateForward(Ray photon, inout RandomContext __rc) {
     float uScatter;
-    bool hit = HitTest(photon, uScatter, __rc);
+    float substrateTransmitPotential;
+    float quantumScale;
+    GetSubstrateTransmitPDF(RAND(), substrateTransmitPotential, quantumScale);
+    
+    bool hit = HitTest(photon, uScatter, substrateTransmitPotential);
 
     if(hit) {
         photon.Energy *= g_albedo.SampleLevel(sampler_point_clamp, photon.Origin, 0).rgb;
-        WritePhoton(photon.Origin + photon.Direction * uScatter, photon.Energy * g_outscatterCoefficient);
+        WritePhoton(photon.Origin + photon.Direction * uScatter, photon.Energy * quantumScale * g_outscatterCoefficient);
     }
 }
 
 uint3 SimulateBackward(Ray path, inout RandomContext __rc) {
     float uScatter;
-    bool hit = HitTest(path, uScatter, __rc);
+    float substrateTransmitPotential;
+    float quantumScale;
+    GetSubstrateTransmitPDF(RAND(), substrateTransmitPotential, quantumScale);
+    
+    bool hit = HitTest(path, uScatter, substrateTransmitPotential);
     
     if(hit) {
-        return ReadForwardPhoton(path.Origin + path.Direction * uScatter) * path.Energy.x;
+        return ReadForwardPhoton(path.Origin + path.Direction * uScatter) * path.Energy.x * quantumScale;
     } else {
         return 0;
     }
