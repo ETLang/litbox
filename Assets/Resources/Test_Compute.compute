@@ -258,6 +258,9 @@ void SimulateOne(Ray photon, inout RandomContext __rc) {
         float uScatter = 0;
         bool wentToHigherLOD = false;
 
+        // Quantum tunneling for dense fogs
+        substrateTransmitPotential *= substrateTransmitPotential;
+
         int steps;
         for(steps = 0;steps < 2000;steps++) {
             float minimumTransmissibility = 0;
@@ -298,7 +301,10 @@ void SimulateOne(Ray photon, inout RandomContext __rc) {
 
         float3 albedo = g_albedo.SampleLevel(sampler_point_clamp, photon.Origin, 0).rgb;
 
-        photon.Energy *= albedo;
+        // Quantum tunneling energy scale
+        float quantumTunnelingScale = 2 * sqrt(substrateTransmitPotential);
+
+        photon.Energy *= albedo * quantumTunnelingScale;
 
         uint3 outScatter = photon.Energy * g_outscatterCoefficient;
         
