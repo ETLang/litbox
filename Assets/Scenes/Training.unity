@@ -1536,6 +1536,7 @@ MonoBehaviour:
   _laserLightPrefab: {fileID: 8780435749890055110, guid: 89ca6a0506bec49e099c4e4c12b6ce44, type: 3}
   _sampleDisplay: {fileID: 752464865427857415}
   _showProfile: 1
+  _debugScenePath: /home/evan/Pictures/training_output/2024-11-22-20-25-15/Scene_0005.json
 --- !u!4 &906946635
 Transform:
   m_ObjectHideFlags: 0

@@ -156,7 +156,7 @@ static class LUT
     public static Texture CreateTeardropScatteringLUT() {
         Func<float,float> teardrop = (float theta) => {
             var x = theta / Mathf.PI - 1;
-            return 0.3f + Mathf.Pow(x,6);
+            return 0.5f + Mathf.Pow(x,6);
         };
 
         var table = GenerateFunctionTable(teardrop, 0, 2 * Mathf.PI, 65536);

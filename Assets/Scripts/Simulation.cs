@@ -424,7 +424,7 @@ public class Simulation : MonoBehaviour
                 //    When paths intersect a pixel that has energy deposited from a previous step,
                 //    that energy is propagated to the tracing pixel.
 
-                energyNormPerFrame = (/*pixelCount * photonBounces + */(float)photonsPerThread * (float)threadCount) / pixelCount;
+                energyNormPerFrame = 2 * ((float)photonsPerThread * (float)threadCount) / pixelCount;
                 _computeShader.SetFloat("g_energy_norm", framesSinceClear * energyNormPerFrame * energyUnit);
 
                 // Clear intermediate target
@@ -482,6 +482,7 @@ public class Simulation : MonoBehaviour
             _measureConvergenceResultBuffer.SetData(convergenceResultResetData);
 
             var measureConvergenceKernel = _computeShader.FindKernel("MeasureConvergence");
+            _computeShader.SetTexture(measureConvergenceKernel, "g_photons_final", SimulationOutputRaw);
             _computeShader.SetTexture(measureConvergenceKernel, "g_result", _renderTexture[_currentRenderTextureIndex]);
             _computeShader.SetTexture(measureConvergenceKernel, "g_previousResult", _renderTexture[1-_currentRenderTextureIndex]);
             _computeShader.SetBuffer(measureConvergenceKernel, "g_convergenceResult", _measureConvergenceResultBuffer);
@@ -495,8 +496,12 @@ public class Simulation : MonoBehaviour
                 awaitingConvergenceResult = false;
                 if(!r.done || r.hasError) return;
 
-                convergenceProgress = r.GetData<uint>(0)[0] / 100.0f;
-                if(hasConverged = convergenceProgress < _convergenceThreshold) {
+                var feedback = r.GetData<uint>(0);
+                uint pixelChange = feedback[0];
+                uint pixelsMaxed = feedback[1];
+
+                convergenceProgress = pixelChange / 100.0f;
+                if(hasConverged = pixelsMaxed > 0 || convergenceProgress < _convergenceThreshold) {
                     OnConverged?.Invoke();
                 }
             });

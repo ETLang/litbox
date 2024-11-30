@@ -53,6 +53,7 @@ public class TrainingManager : MonoBehaviour {
     [Header("Utility")]
     [SerializeField] Renderer _sampleDisplay;
     [SerializeField] int _showProfile;
+    [SerializeField] string _debugScenePath;
 
 
     Random _rand;
@@ -129,7 +130,10 @@ public class TrainingManager : MonoBehaviour {
             Directory.CreateDirectory(_datasetPath);
         }
 
-        if(_train) {
+        if(!string.IsNullOrEmpty(_debugScenePath)) {
+            LoadSceneFromDescription(File.ReadAllText(_debugScenePath));
+            _train = false;
+        } else if(_train) {
             Debug.Log($"Beginning training session {_datasetName}");
 
             if(_continuePreviousSession) {

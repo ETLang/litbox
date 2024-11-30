@@ -33,7 +33,7 @@ struct Ray {
     float2 Origin;
     float2 Direction;
     uint3 Energy;
-    float Reserved;
+    float FineScale;
 };
 
 RWStructuredBuffer<uint4> g_rand;
@@ -132,7 +132,7 @@ float3 Rand_Scatter_Importance(inout RandomContext __rc, float2 origin) {
         return float3(RAND_DIRECTION(), 1);
     } else {
         important_direction /= sqrt(lsq);
-        float2 perp = float2(important_direction.y, -important_direction.x);
+        float2 perp = float2(-important_direction.y, important_direction.x);
         float3 sample = g_teardropScatteringLUT.SampleLevel(samplerg_teardropScatteringLUT, float2(RAND(), 0), 0);
 
         return float3(important_direction * sample.x + perp * sample.y, sample.z);
@@ -194,8 +194,8 @@ Ray EmitPointLight(inout RandomContext __rc) {
 
     float3 important_direction = Rand_Scatter_Importance(__rc, emitted.Origin);
     emitted.Direction = important_direction.xy;
-    emitted.Energy = g_lightEnergy * important_direction.z;
-    emitted.Reserved = 0;
+    emitted.Energy = g_lightEnergy;
+    emitted.FineScale = important_direction.z;
 
     return emitted;
 } 
@@ -206,7 +206,7 @@ Ray EmitSpotLight(inout RandomContext __rc) {
     emitted.Origin = mul(float4(RAND()-0.5, RAND()-0.5, 0, 1), g_lightToTarget).xy;
     emitted.Direction = normalize(mul(float4(2*RAND()-1, -1, 0, 0), g_lightToTarget).xy);
     emitted.Energy = g_lightEnergy;
-    emitted.Reserved = 0;
+    emitted.FineScale = 1;
 
     return emitted;
 }
@@ -217,7 +217,7 @@ Ray EmitLaserLight(inout RandomContext __rc) {
     emitted.Origin = mul(float4(RAND()-0.5, RAND(), 0, 1), g_lightToTarget).xy;
     emitted.Direction = normalize(mul(float4(0,-1,0,0), g_lightToTarget).xy);
     emitted.Energy = g_lightEnergy;
-    emitted.Reserved = 0;
+    emitted.FineScale = 1;
 
     return emitted;
 }
@@ -228,7 +228,7 @@ Ray EmitAmbientLight(inout RandomContext __rc) {
     emitted.Origin = float2(RAND(), RAND());
     emitted.Direction = normalize(RAND_DIRECTION() - (emitted.Origin * 2 - 1)/1.44);
     emitted.Energy = g_lightEnergy;
-    emitted.Reserved = 0;
+    emitted.FineScale = 1;
 
     return emitted;
 }
@@ -248,7 +248,7 @@ Ray EmitFieldLight(inout RandomContext __rc) {
     float4 texValue = g_lightFieldTexture.SampleGrad(sampler_linear_clamp, uv, _ddx, _ddy);
     texValue.rgb *= (texValue.a - 0.08);
     emitted.Energy = g_lightEnergy * texValue.rgb;
-    emitted.Reserved = 0;
+    emitted.FineScale = 1;
 
     return emitted;
 }
@@ -263,7 +263,7 @@ Ray EmitDirectionalLight(inout RandomContext __rc) {
 
     emitted.Origin = 0.5 - g_directionalLightDirection + perp * (RAND() * 1.415 - 0.7075);
     emitted.Energy = g_lightEnergy;
-    emitted.Reserved = 0;
+    emitted.FineScale = 1;
 
     return emitted;
 }
@@ -274,7 +274,7 @@ Ray EmitDefaultLight(inout RandomContext __rc) {
     emitted.Origin = float2(RAND(), 0);
     emitted.Direction = float2(0,1);
     emitted.Energy = float3(0,1000,0);
-    emitted.Reserved = 0;
+    emitted.FineScale = 1;
 
     return emitted;
 }
@@ -285,8 +285,7 @@ Ray EmitPath(uint2 pixel, inout RandomContext __rc) {
     emitted.Origin = ((float2)pixel + RAND2()) / (g_target_size - 1);
     float3 important_direction = Rand_Scatter_Importance(__rc, emitted.Origin);
     emitted.Direction = important_direction.xy; // RAND_DIRECTION();
-    emitted.Energy.x = important_direction.z;
-    emitted.Reserved = 0;
+    emitted.FineScale = important_direction.z;
 
     return emitted;
 }
@@ -368,12 +367,12 @@ void SimulateLight(Ray photon, inout RandomContext __rc) {
 
         photon.Energy *= albedo * quantumScale;
 
-        uint3 outScatter = photon.Energy * g_outscatterCoefficient;
-        
+        uint3 outScatter = photon.Energy * photon.FineScale * g_outscatterCoefficient;
+
         WritePhoton(photon.Origin, outScatter);
         float3 important_direction = Rand_Scatter_Importance(__rc, photon.Origin);
         photon.Direction = important_direction.xy; //RAND_DIRECTION();
-        photon.Energy *= important_direction.z;
+        photon.FineScale *= important_direction.z;
         //photon.Energy -= outScatter;
     }
 }
@@ -388,7 +387,7 @@ void SimulateForward(Ray photon, inout RandomContext __rc) {
 
     if(hit) {
         photon.Energy *= g_albedo.SampleLevel(sampler_point_clamp, photon.Origin, 0).rgb;
-        WritePhoton(photon.Origin + photon.Direction * uScatter, photon.Energy * quantumScale * g_outscatterCoefficient);
+        WritePhoton(photon.Origin + photon.Direction * uScatter, photon.Energy * photon.FineScale * quantumScale * g_outscatterCoefficient);
     }
 }
 
@@ -401,7 +400,7 @@ uint3 SimulateBackward(Ray path, inout RandomContext __rc) {
     bool hit = HitTest(path, uScatter, substrateTransmitPotential);
     
     if(hit) {
-        return ReadForwardPhoton(path.Origin + path.Direction * uScatter) * path.Energy.x * quantumScale;
+        return ReadForwardPhoton(path.Origin + path.Direction * uScatter) * path.FineScale * quantumScale;
     } else {
         return 0;
     }
@@ -494,11 +493,27 @@ void ToneMap (uint3 id : SV_DispatchThreadID) {
 
 [numthreads(8,8,1)]
 void MeasureConvergence (uint3 id : SV_DispatchThreadID) {
+    const uint EnergyMax = (1 << 31);
+    
     float4 a = pow(g_result[id.xy], 1/2.2);
     float4 b = pow(g_previousResult[id.xy], 1/2.2);
+    id.x *= 3;
+    uint photon_r = g_photons_final[id.xy];
+    id.x++;
+    uint photon_g = g_photons_final[id.xy];
+    id.x++;
+    uint photon_b = g_photons_final[id.xy];
+
+    uint overflow = 0;
+    if(photon_r > EnergyMax) overflow++;
+    if(photon_g > EnergyMax) overflow++;
+    if(photon_b > EnergyMax) overflow++;
+
     float4 delta = abs(a - b) * 256;
-    uint diff = (uint)(dot(delta,1) * 100.0);
+    uint diff = uint(dot(delta,1) * 100.0);
+    
     InterlockedAdd(g_convergenceResult[0], diff);
+    InterlockedAdd(g_convergenceResult[1], overflow);
 }
 
 
