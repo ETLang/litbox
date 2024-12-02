@@ -42,6 +42,7 @@ public class Simulation : MonoBehaviour
     [SerializeField] private int photonsPerThread = 4096;
     [SerializeField] private int photonBounces = -1;
     [SerializeField] private int pathSamples = 10;
+    [SerializeField, Range(0,1)] private float pathBalance = 0.5f;
 
     [SerializeField] private int energyUnit = 100000;
     [SerializeField] private float transmissibilityVariationEpsilon = 1e-3f;
@@ -291,6 +292,7 @@ public class Simulation : MonoBehaviour
     HashSet<RTLightSource> _previousLightSources = new HashSet<RTLightSource>();
     HashSet<RTObject> _previousObjects = new HashSet<RTObject>();
     float _previousOutscatterCoefficient;
+    float _previousPathBalance;
     int _sceneId;
 
     void Update() {
@@ -337,10 +339,12 @@ public class Simulation : MonoBehaviour
             !allObjects.All(o => _previousObjects.Contains(o)) ||
             allObjects.Any(o => o.Changed) ||
             _previousSimulationMatrix != worldToPresentationSpace ||
-            _previousOutscatterCoefficient != outscatterCoefficient) {
+            _previousOutscatterCoefficient != outscatterCoefficient ||
+            _previousPathBalance != pathBalance) {
             hasConverged = false;
             framesSinceClear = 0;
 
+            _previousPathBalance = pathBalance;
             _previousOutscatterCoefficient = outscatterCoefficient;
             _previousSimulationMatrix = worldToPresentationSpace;
             _previousLightSources.Clear();
@@ -424,8 +428,9 @@ public class Simulation : MonoBehaviour
                 //    When paths intersect a pixel that has energy deposited from a previous step,
                 //    that energy is propagated to the tracing pixel.
 
-                energyNormPerFrame = 2 * ((float)photonsPerThread * (float)threadCount) / pixelCount;
+                energyNormPerFrame = ((float)photonsPerThread * (float)threadCount) / pixelCount;
                 _computeShader.SetFloat("g_energy_norm", framesSinceClear * energyNormPerFrame * energyUnit);
+                _computeShader.SetFloat("g_path_balance", pathBalance);
 
                 // Clear intermediate target
                 SimulationForwardOfHybrid.Clear(Color.clear);

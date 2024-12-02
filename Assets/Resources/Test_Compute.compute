@@ -46,7 +46,6 @@ Texture2D<float4> g_quadTreeLeaves;
 Texture2D<float2> g_mieScatteringLUT;
 Texture2D<float3> g_teardropScatteringLUT;
 SamplerState samplerg_teardropScatteringLUT;
-//RWTexture2D<float> g_importancePDF;
 
 RWTexture2D<float4> g_result;
 RWTexture2D<float4> g_previousResult;
@@ -62,6 +61,7 @@ uint g_bounces;
 float g_mip_test;
 uint g_lowest_lod;
 uint g_4x4_lod;
+float g_path_balance;
 
 float g_outscatterCoefficient;
 uint3 g_lightEnergy;
@@ -446,7 +446,8 @@ void Simulate_View_Backward (uint3 id : SV_DispatchThreadID) {
     }
     sum *= g_albedo.Load(uint3(id.xy,0)).rgb / g_samples_per_pixel;
 
-    sum += ReadForwardPhoton_Indexed(id.xy);
+    sum = lerp(sum, ReadForwardPhoton_Indexed(id.xy), g_path_balance);
+
     WritePhoton_Indexed(id.xy, sum);
     SAVE_RAND(g_rand[randIndex])
 }
@@ -494,7 +495,7 @@ void ToneMap (uint3 id : SV_DispatchThreadID) {
 [numthreads(8,8,1)]
 void MeasureConvergence (uint3 id : SV_DispatchThreadID) {
     const uint EnergyMax = (1 << 31);
-    
+
     float4 a = pow(g_result[id.xy], 1/2.2);
     float4 b = pow(g_previousResult[id.xy], 1/2.2);
     id.x *= 3;
