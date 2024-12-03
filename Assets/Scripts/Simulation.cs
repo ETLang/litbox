@@ -24,7 +24,7 @@ public struct SimulationProfile {
     public float outscatterCoefficient;
 }
 
-public class Simulation : MonoBehaviour
+public class Simulation : SimulationBaseBehavior
 {
     public enum Strategy {
         LightTransport,
@@ -48,7 +48,7 @@ public class Simulation : MonoBehaviour
     [SerializeField] private float transmissibilityVariationEpsilon = 1e-3f;
     [SerializeField, Range(0,0.5f)] private float outscatterCoefficient = 0.01f;
 
-    private Camera _realContentCamera;
+    private SimulationCamera _realContentCamera;
     private ComputeShader _computeShader;
     private ComputeBuffer _randomBuffer;
     private ComputeBuffer _measureConvergenceResultBuffer;
@@ -70,7 +70,7 @@ public class Simulation : MonoBehaviour
     private bool awaitingConvergenceResult = false;
     [SerializeField, ReadOnly] public bool hasConverged = false;
 
-    private uint[] convergenceResultResetData = new uint[] {0, 0, 0, 0};
+    private uint4[] convergenceResultResetData = new uint4[] { new uint4(0, 0, 0, 0) };
     private SortedDictionary<float,uint> performanceCounter = new SortedDictionary<float, uint>();
 
     public uint TraversalsPerSecond { get; private set; }
@@ -113,7 +113,6 @@ public class Simulation : MonoBehaviour
     private void Start()
     {
         _computeShader = (ComputeShader)Resources.Load("Test_Compute");
-        Training.shader = _computeShader;
 
         //GET RENDERER COMPONENT REFERENCE
         TryGetComponent(out _renderer);
@@ -129,98 +128,32 @@ public class Simulation : MonoBehaviour
             seeds[i].w = (uint)(UnityEngine.Random.value * 1000000);
         }
 
-        _randomBuffer = new ComputeBuffer(randSeeds, 16, ComputeBufferType.Structured, ComputeBufferMode.Immutable);
-        _randomBuffer.SetData(seeds);
-        
-        _measureConvergenceResultBuffer = new ComputeBuffer(1, 16, ComputeBufferType.Structured, ComputeBufferMode.Immutable);
-        _measureConvergenceResultBuffer.SetData(convergenceResultResetData);
+        _randomBuffer = CreateStructuredBuffer(seeds);
+        _measureConvergenceResultBuffer = CreateStructuredBuffer(convergenceResultResetData);
 
-        //CREATE NEW RENDER TEXTURE TO RENDER DATA TO
-        
         for(int i = 0;i < _renderTexture.Length;i++) {
-            _renderTexture[i] = new RenderTexture(textureResolution, textureResolution, 0, RenderTextureFormat.DefaultHDR)
-            {
-                enableRandomWrite = true
-            };
-            _renderTexture[i].Create();
+            _renderTexture[i] = CreateRWTexture(textureResolution, textureResolution, RenderTextureFormat.DefaultHDR);
         }
 
-        SimulationForwardOfHybrid = new RenderTexture(textureResolution * 3, textureResolution, 0, RenderTextureFormat.RInt)
-        {
-            enableRandomWrite = true
-        };
-        SimulationForwardOfHybrid.Create();
-
-        SimulationOutputRaw = new RenderTexture(textureResolution * 3, textureResolution, 0, RenderTextureFormat.RInt)
-        {
-            enableRandomWrite = true
-        };
-        SimulationOutputRaw.Create();
-
-        SimulationOutputHDR = new RenderTexture(textureResolution, textureResolution, 0, RenderTextureFormat.ARGBFloat)
-        {
-            enableRandomWrite = true
-        };
-        SimulationOutputHDR.Create();
+        SimulationForwardOfHybrid = CreateRWTexture(textureResolution * 3, textureResolution, RenderTextureFormat.RInt);
+        SimulationOutputRaw = CreateRWTexture(textureResolution * 3, textureResolution, RenderTextureFormat.RInt);
+        SimulationOutputHDR = CreateRWTexture(textureResolution, textureResolution, RenderTextureFormat.ARGBFloat);
 
         for(int i = 0;i < 2;i++) {
-            _gBufferAlbedo[i] = new RenderTexture(textureResolution, textureResolution, 0, RenderTextureFormat.ARGBFloat)
-            {
-                enableRandomWrite = true,
-                useMipMap = true,
-                autoGenerateMips = false
-            };
-            _gBufferAlbedo[i].Create();
-            _gBufferAlbedo[i].GenerateMips();
-
-            _gBufferTransmissibility[i] = new RenderTexture(textureResolution, textureResolution, 0, RenderTextureFormat.ARGBFloat)
-            {
-                enableRandomWrite = true,
-                useMipMap = true,
-                autoGenerateMips = false
-            };
-            _gBufferTransmissibility[i].Create();
-            _gBufferTransmissibility[i].GenerateMips();
-
-            _gBufferNormalSlope[i] = new RenderTexture(textureResolution, textureResolution, 0, RenderTextureFormat.ARGBFloat)
-            {
-                enableRandomWrite = true,
-                useMipMap = true,
-                autoGenerateMips = false
-            };
-            _gBufferNormalSlope[i].Create();
-            _gBufferNormalSlope[i].GenerateMips();
+            _gBufferAlbedo[i] = CreateRWTextureWithMips(textureResolution, textureResolution, RenderTextureFormat.ARGBFloat);
+            _gBufferTransmissibility[i] = CreateRWTextureWithMips(textureResolution, textureResolution, RenderTextureFormat.ARGBFloat);
+            _gBufferNormalSlope[i] = CreateRWTextureWithMips(textureResolution, textureResolution, RenderTextureFormat.ARGBFloat);
         }
 
-        GBufferQuadTreeLeaves = new RenderTexture(textureResolution, textureResolution, 0, RenderTextureFormat.ARGBHalf)
-        {
-            enableRandomWrite = true,
-            useMipMap = false,
-        };
-        GBufferQuadTreeLeaves.Create();
+        GBufferQuadTreeLeaves = CreateRWTexture(textureResolution, textureResolution, RenderTextureFormat.ARGBHalf);
 
         _mieScatteringLUT = LUT.CreateMieScatteringLUT();
+        DisposeOnDisable(() => DestroyImmediate(_mieScatteringLUT));
         _teardropScatteringLUT = LUT.CreateTeardropScatteringLUT();
+        DisposeOnDisable(() => DestroyImmediate(_teardropScatteringLUT));
 
-        _realContentCamera = new GameObject("__Simulation_Camera", typeof(Camera), typeof(SimulationCamera)).GetComponent<Camera>();
-        _realContentCamera.transform.parent = transform;
-        _realContentCamera.transform.localScale = new Vector3(1,1,1);
-        _realContentCamera.transform.localRotation = Quaternion.identity;
-        _realContentCamera.transform.localPosition = Vector3.zero;
-        _realContentCamera.orthographic = true;
-        _realContentCamera.orthographicSize = transform.localScale.x / 2;
-        _realContentCamera.nearClipPlane = -1;
-        _realContentCamera.farClipPlane = 1;
-        _realContentCamera.cullingMask = rayTracedLayers.value;
-        _realContentCamera.clearFlags = CameraClearFlags.Nothing;
-        _realContentCamera.allowHDR = false;
-        _realContentCamera.allowMSAA = false;
-        _realContentCamera.useOcclusionCulling = false;
-        _realContentCamera.gameObject.SetActive(false);
-
-        var camera_sim = _realContentCamera.GetComponent<SimulationCamera>();
-        camera_sim.Shader = _computeShader;
-        camera_sim.UpdateSimulation = Updater;
+        _realContentCamera = new GameObject("__Simulation_Camera", typeof(SimulationCamera)).GetComponent<SimulationCamera>();
+        _realContentCamera.Initialize(transform, rayTracedLayers.value);
 
         SwapGBuffer();
     }
@@ -232,60 +165,20 @@ public class Simulation : MonoBehaviour
 
         //_gBufferNextTarget = 1 - _gBufferNextTarget;
 
-        var camera_sim = _realContentCamera.GetComponent<SimulationCamera>();
-        camera_sim.GBufferAlbedo = _gBufferAlbedo[_gBufferNextTarget];
-        camera_sim.GBufferTransmissibility = _gBufferTransmissibility[_gBufferNextTarget];
-        camera_sim.GBufferNormalSlope = _gBufferNormalSlope[_gBufferNextTarget];
-        camera_sim.GBufferQuadTreeLeaves = GBufferQuadTreeLeaves;
-        camera_sim.VarianceEpsilon = transmissibilityVariationEpsilon;
+        _realContentCamera.GBufferAlbedo = _gBufferAlbedo[_gBufferNextTarget];
+        _realContentCamera.GBufferTransmissibility = _gBufferTransmissibility[_gBufferNextTarget];
+        _realContentCamera.GBufferNormalSlope = _gBufferNormalSlope[_gBufferNextTarget];
+        _realContentCamera.GBufferQuadTreeLeaves = GBufferQuadTreeLeaves;
+        _realContentCamera.VarianceEpsilon = transmissibilityVariationEpsilon;
     }
 
-    private void OnDisable()
+    protected override void OnDisable()
     {
+        _realContentCamera.ClearTargets();
         Destroy(_realContentCamera);
         _realContentCamera = null;
 
-        for(int i = 0;i < _renderTexture.Length;i++) {
-            if (_renderTexture[i] != null)
-            {
-                DestroyImmediate(_renderTexture[i]);
-                _renderTexture[i] = null;
-            }
-        }
-
-        DestroyImmediate(SimulationForwardOfHybrid);
-        SimulationForwardOfHybrid = null;
-
-        DestroyImmediate(SimulationOutputRaw);
-        SimulationOutputRaw = null;
-
-        DestroyImmediate(SimulationOutputHDR);
-        SimulationOutputHDR = null;
-
-        for(int i = 0;i < 2;i++) {
-            DestroyImmediate(_gBufferAlbedo[i]);
-            _gBufferAlbedo[i] = null;
-
-            DestroyImmediate(_gBufferTransmissibility[i]);
-            _gBufferTransmissibility[i] = null;
-
-            DestroyImmediate(_gBufferNormalSlope[i]);
-            _gBufferNormalSlope[i] = null;
-        }
-
-        DestroyImmediate(GBufferQuadTreeLeaves);
-        GBufferQuadTreeLeaves = null;
-
-        DestroyImmediate(_mieScatteringLUT);
-        _mieScatteringLUT = null;
-
-        DestroyImmediate(_teardropScatteringLUT);
-        _teardropScatteringLUT = null;
-
-        _randomBuffer.Release();
-        _randomBuffer = null;
-        _measureConvergenceResultBuffer.Release();
-        _measureConvergenceResultBuffer = null;
+        base.OnDisable();
     }
 
     Matrix4x4 _previousSimulationMatrix;
@@ -294,21 +187,42 @@ public class Simulation : MonoBehaviour
     float _previousOutscatterCoefficient;
     float _previousPathBalance;
     int _sceneId;
+    bool CheckChanged(RTLightSource[] allLights, RTObject[] allObjects, Matrix4x4 worldToPresentation) {
+        var changed = 
+            allLights.Length != _previousLightSources.Count ||
+            !allLights.All(l => _previousLightSources.Contains(l)) ||
+            allLights.Any(l => l.Changed) ||
+            allObjects.Length != _previousObjects.Count ||
+            !allObjects.All(o => _previousObjects.Contains(o)) ||
+            allObjects.Any(o => o.Changed) ||
+            _previousSimulationMatrix != worldToPresentation ||
+            _previousOutscatterCoefficient != outscatterCoefficient ||
+            _previousPathBalance != pathBalance;
+
+        _previousPathBalance = pathBalance;
+        _previousOutscatterCoefficient = outscatterCoefficient;
+        _previousSimulationMatrix = worldToPresentation;
+        _previousLightSources.Clear();
+        foreach(var light in allLights)
+            _previousLightSources.Add(light);
+        _previousObjects.Clear();
+        foreach(var o in allObjects)
+            _previousObjects.Add(o);
+
+        return changed;
+    }
 
     void Update() {
         _realContentCamera.Render();
-        SwapGBuffer();
-    }
-    
-    void Updater()
-    {
-        var worldToPresentationSpace = transform.worldToLocalMatrix;
-        var presentationToTargetSpace = Matrix4x4.Translate(new Vector3(0.5f, 0.5f, 0));
-        var worldToTargetSpace = presentationToTargetSpace * worldToPresentationSpace;
-        double photonEnergy = (double)uint.MaxValue / threadCount;
-        var allLights = GameObject.FindObjectsByType<RTLightSource>(FindObjectsSortMode.None);
-        var allObjects = GameObject.FindObjectsByType<RTObject>(FindObjectsSortMode.None);
 
+        var worldToPresentation = transform.worldToLocalMatrix;
+        var presentationToTargetSpace = Matrix4x4.Translate(new Vector3(0.5f, 0.5f, 0));
+        var worldToTargetSpace = presentationToTargetSpace * worldToPresentation;
+        double photonEnergy = (double)uint.MaxValue / threadCount;
+        var allLights = FindObjectsByType<RTLightSource>(FindObjectsSortMode.None);
+        var allObjects = FindObjectsByType<RTObject>(FindObjectsSortMode.None);
+
+        // PERFORMANCE MEASUREMENT
         var now = Time.time;
         while(performanceCounter.Keys.Count != 0 && performanceCounter.Keys.First() < now - 1)
             performanceCounter.Remove(performanceCounter.Keys.First());
@@ -332,27 +246,9 @@ public class Simulation : MonoBehaviour
         TraversalsPerSecond = total;
 
         // CHANGE DETECTION
-        if( allLights.Length != _previousLightSources.Count ||
-            !allLights.All(l => _previousLightSources.Contains(l)) ||
-            allLights.Any(l => l.Changed) ||
-            allObjects.Length != _previousObjects.Count ||
-            !allObjects.All(o => _previousObjects.Contains(o)) ||
-            allObjects.Any(o => o.Changed) ||
-            _previousSimulationMatrix != worldToPresentationSpace ||
-            _previousOutscatterCoefficient != outscatterCoefficient ||
-            _previousPathBalance != pathBalance) {
+        if(CheckChanged(allLights, allObjects, worldToPresentation)) {
             hasConverged = false;
             framesSinceClear = 0;
-
-            _previousPathBalance = pathBalance;
-            _previousOutscatterCoefficient = outscatterCoefficient;
-            _previousSimulationMatrix = worldToPresentationSpace;
-            _previousLightSources.Clear();
-            foreach(var light in allLights)
-                _previousLightSources.Add(light);
-            _previousObjects.Clear();
-            foreach(var o in allObjects)
-                _previousObjects.Add(o);
             _sceneId++;
         }
 
@@ -397,7 +293,7 @@ public class Simulation : MonoBehaviour
                 // Photons are simulated from each light source.
 
                 // At each collision point, a portion of the light's energy is "reflected" out to the viewer's eye (outscattered).
-                energyNormPerFrame = (float)photonsPerThread * (float)threadCount / pixelCount;
+                energyNormPerFrame = photonsPerThread * threadCount / pixelCount;
                 _computeShader.SetFloat("g_energy_norm", framesSinceClear * energyNormPerFrame * energyUnit);
 
                 foreach(var light in allLights) {
@@ -428,7 +324,7 @@ public class Simulation : MonoBehaviour
                 //    When paths intersect a pixel that has energy deposited from a previous step,
                 //    that energy is propagated to the tracing pixel.
 
-                energyNormPerFrame = ((float)photonsPerThread * (float)threadCount) / pixelCount;
+                energyNormPerFrame = photonsPerThread * threadCount / pixelCount;
                 _computeShader.SetFloat("g_energy_norm", framesSinceClear * energyNormPerFrame * energyUnit);
                 _computeShader.SetFloat("g_path_balance", pathBalance);
 
@@ -439,32 +335,28 @@ public class Simulation : MonoBehaviour
                     SimulateLight(light, Strategy.LightTransport, photonBounces != -1 ? photonBounces / 2 : (int)light.bounces, worldToTargetSpace, SimulationForwardOfHybrid);
                 }
 
-                // Set target to 
-                var simulateViewBackwardKernel = _computeShader.FindKernel("Simulate_View_Backward");
-                _computeShader.SetBuffer(simulateViewBackwardKernel, "g_rand", _randomBuffer);
-                _computeShader.SetTexture(simulateViewBackwardKernel, "g_photons_forward", SimulationForwardOfHybrid);
-                _computeShader.SetTexture(simulateViewBackwardKernel, "g_photons_final", SimulationOutputRaw);
-                _computeShader.SetTexture(simulateViewBackwardKernel, "g_albedo", GBufferAlbedo);
-                _computeShader.SetTexture(simulateViewBackwardKernel, "g_transmissibility", GBufferTransmissibility);
-                _computeShader.SetTexture(simulateViewBackwardKernel, "g_normalSlope", GBufferNormalSlope);
-                _computeShader.SetTexture(simulateViewBackwardKernel, "g_quadTreeLeaves", GBufferQuadTreeLeaves);
-                _computeShader.SetTexture(simulateViewBackwardKernel, "g_mieScatteringLUT", _mieScatteringLUT);
-                _computeShader.SetTexture(simulateViewBackwardKernel, "g_teardropScatteringLUT", _teardropScatteringLUT);
-                _computeShader.Dispatch(simulateViewBackwardKernel, (textureResolution - 1) / 8 + 1, (textureResolution - 1) / 8 + 1, 1);
+                RunKernel(_computeShader, "Simulate_View_Backward", textureResolution, textureResolution,
+                    ("g_rand", _randomBuffer),
+                    ("g_photons_forward", SimulationForwardOfHybrid),
+                    ("g_photons_final", SimulationOutputRaw),
+                    ("g_albedo", GBufferAlbedo),
+                    ("g_transmissibility", GBufferTransmissibility),
+                    ("g_normalSlope", GBufferNormalSlope),
+                    ("g_quadTreeLeaves", GBufferQuadTreeLeaves),
+                    ("g_mieScatteringLUT", _mieScatteringLUT),
+                    ("g_teardropScatteringLUT", _teardropScatteringLUT));
                 break;
         }
 
         // HDR MAPPING
-        var hdrKernel = _computeShader.FindKernel("ConvertToHDR");
-        _computeShader.SetTexture(hdrKernel, "g_photons_final", SimulationOutputRaw);
-        _computeShader.SetTexture(hdrKernel, "g_hdrResult", SimulationOutputHDR);
-        _computeShader.Dispatch(hdrKernel, (textureResolution - 1) / 8 + 1, (textureResolution - 1) / 8 + 1, 1);
+        RunKernel(_computeShader, "ConvertToHDR", textureResolution, textureResolution,
+            ("g_photons_final", SimulationOutputRaw),
+            ("g_hdrResult", SimulationOutputHDR));
 
         // TONE MAPPING
-        var toneMapKernel = _computeShader.FindKernel("ToneMap");
-        _computeShader.SetTexture(toneMapKernel, "g_photons_final", SimulationOutputRaw);
-        _computeShader.SetTexture(toneMapKernel, "g_result", _renderTexture[_currentRenderTextureIndex]);
-        _computeShader.Dispatch(toneMapKernel, (textureResolution - 1) / 8 + 1, (textureResolution - 1) / 8 + 1, 1);
+        RunKernel(_computeShader, "ToneMap", textureResolution, textureResolution,
+            ("g_photons_final", SimulationOutputRaw),
+            ("g_result", _renderTexture[_currentRenderTextureIndex]));
 
         SimulationOutputToneMapped = _renderTexture[_currentRenderTextureIndex];
 
@@ -486,12 +378,11 @@ public class Simulation : MonoBehaviour
 
             _measureConvergenceResultBuffer.SetData(convergenceResultResetData);
 
-            var measureConvergenceKernel = _computeShader.FindKernel("MeasureConvergence");
-            _computeShader.SetTexture(measureConvergenceKernel, "g_photons_final", SimulationOutputRaw);
-            _computeShader.SetTexture(measureConvergenceKernel, "g_result", _renderTexture[_currentRenderTextureIndex]);
-            _computeShader.SetTexture(measureConvergenceKernel, "g_previousResult", _renderTexture[1-_currentRenderTextureIndex]);
-            _computeShader.SetBuffer(measureConvergenceKernel, "g_convergenceResult", _measureConvergenceResultBuffer);
-            _computeShader.Dispatch(measureConvergenceKernel, (textureResolution - 1) / 8 + 1, (textureResolution - 1) / 8 + 1, 1);
+            RunKernel(_computeShader, "MeasureConvergence", textureResolution, textureResolution,
+                ("g_photons_final", SimulationOutputRaw),
+                ("g_result", _renderTexture[_currentRenderTextureIndex]),
+                ("g_previousResult", _renderTexture[1-_currentRenderTextureIndex]),
+                ("g_convergenceResult", _measureConvergenceResultBuffer));
             _currentRenderTextureIndex = 1 - _currentRenderTextureIndex;
 
             int recentSceneId = _sceneId;
@@ -511,6 +402,8 @@ public class Simulation : MonoBehaviour
                 }
             });
         }
+
+        SwapGBuffer();
     }
 
     void SimulateLight(RTLightSource light, Strategy strategy, int bounces, Matrix4x4 worldToTargetSpace, RenderTexture outputTexture) {

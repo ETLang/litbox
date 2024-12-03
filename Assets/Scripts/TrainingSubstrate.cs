@@ -2,12 +2,14 @@ using UnityEngine;
 using UnityEditor;
 using System;
 
-// [System.Serializable]
-// public class SubstrateElementTransform {
-//     public Vector2 position;
-//     public Vector2 scale = new Vector2(0.5f, 0.5f);
-//     [Range(0, 360)] public float angle;
-// }
+[System.Serializable]
+public class SubstrateElementTransform {
+    public Vector2 position;
+    public Vector2 scale;
+    [Range(0, 360)] public float angle;
+
+    public Matrix4x4 matrix => Matrix4x4.TRS((Vector3)position, Quaternion.AngleAxis(angle, new Vector3(0,0,1)), new Vector3(scale.x, scale.y, 1));
+}
 
 [RequireComponent(typeof(Renderer))]
 [RequireComponent(typeof(RTObject))]
