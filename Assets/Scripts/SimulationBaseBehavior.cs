@@ -1,7 +1,9 @@
 using System;
 using System.Collections.Generic;
+using System.Linq;
 using System.Runtime.InteropServices;
 using Unity.VisualScripting;
+using UnityEditor;
 using UnityEngine;
 
 public class SimulationBaseBehavior : MonoBehaviour {
@@ -70,6 +72,26 @@ public class SimulationBaseBehavior : MonoBehaviour {
         return output;
     }
 
+    protected void Visualize(Texture2D target, IEnumerable<float> data, bool normalize=true) {
+        var size = target.width * target.height;
+
+        var min = data.Min();
+        var max = data.Max();
+        var med = data.OrderBy(k => k).ElementAt(size / 2);
+        var um = (med - min) / (max - min);
+        var p = 1;//Mathf.Log(0.5f) / Mathf.Log(um);
+
+        if(normalize) {        
+            target.SetPixels(data.Select(x => {
+                var u = Mathf.Pow((x - min) / (max - min), p);
+                return new Color(u,u,u,1);
+            }).ToArray());
+        } else {
+            target.SetPixels(data.Select(x => new Color(x,x,x,1)).ToArray());
+        }
+
+        target.Apply();
+    }
 
     // COMPUTE SHADER HELPERS
     protected void RunKernel(ComputeShader shader, string kernel, int n, params (string,object)[] args) {
@@ -83,6 +105,9 @@ public class SimulationBaseBehavior : MonoBehaviour {
             switch(tuple.Item2) {
             case Texture texture:
                 shader.SetTexture(kernelID, tuple.Item1, texture);
+                shader.SetVector($"lut_window_{tuple.Item1}", new Vector4(
+                    0.5f / texture.width, 1 - 1.0f / texture.width,
+                    0.5f / texture.height, 1 - 1.0f / texture.height));
                 break;
             case ComputeBuffer buffer:
                 shader.SetBuffer(kernelID, tuple.Item1, buffer);
@@ -94,5 +119,10 @@ public class SimulationBaseBehavior : MonoBehaviour {
 
         shader.GetKernelThreadGroupSizes(kernelID, out var sizeX, out var sizeY, out var _);
         shader.Dispatch(kernelID, (int)((w - 1) / sizeX + 1), (int)((h - 1) / sizeY + 1), 1);
+    }
+
+    protected void SetShaderFlag(ComputeShader shader, string keyword, bool value) {
+        var id = shader.keywordSpace.FindKeyword(keyword);
+        shader.SetKeyword(id, value);
     }
 }

@@ -1,6 +1,8 @@
 #include "../Shaders/RayTracing2DCommon.cginc"
 #include "../Shaders/Noise2D.cginc"
 
+#pragma multi_compile __ FILTER_INACTIVE_CELLS
+
 #pragma kernel Simulate_DefaultLight
 #pragma kernel Simulate_PointLight
 #pragma kernel Simulate_SpotLight
@@ -18,6 +20,7 @@
 #pragma kernel Simulate_View_Backward
 #pragma kernel ConvertToHDR
 #pragma kernel ToneMap
+#pragma kernel GetCellTransmissibility
 #pragma kernel MeasureConvergence
 #pragma kernel GenerateGBufferMips
 #pragma kernel ComputeGBufferVariance
@@ -43,14 +46,32 @@ Texture2D<float4> g_transmissibility;
 SamplerState samplerg_transmissibility;
 Texture2D<float4> g_normalSlope;
 Texture2D<float4> g_quadTreeLeaves;
-Texture2D<float2> g_mieScatteringLUT;
-Texture2D<float3> g_teardropScatteringLUT;
-SamplerState samplerg_teardropScatteringLUT;
+
+DECLARE_LUT(float2, g_mieScatteringLUT)
+DECLARE_LUT(float3, g_teardropScatteringLUT)
+DECLARE_LUT(float2, g_quantumTunnelingLUT)
 
 RWTexture2D<float4> g_result;
 RWTexture2D<float4> g_previousResult;
 RWStructuredBuffer<uint> g_convergenceResult;
-RWStructuredBuffer<uint> g_traversalCount;
+
+struct ConvergenceCellInput {
+    uint IsActive;
+    uint HasConverged;
+    uint FrameCount;
+    float Reserved[1];
+};
+
+struct ConvergenceCellOutput {
+    uint MaxValue;
+    uint PixelChange;
+    uint PhotonCount;
+    float Transmissibility;
+};
+
+uint4 g_convergenceCells;
+RWStructuredBuffer<ConvergenceCellInput> g_convergenceCellStateIn;
+RWStructuredBuffer<ConvergenceCellOutput> g_convergenceCellStateOut;
 
 uint g_time_ms;
 uint g_photons_per_thread;
@@ -62,6 +83,7 @@ float g_mip_test;
 uint g_lowest_lod;
 uint g_4x4_lod;
 float g_path_balance;
+float2 g_importance_sampling_target;
 
 float g_outscatterCoefficient;
 uint3 g_lightEnergy;
@@ -76,17 +98,10 @@ float4x4 g_lightToTarget;
 SamplerState sampler_point_clamp;
 SamplerState sampler_linear_clamp;
 
-float Traverse(Ray ray) {
-    return 0.5f;
-}
 
-Ray BounceSurface(Ray incomingRay) {
-    return incomingRay;
-}
-
-Ray BounceInterior(Ray incomingRay) {
-    return incomingRay;
-}
+////////////////
+// RANDOM NUMBER GENERATION
+////////////////
 
 float Rand_Next(inout RandomContext __rc) {
     __rc = NextRandom(__rc);
@@ -102,6 +117,7 @@ float Rand_Next(inout RandomContext __rc) {
 #define RAND_DIRECTION() Rand_Direction_(__rc)
 #define RAND_CIRCLE() Rand_Circle_(__rc)
 #define RAND_SCATTER_MIE(incoming) Rand_Scatter_Mie_(__rc, incoming)
+#define RAND_LUT(lutName) SampleLUT(lutName,RAND())
 #define SAVE_RAND(seed) seed = __rc.state;
 
 float2 Rand_Direction_(inout RandomContext __rc) {
@@ -119,29 +135,36 @@ float2 Rand_Scatter_Mie_(inout RandomContext __rc, float2 incomingDirection) {
     float2 perp = incomingDirection.yx;
     perp.x *= -1;
 
-    float2 scatter = g_mieScatteringLUT.SampleLevel(sampler_linear_clamp, float2(RAND(), 0), 0);
-
+    float2 scatter = RAND_LUT(g_mieScatteringLUT);
     return scatter.x * incomingDirection + scatter.y * perp;
 }
 
 float3 Rand_Scatter_Importance(inout RandomContext __rc, float2 origin) {
-    float2 important_direction = float2(0.5,0.5) - origin;
+    float2 important_direction = g_importance_sampling_target - origin;
     float lsq = dot(important_direction, important_direction);
 
     if(false && dot(important_direction, important_direction) < 1/16.0) {
         return float3(RAND_DIRECTION(), 1);
     } else {
-        important_direction /= sqrt(lsq);
+        important_direction /= -sqrt(lsq);
         float2 perp = float2(-important_direction.y, important_direction.x);
-        float3 sample = g_teardropScatteringLUT.SampleLevel(samplerg_teardropScatteringLUT, float2(RAND(), 0), 0);
-
+        float3 sample = RAND_LUT(g_teardropScatteringLUT);
         return float3(important_direction * sample.x + perp * sample.y, sample.z);
     }
 }
 
 ////////////////
-// SIMULATION
+// I/O
 ////////////////
+
+int GetGridCellIndex(uint2 pixel) {
+    if(any(pixel >= g_target_size)) {
+        return -1;
+    } else {
+        uint2 cellIndex2D = pixel * g_convergenceCells / g_target_size;
+        return (int)(cellIndex2D.y * g_convergenceCells.x + cellIndex2D.x);
+    }
+}
 
 RWTexture2D<uint> g_photons_forward;
 uint3 ReadForwardPhoton_Indexed(uint2 pixel) {
@@ -161,8 +184,20 @@ uint3 ReadForwardPhoton(float2 location) {
     return ReadForwardPhoton_Indexed(location * (g_target_size-1) - 0.5f);
 }
 
-void WritePhoton_Indexed(uint2 pixel, uint3 energy) {
+void WritePhoton_Indexed(int2 pixel, uint3 energy, bool suppressPhoton=false) {
     const uint EnergyMax = (1 << 31);
+
+    uint cellIndex = GetGridCellIndex(pixel);
+
+#if FILTER_INACTIVE_CELLS
+    if(cellIndex == -1 || !g_convergenceCellStateIn[cellIndex].IsActive) {
+        return;
+    }
+#endif
+
+    if(!suppressPhoton) {
+        InterlockedAdd(g_convergenceCellStateOut[cellIndex].PhotonCount, 1);
+    }
 
     pixel.x *= 3;
     if(g_photons_final[pixel] < EnergyMax)
@@ -175,15 +210,29 @@ void WritePhoton_Indexed(uint2 pixel, uint3 energy) {
         InterlockedAdd(g_photons_final[pixel], energy.b);
 }
 
-void WritePhoton(float2 location, uint3 energy) {
+void WritePhoton(float2 location, uint3 energy, bool suppressPhoton=false) {
     if(any(location < 0)) return;
-    WritePhoton_Indexed(location * (g_target_size-1) - 0.5f, energy);
+    WritePhoton_Indexed(location * (g_target_size-1) - 0.5f, energy, suppressPhoton);
 }
 
-float3 test_teardrop(float u) {
-    return g_teardropScatteringLUT.SampleLevel(samplerg_teardropScatteringLUT, float2(u, 0), 0);
+uint3 ReadPhoton_Indexed(uint2 pixel) {
+    uint3 output;
+    pixel.x *= 3;
+    output.r = g_photons_final[pixel];
+    pixel.x++;
+    output.g = g_photons_final[pixel];
+    pixel.x++;
+    output.b = g_photons_final[pixel];
+    return output;
 }
 
+uint3 ReadPhoton(float2 location) {
+    return ReadForwardPhoton_Indexed(location * (g_target_size-1) - 0.5f);
+}
+
+////////////////
+// SIMULATION
+////////////////
 
 Ray EmitPointLight(inout RandomContext __rc) {
     Ray emitted;
@@ -341,14 +390,17 @@ float HitTest(Ray photon, out float uHit, float substrateTransmitPotential) {
 }
 
 void GetSubstrateTransmitPDF(float rand, out float substrateTransmitPotential, out float quantumScale) {
-    substrateTransmitPotential = rand * rand;
-    quantumScale = 2 * rand;
+    // substrateTransmitPotential = rand * rand;
+    // quantumScale = 2 * rand;
+
+    substrateTransmitPotential = rand * rand * rand;
+    quantumScale = 3 * rand * rand;
 }
 
 void SimulateLight(Ray photon, inout RandomContext __rc) {
     if(g_lightEmissionOutscatter != 0) {
         uint3 emissionOutscatter = photon.Energy * g_lightEmissionOutscatter;
-        WritePhoton(photon.Origin, emissionOutscatter);
+        WritePhoton(photon.Origin, emissionOutscatter, true);
     }
 
     for(uint bounce = 0;bounce < g_bounces;bounce++) {
@@ -369,11 +421,11 @@ void SimulateLight(Ray photon, inout RandomContext __rc) {
 
         uint3 outScatter = photon.Energy * photon.FineScale * g_outscatterCoefficient;
 
-        WritePhoton(photon.Origin, outScatter);
+        WritePhoton(photon.Origin, outScatter, false);//bounce == 0);
         float3 important_direction = Rand_Scatter_Importance(__rc, photon.Origin);
         photon.Direction = important_direction.xy; //RAND_DIRECTION();
         photon.FineScale *= important_direction.z;
-        //photon.Energy -= outScatter;
+        photon.Energy -= outScatter;
     }
 }
 
@@ -438,36 +490,41 @@ SIMULATION_IMPLEMENTATION(DirectionalLight)
 
 [numthreads(8,8,1)]
 void Simulate_View_Backward (uint3 id : SV_DispatchThreadID) {
+
+#if FILTER_INACTIVE_CELLS
+    if(!g_convergenceCellStateIn[GetGridCellIndex((int2)id.xy)].IsActive) {
+        return;
+    }
+#endif
+
     uint randIndex = id.x + g_target_size.x * id.y; // need wigth * height rand contexts
     INIT_RAND(g_rand[randIndex])
     uint3 sum = 0;
-    for(uint i = 0;i < g_samples_per_pixel;i++) {
-        sum += SimulateBackward(EmitPath(id.xy, __rc), __rc); 
+
+    if(g_path_balance != 1) {
+        for(uint i = 0;i < g_samples_per_pixel;i++) {
+            sum += SimulateBackward(EmitPath(id.xy, __rc), __rc); 
+        }
+        sum *= g_albedo.Load(uint3(id.xy,0)).rgb / g_samples_per_pixel;
+
+        sum = lerp(sum, ReadForwardPhoton_Indexed(id.xy), g_path_balance);
+    } else {
+        sum = ReadForwardPhoton_Indexed(id.xy);
     }
-    sum *= g_albedo.Load(uint3(id.xy,0)).rgb / g_samples_per_pixel;
 
-    sum = lerp(sum, ReadForwardPhoton_Indexed(id.xy), g_path_balance);
-
-    WritePhoton_Indexed(id.xy, sum);
+    WritePhoton_Indexed((int2)id.xy, sum, true);
     SAVE_RAND(g_rand[randIndex])
 }
 
-RWTexture2D<float4> g_hdrResult;
 
+/////////////////////////
+// OUTPUT PROCESSING
+/////////////////////////
+
+RWTexture2D<float4> g_hdrResult;
 [numthreads(8,8,1)]
 void ConvertToHDR (uint3 id : SV_DispatchThreadID) {
-    uint2 photonLoc = id.xy; 
-    photonLoc.x *= 3;
-
-    float3 output;
-
-    output.r = g_photons_final[photonLoc] / g_energy_norm;
-    photonLoc.x++;
-    output.g = g_photons_final[photonLoc] / g_energy_norm;
-    photonLoc.x++;
-    output.b = g_photons_final[photonLoc] / g_energy_norm;
-
-    g_hdrResult[id.xy] = float4(output, 1);
+    g_hdrResult[id.xy] = float4(ReadPhoton_Indexed(id.xy) / g_energy_norm, 1);
 }
 
 float3 ToneMap_ApproximationA(float3 x) {
@@ -477,44 +534,45 @@ float3 ToneMap_ApproximationA(float3 x) {
 
 [numthreads(8,8,1)]
 void ToneMap (uint3 id : SV_DispatchThreadID) {
-    uint2 photonLoc = id.xy; 
-    photonLoc.x *= 3;
+    ConvergenceCellInput cellData = g_convergenceCellStateIn[GetGridCellIndex((int2)id.xy)];
+    float totalEnergyNorm = g_energy_norm * cellData.FrameCount;
 
-    float3 output;
-
-    output.r = g_photons_final[photonLoc] / g_energy_norm;
-    photonLoc.x++;
-    output.g = g_photons_final[photonLoc] / g_energy_norm;
-    photonLoc.x++;
-    output.b = g_photons_final[photonLoc] / g_energy_norm;
-    
     //g_result[id.xy] = float4(ToneMap_ApproximationA(output.rgb), 1);
-    g_result[id.xy] = float4(smoothstep(-4, 2, log10(output)), 1); // bit silly but... works?
+    g_result[id.xy] = float4(smoothstep(-4, 2, log10(ReadPhoton_Indexed(id.xy) / totalEnergyNorm)), 1); // bit silly but... works?
+
+    if(!cellData.IsActive) {
+        g_result[id.xy] *= float4(1,0.6,0.6,1);
+    }
+}
+
+float g_getCellTransmissibility_lod;
+[numthreads(8,8,1)]
+void GetCellTransmissibility(uint3 id : SV_DispatchThreadID) {
+    uint cellIndex = id.y * g_convergenceCells.x + id.x;
+    float2 uv = (id.xy + 0.5) / g_convergenceCells;
+
+    g_convergenceCellStateOut[cellIndex].Transmissibility =
+        g_transmissibility.SampleLevel(samplerg_transmissibility, uv, g_getCellTransmissibility_lod).x;
 }
 
 [numthreads(8,8,1)]
 void MeasureConvergence (uint3 id : SV_DispatchThreadID) {
-    const uint EnergyMax = (1 << 31);
+    //const uint EnergyMax = (1 << 31);
 
     float4 a = pow(g_result[id.xy], 1/2.2);
     float4 b = pow(g_previousResult[id.xy], 1/2.2);
-    id.x *= 3;
-    uint photon_r = g_photons_final[id.xy];
-    id.x++;
-    uint photon_g = g_photons_final[id.xy];
-    id.x++;
-    uint photon_b = g_photons_final[id.xy];
 
-    uint overflow = 0;
-    if(photon_r > EnergyMax) overflow++;
-    if(photon_g > EnergyMax) overflow++;
-    if(photon_b > EnergyMax) overflow++;
+    uint3 photon = ReadPhoton_Indexed(id.xy);
+    uint pixelMax = max(photon.r, max(photon.g, photon.b));
 
     float4 delta = abs(a - b) * 256;
     uint diff = uint(dot(delta,1) * 100.0);
-    
-    InterlockedAdd(g_convergenceResult[0], diff);
-    InterlockedAdd(g_convergenceResult[1], overflow);
+
+    uint2 cellIndex2D = id.xy * g_convergenceCells / g_target_size;
+    uint cellIndex = cellIndex2D.y * g_convergenceCells.x + cellIndex2D.x;
+
+    InterlockedAdd(g_convergenceCellStateOut[cellIndex].PixelChange, diff);
+    InterlockedMax(g_convergenceCellStateOut[cellIndex].MaxValue, pixelMax);
 }
 
 

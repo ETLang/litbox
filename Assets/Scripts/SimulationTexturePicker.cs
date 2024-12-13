@@ -13,6 +13,9 @@ public class SimulationTexturePicker : MonoBehaviour {
         Transmissibility,
         NormalSlope,
         QuadTree,
+        Efficiency,
+        PhotonCount,
+        MaxCellValue
     }
 
     [SerializeField] private Simulation simulation;
@@ -33,7 +36,7 @@ public class SimulationTexturePicker : MonoBehaviour {
 
         switch(type) {
         case TextureType.Photons_Forward:
-            value = simulation?.SimulationForwardOfHybrid;
+            value = simulation?.SimulationForwardPhase;
             break;
         case TextureType.Photons_Raw:
             value = simulation?.SimulationOutputRaw;
@@ -61,6 +64,15 @@ public class SimulationTexturePicker : MonoBehaviour {
             break;
         case TextureType.QuadTree:
             value = simulation?.GBufferQuadTreeLeaves;
+            break;
+        case TextureType.Efficiency:
+            value = simulation?.EfficiencyDiagnostic;
+            break;
+        case TextureType.PhotonCount:
+            value = simulation?.PhotonsDiagnostic;
+            break;
+        case TextureType.MaxCellValue:
+            value = simulation?.MaxValueDiagnostic;
             break;
         }
 

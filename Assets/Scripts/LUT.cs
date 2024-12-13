@@ -47,29 +47,56 @@ static class LUT
         }
 
         for(int i = 0;i < outInverse.Length;i++) {
-            outInverse[i] = inverseStart - 1;
-        }
+            float y = inverseStart + i * (inverseEnd - inverseStart) / (outInverse.Length - 1);
 
-        int lastOutIndex = 0;
+            int xLow = function.Length - 1;
 
-        for(int i = 0;i < function.Length;i++) {
-            float x = domainStart + (i * (domainEnd - domainStart)) / (float)(function.Length - 1);
-            float y = function[i];
-
-            float u = (y - inverseStart) / (inverseEnd - inverseStart);
-
-            var nearestOutIndex = (int)Math.Round(u * (outInverse.Length - 1));
-
-            outInverse[nearestOutIndex] = x;
-
-            for(int j = lastOutIndex + 1;j < nearestOutIndex;j++) {
-                float tween = outInverse[lastOutIndex] + 
-                    (x - outInverse[lastOutIndex]) * (float)(j - lastOutIndex) / (float)(nearestOutIndex - lastOutIndex);
-
-                outInverse[j] = x;//tween;
+            for(int k = 0;k < function.Length;k++)
+            {
+                if(function[k] > y) {
+                    xLow = k-1;
+                    break;
+                }
             }
 
-            lastOutIndex = nearestOutIndex;
+            if(xLow == function.Length - 1) {
+                outInverse[i] = domainStart + xLow * (domainEnd - domainStart) / (function.Length - 1);
+                continue;
+            }
+
+            // Binary search to drill down to a precise x value
+            float L = xLow;
+            float H = xLow + 1;
+
+            float yL = function.ReadCubic(L);
+            float yH = function.ReadCubic(H);
+
+            while(H-L > 1e-5) {
+                // if(yL > y || yH < y) {
+                //     throw new Exception("oops");
+                // }
+
+                float M = (L+H)/2;
+                float yM = function.ReadCubic(M);
+
+                if(yM < y) {
+                    if(L == M) {
+                        break;
+                    }
+                    L = M;
+                    yL = yM;
+                } else {
+                    if(H == M) {
+                        break;
+                    }
+                    H = M;
+                    yH = yM;
+                }
+            }
+
+            float x = domainStart + L * (domainEnd - domainStart) / (function.Length - 1);
+
+            outInverse[i] = x;
         }
 
         return true;
@@ -90,45 +117,99 @@ static class LUT
         }
     }
 
-    public static Texture LoadLUTAsTexture(float[] lut) {
-        var texture = new Texture2D(lut.Length, 1, TextureFormat.RFloat, false, true);
-        texture.SetPixels(lut.Select(x => new Color(x, 0, 0, 0)).ToArray());
-        texture.Apply();
-        return texture;
+    public static void ComponentwiseGlue(float[] x, float[] y, float2[] outGlued) {
+        for(int i = 0;i < outGlued.Length;i++) {
+            outGlued[i] = new float2(x[i], y[i]);
+        }
     }
 
-    public static Texture LoadLUTAsTexture(float2[] lut) {
-        var texture = new Texture2D(lut.Length, 1, TextureFormat.RGFloat, false, true);
-        texture.SetPixels(lut.Select(v => new Color(v.x, v.y, 0, 0)).ToArray());
-        texture.Apply();
-        return texture;
+    /// <summary>
+    /// Creates a random angle generator table fitting a probability distribution function
+    /// </summary>
+    /// <param name="relativePDF">
+    /// A function that will be sampled from -PI to PI for angle probabilities.
+    /// The function does not need to be normalized, but it must be nonnegative across the domain [-PI,PI].
+    /// </param>
+    /// <remarks>
+    /// To use the generator, generate a random number from 0-1 and use it to sample
+    /// the table as you would a texture on the GPU.
+    /// When sampling on the GPU, it is important to adjust the sampling coordinate
+    /// so that 0 lands on the center of the first texel, and 1 lands on the center of
+    /// the last texel. This can be achieved with the following formula,
+    /// given the size of the table N:
+    ///
+    /// uAdjusted = 0.5/N + u * (1 - 1/N)
+    ///
+    /// </remarks>
+    /// <returns>
+    /// An array that can be loaded as a texture into the GPU.
+    /// The XY components of each value represent a unit-length vector
+    /// pointing in the direction of the output angle. The Z component
+    /// represents the inverse of the density at the output angle.
+    /// </returns>
+    public static float3[] CreateVectorizedAnglePDFLUT(Func<float,float> relativePDF, int samples = 2048) {
+        var table = GenerateFunctionTable(relativePDF, -Mathf.PI, Mathf.PI, samples);
+        var normalizedTable = new float[table.Length];
+        var avg = NormalizeDistribution(table, normalizedTable);
+        var integral = new float[table.Length];
+        IntegrateDistribution(normalizedTable, integral);
+        var inverted = new float[table.Length];
+        Invert(integral, -Mathf.PI, Mathf.PI, inverted, out float inverseStart, out float inverseEnd);
+        var vectorTable = new float2[table.Length];
+        AngleFunctionToVectorFunction(inverted, vectorTable);
+        var finalTable = new float3[inverted.Length];
+        ComponentwiseGlue(vectorTable, inverted, finalTable);
+
+        for(int i = 0;i < finalTable.Length;i++) {
+            finalTable[i].z = avg / relativePDF(finalTable[i].z);
+        }
+
+        return finalTable;
     }
 
-    public static Texture LoadLUTAsTexture(float3[] lut) {
-        var texture = new Texture2D(lut.Length, 1, TextureFormat.RGBAFloat, false, true);
-        texture.SetPixels(lut.Select(v => new Color(v.x, v.y, v.z, 0)).ToArray());
-        texture.Apply();
-        return texture;
+    /// <summary>
+    /// Creates a random generator table fitting a probability distribution function
+    /// </summary>
+    /// <param name="relativePDF">
+    /// A function that will be sampled for probabilities.
+    /// The function does not need to be normalized, but it must be nonnegative across the domain [lowerbound,upperbound].
+    /// </param>
+    /// <remarks>
+    /// To use the generator, generate a random number from 0-1 and use it to sample
+    /// the table as you would a texture on the GPU.
+    /// When sampling on the GPU, it is important to adjust the sampling coordinate
+    /// so that 0 lands on the center of the first texel, and 1 lands on the center of
+    /// the last texel. This can be achieved with the following formula,
+    /// given the size of the table N:
+    ///
+    /// uAdjusted = 0.5/N + u * (1 - 1/N)
+    ///
+    /// </remarks>
+    /// <returns>
+    /// An array that can be loaded as a texture into the GPU.
+    /// The X component of each value represents the distributed output,
+    /// The Y component represents the inverse of the density at that value.
+    /// </returns>
+    public static float2[] CreatePDFLUT(Func<float,float> relativePDF, float lowerbound = 0, float upperbound = 1, int samples = 2048) {
+        var table = GenerateFunctionTable(relativePDF, lowerbound, upperbound, samples);
+        var normalizedTable = new float[table.Length];
+        var avg = NormalizeDistribution(table, normalizedTable);
+        var integral = new float[table.Length];
+        IntegrateDistribution(normalizedTable, integral);
+        var inverted = new float[table.Length];
+        Invert(integral, lowerbound, upperbound, inverted, out float inverseStart, out float inverseEnd);
+        var finalTable = new float2[inverted.Length];
+        ComponentwiseGlue(inverted, inverted, finalTable);
+
+        for(int i = 0;i < finalTable.Length;i++) {
+            finalTable[i].y = avg / relativePDF(finalTable[i].y);
+        }
+
+        return finalTable;
     }
 
-    public static Texture LoadLUTAsTexture(float4[] lut) {
-        var texture = new Texture2D(lut.Length, 1, TextureFormat.RGFloat, false, true);
-        texture.SetPixels(lut.Select(v => new Color(v.x, v.y, v.z, v.w)).ToArray());
-        texture.Apply();
-        return texture;
-    }
-
-
-    private static double DrainesPhaseFunction(double alpha, double g, double theta) {
-        return 
-        1.0 / (4.0 * Math.PI) * 
-        (1 - g*g) / Math.Pow(1 + g*g - 2*g*Math.Cos(theta), 1.5) *
-        (1 + alpha * Math.Pow(Math.Cos(theta), 2)) / (1 + alpha * (1 + 2*g*g)/3.0);
-    }
-
-    public static Texture CreateMieScatteringLUT() {
-        Func<float,float> mieScatter = (float theta) =>
-        {
+    public static float3[] CreateMieScatteringLUT() =>
+        CreateVectorizedAnglePDFLUT((float theta) => {
             const float forward_bias = 0.3f; // Valid values are [-0.9,0.9] where negative values prioritize backscattering.
             const float softener = 0.5f; // Softens the distribution to be closer to uniform. 0 means nothing scatters perpendicular.
             const float lobe_sharpness = 2;
@@ -138,43 +219,13 @@ static class LUT
             var cos = Mathf.Cos(theta);
 
             return (softener + Mathf.Pow(cos, lobe_sharpness)) / (1 + forward_bias * cos);
-        };
+        });
 
-        var table = GenerateFunctionTable(mieScatter, -Mathf.PI, Mathf.PI);
-        var normalizedTable = new float[table.Length];
-        NormalizeDistribution(table, normalizedTable);
-        var integral = new float[table.Length];
-        IntegrateDistribution(normalizedTable, integral);
-        var inverted = new float[table.Length];
-        Invert(integral, -Mathf.PI, Mathf.PI, inverted, out float inverseStart, out float inverseEnd);
-        var vectorTable = new float2[table.Length];
-        AngleFunctionToVectorFunction(inverted, vectorTable);
+    public static float3[] CreateTeardropScatteringLUT(float spikeStrength) =>
+        CreateVectorizedAnglePDFLUT((float theta) => {
+            var x = theta / Mathf.PI;
+            return 1 + spikeStrength * Mathf.Pow(x,6);
+        });
 
-        return LoadLUTAsTexture(vectorTable);
-    }
-
-    public static Texture CreateTeardropScatteringLUT() {
-        Func<float,float> teardrop = (float theta) => {
-            var x = theta / Mathf.PI - 1;
-            return 0.5f + Mathf.Pow(x,6);
-        };
-
-        var table = GenerateFunctionTable(teardrop, 0, 2 * Mathf.PI, 65536);
-        var normalizedTable = new float[table.Length];
-        var avg = NormalizeDistribution(table, normalizedTable);
-        var integral = new float[table.Length];
-        IntegrateDistribution(normalizedTable, integral);
-        var inverted = new float[2048];
-        Invert(integral, 0, 2*Mathf.PI, inverted, out float inverseStart, out float inverseEnd);
-        var vectorTable = new float2[inverted.Length];
-        AngleFunctionToVectorFunction(inverted, vectorTable);
-        var finalTable = new float3[inverted.Length];
-        ComponentwiseGlue(vectorTable, inverted, finalTable);
-
-        for(int i = 0;i < finalTable.Length;i++) {
-            finalTable[i].z = avg / teardrop(finalTable[i].z);
-        }
-
-        return LoadLUTAsTexture(finalTable);
-    }
+        
 }

@@ -109,3 +109,10 @@ RandomContext NextRandom(RandomContext ctx)
 
 //#define INIT_RANDOM(seed) RandomContext __rc = CreateRandomContext(seed);
 //#define RAND_NEXT() __rc = NextRandom(__rc)
+
+#define DECLARE_LUT(type, name) \
+Texture2D<type> name;           \
+SamplerState sampler##name;     \
+float2 lut_window_##name;
+
+#define SampleLUT(name,u) name.SampleLevel(sampler##name, float2(dot(float2(1,u),lut_window_##name),0), 0)

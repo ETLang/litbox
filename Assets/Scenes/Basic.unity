@@ -267,6 +267,7 @@ GameObject:
   - component: {fileID: 503795292}
   - component: {fileID: 503795291}
   - component: {fileID: 503795290}
+  - component: {fileID: 503795293}
   m_Layer: 0
   m_Name: Main Camera
   m_TagString: MainCamera
@@ -348,6 +349,24 @@ Transform:
   m_Children: []
   m_Father: {fileID: 0}
   m_LocalEulerAnglesHint: {x: 0, y: 0, z: 0}
+--- !u!114 &503795293
+MonoBehaviour:
+  m_ObjectHideFlags: 0
+  m_CorrespondingSourceObject: {fileID: 0}
+  m_PrefabInstance: {fileID: 0}
+  m_PrefabAsset: {fileID: 0}
+  m_GameObject: {fileID: 503795289}
+  m_Enabled: 1
+  m_EditorHideFlags: 0
+  m_Script: {fileID: 11500000, guid: a53b2f5a379d1664d947c74b66bf2665, type: 3}
+  m_Name: 
+  m_EditorClassIdentifier: 
+  mat: {fileID: 2100000, guid: afe1a97f0b30ae330a81e0f95e598280, type: 2}
+  sim: {fileID: 923172386}
+  diagnostic: 2
+  cleanMagnitudes: 1
+  normalize: 0
+  logScale: 0
 --- !u!1 &679363153
 GameObject:
   m_ObjectHideFlags: 0
@@ -579,7 +598,7 @@ MonoBehaviour:
   m_EditorClassIdentifier: 
   simulation: {fileID: 923172386}
   aiAccelerator: {fileID: 0}
-  type: 9
+  type: 10
 --- !u!1 &923172385
 GameObject:
   m_ObjectHideFlags: 0
@@ -617,19 +636,23 @@ MonoBehaviour:
     serializedVersion: 2
     m_Bits: 64
   frameLimit: -1
-  textureResolution: 512
-  strategy: 0
+  textureResolution: 256
+  strategy: 2
+  gridCells:
+    x: 16
+    y: 16
   threadCount: 4096
   photonsPerThread: 128
   photonBounces: -1
   pathSamples: 10
-  energyUnit: 100000
+  pathBalance: 0.5
+  energyUnit: 5000000
   transmissibilityVariationEpsilon: 0.01
-  outscatterCoefficient: 0.01
-  _convergenceThreshold: 1
-  framesSinceClear: 0
-  convergenceProgress: 100000
-  hasConverged: 0
+  outscatterCoefficient: 0.05
+  _convergenceThreshold: 0.01
+  framesSinceClear: 2721
+  convergenceProgress: 0.5718811
+  hasConverged: 1
 --- !u!64 &923172387
 MeshCollider:
   m_ObjectHideFlags: 0
@@ -1071,7 +1094,7 @@ MonoBehaviour:
   m_EditorClassIdentifier: 
   simulation: {fileID: 923172386}
   aiAccelerator: {fileID: 0}
-  type: 7
+  type: 12
 --- !u!1 &1122935274
 GameObject:
   m_ObjectHideFlags: 0
@@ -1097,7 +1120,7 @@ Transform:
   m_GameObject: {fileID: 1122935274}
   serializedVersion: 2
   m_LocalRotation: {x: 0, y: 0, z: 0, w: 1}
-  m_LocalPosition: {x: -0.016721753, y: 0.04210355, z: 0.0021448527}
+  m_LocalPosition: {x: 0, y: 0, z: 0.1}
   m_LocalScale: {x: 1, y: 1, z: 1}
   m_ConstrainProportionsScale: 0
   m_Children:
@@ -1336,19 +1359,23 @@ PrefabInstance:
     m_Modifications:
     - target: {fileID: 2305385257613678829, guid: b63b3d7d4511479f2ab4cda3eb2b379d, type: 3}
       propertyPath: m_LocalScale.x
-      value: 10
+      value: 10.134446
       objectReference: {fileID: 0}
     - target: {fileID: 2305385257613678829, guid: b63b3d7d4511479f2ab4cda3eb2b379d, type: 3}
       propertyPath: m_LocalScale.y
-      value: 10
+      value: 10.2185955
+      objectReference: {fileID: 0}
+    - target: {fileID: 2305385257613678829, guid: b63b3d7d4511479f2ab4cda3eb2b379d, type: 3}
+      propertyPath: m_LocalScale.z
+      value: 1
       objectReference: {fileID: 0}
     - target: {fileID: 2305385257613678829, guid: b63b3d7d4511479f2ab4cda3eb2b379d, type: 3}
       propertyPath: m_LocalPosition.x
-      value: -3.66
+      value: -3.5236
       objectReference: {fileID: 0}
     - target: {fileID: 2305385257613678829, guid: b63b3d7d4511479f2ab4cda3eb2b379d, type: 3}
       propertyPath: m_LocalPosition.y
-      value: 0.11
+      value: -0.0173
       objectReference: {fileID: 0}
     - target: {fileID: 2305385257613678829, guid: b63b3d7d4511479f2ab4cda3eb2b379d, type: 3}
       propertyPath: m_LocalPosition.z
@@ -1604,7 +1631,7 @@ GameObject:
   m_Icon: {fileID: 0}
   m_NavMeshLayer: 0
   m_StaticEditorFlags: 0
-  m_IsActive: 0
+  m_IsActive: 1
 --- !u!4 &1839891432
 Transform:
   m_ObjectHideFlags: 0
@@ -1706,7 +1733,7 @@ GameObject:
   m_Icon: {fileID: 0}
   m_NavMeshLayer: 0
   m_StaticEditorFlags: 0
-  m_IsActive: 1
+  m_IsActive: 0
 --- !u!212 &2123204531
 SpriteRenderer:
   m_ObjectHideFlags: 0
@@ -1789,7 +1816,7 @@ MonoBehaviour:
   m_Script: {fileID: 11500000, guid: aa5e73cb1f064d7c0b0e423c01724af7, type: 3}
   m_Name: 
   m_EditorClassIdentifier: 
-  intensity: 1.5
+  intensity: 5
   bounces: 4
   emissionOutscatter: 0
 --- !u!1001 &5299118404401602265
