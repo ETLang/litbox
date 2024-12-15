@@ -223,7 +223,7 @@ public class TrainingSubstrate : MonoBehaviour {
             }
         }
         
-        var shader = (ComputeShader)Resources.Load("Test_Compute");
+        var shader = (ComputeShader)Resources.Load("TrainingSubstrateGenerators");
 
         var transforms = new Matrix4x4[rects.Length + ellipses.Length + inverseRects.Length + inverseEllipses.Length];
 

@@ -1,0 +1,174 @@
+#include "../Shaders/RayTracing2DCommon.cginc"
+#include "../Shaders/Noise2D.cginc"
+#include "../Shaders/Random.cginc"
+
+#pragma kernel GenerateTrainingSubstrate_MakeShapes
+#pragma kernel GenerateTrainingSubstrate_EdgeBlur_JFA
+#pragma kernel GenerateTrainingSubstrate_EdgeBlur
+#pragma kernel GenerateTrainingSubstrate_AddNoise
+#pragma kernel GenerateTrainingSubstrate_Gradient
+#pragma kernel GenerateTrainingSubstrate_Hardness
+
+RWTexture2D<float4> g_trainingSubstrate_textureDest;
+RWTexture2D<float4> g_trainingSubstrate_textureRef;
+float2 g_trainingSubstrate_size;
+int4 g_trainingSubstrate_ShapeCounts; // (Rect, Ellipse, Inverse Rect, Inverse Ellipse)
+float4x4 g_trainingSubstrate_ShapeTransforms[16];
+float g_trainingSubstrate_edgeBlur;
+float2 g_trainingSubstrate_noiseSeed;
+float2 g_trainingSubstrate_noiseFrequencyMinMax;
+float2 g_trainingSubstrate_noiseClipValues;
+float3 g_trainingSubstrate_gradientDirection;
+float2 g_trainingSubstrate_gradientDensity;
+float3 g_trainingSubstrate_gradientColorA;
+float3 g_trainingSubstrate_gradientColorB;
+float g_trainingSubstrate_hardness;
+
+[numthreads(8,8,1)]
+void GenerateTrainingSubstrate_MakeShapes(uint3 id : SV_DispatchThreadID) {
+    int totalRects = g_trainingSubstrate_ShapeCounts.x;
+    int totalEllipses = g_trainingSubstrate_ShapeCounts.y;
+    int totalInverseRects = g_trainingSubstrate_ShapeCounts.z;
+    int totalInverseEllipses = g_trainingSubstrate_ShapeCounts.w;
+
+    float2 xy = ((float2)id.xy + 0.5) / g_trainingSubstrate_size * 2 - 1;
+
+    // Draw shapes!
+    bool inside = false;
+    int currentTransformIndex = 0;
+    int i;
+    for(i = 0;i < totalRects;i++) {
+        float2 txy = mul(float4(xy,0,1), g_trainingSubstrate_ShapeTransforms[currentTransformIndex]).xy;
+        inside = inside || all(abs(txy.xy) <= 1);
+        currentTransformIndex++;
+    }
+    for(i = 0;i < totalEllipses;i++) {
+        float2 txy = mul(float4(xy,0,1), g_trainingSubstrate_ShapeTransforms[currentTransformIndex]).xy;
+        inside = inside || dot(txy.xy, txy.xy) <= 1;
+        currentTransformIndex++;
+    }
+    for(i = 0;i < totalInverseRects;i++) {
+        float2 txy = mul(float4(xy,0,1), g_trainingSubstrate_ShapeTransforms[currentTransformIndex]).xy;
+        inside = inside && !all(abs(txy.xy) <= 1);
+        currentTransformIndex++;
+    }
+    for(i = 0;i < totalInverseEllipses;i++) {
+        float2 txy = mul(float4(xy,0,1), g_trainingSubstrate_ShapeTransforms[currentTransformIndex]).xy;
+        inside = inside && !(dot(txy.xy, txy.xy) <= 1);
+        currentTransformIndex++;
+    }
+
+    if(inside) {
+        g_trainingSubstrate_textureDest[id.xy] = float4(1,   -1,   -1, 1);
+    } else {
+        g_trainingSubstrate_textureDest[id.xy] = float4(0, id.x, id.y, 0);
+    }
+
+    // - 2. Edge blur.
+    // - 3. noise or no?
+    // - 4. If yes, choose frequencies (min/max, pow2), floor, ceiling, and modulate
+    // - 6. Intensity and color (linear gradient)
+    // - 5. Grade power (0.1..10) or x^(10^(RAND()*2-1))
+    // - 7. Apply and Repeat (1-4 times total)
+}
+
+int g_trainingSubstrate_edgeBlurStage;
+[numthreads(8,8,1)]
+void GenerateTrainingSubstrate_EdgeBlur_JFA(uint3 id : SV_DispatchThreadID) {
+    float2 closest;
+    float closest_distance = 1.e6;
+
+    float4 pixel = g_trainingSubstrate_textureRef[id.xy];
+
+    if(pixel.x == 0) {
+        g_trainingSubstrate_textureDest[id.xy] = pixel;
+        return;
+    }
+
+    for(int i = -1;i <= 1;i++) {
+        for(int j = -1;j <= 1;j++) {
+            float4 c = g_trainingSubstrate_textureRef[id.xy +
+                uint2(i * g_trainingSubstrate_edgeBlurStage,
+                      j * g_trainingSubstrate_edgeBlurStage)];
+
+            if(c.y != -1) {
+                float2 delta = c.yz - id.xy;
+                float c_dist = dot(delta, delta);
+                if(c_dist < closest_distance) {
+                    closest = c.yz;
+                    closest_distance = c_dist;
+                }
+            }
+        }
+    }
+
+    pixel.yz = closest;
+    g_trainingSubstrate_textureDest[id.xy] = pixel;
+}
+
+[numthreads(8,8,1)]
+void GenerateTrainingSubstrate_EdgeBlur(uint3 id : SV_DispatchThreadID) {
+    float4 pixel = g_trainingSubstrate_textureRef[id.xy];
+    float dist = length(pixel.yz - id.xy);
+    dist /= (g_trainingSubstrate_edgeBlur + 1);
+    g_trainingSubstrate_textureDest[id.xy] = float4(pixel.rgb, pixel.a * saturate(dist));
+}
+
+[numthreads(8,8,1)]
+void GenerateTrainingSubstrate_AddNoise(uint3 id : SV_DispatchThreadID) {
+    Random rand;
+    rand.Init(0);
+    
+    float max_amplitude = 0;
+    float amplitude = 1;
+    float freq = g_trainingSubstrate_noiseFrequencyMinMax.x;
+    float2 uv = (id.xy + 0.5) / g_trainingSubstrate_size + g_trainingSubstrate_noiseSeed;
+
+    float noise_cloud = 0;
+    while(freq <= g_trainingSubstrate_noiseFrequencyMinMax.y) {
+        noise_cloud += amplitude * snoise01(uv.xy * freq);
+        max_amplitude += amplitude;
+        amplitude /= 2;
+        freq *= 2;
+        uv += 10*rand.Next();
+    }
+
+    noise_cloud /= max_amplitude;  // ensure bounds [0,1]
+    noise_cloud -= g_trainingSubstrate_noiseClipValues.x; // floor moved to 0
+    noise_cloud /= (g_trainingSubstrate_noiseClipValues.y - g_trainingSubstrate_noiseClipValues.x); // ceiling scaled to 1
+    noise_cloud = saturate(noise_cloud); // clamp to [0,1] again
+
+    float4 pixel = g_trainingSubstrate_textureRef[id.xy];
+    g_trainingSubstrate_textureDest[id.xy] = float4(pixel.rgb, pixel.a * noise_cloud);
+}
+
+[numthreads(8,8,1)]
+void GenerateTrainingSubstrate_Gradient(uint3 id : SV_DispatchThreadID) {
+    float2 xy = (id.xy + 0.5) / g_trainingSubstrate_size * 2 - 1;
+    float grad = saturate(dot(g_trainingSubstrate_gradientDirection, float3(xy, 1)));
+    float density = lerp(g_trainingSubstrate_gradientDensity.x, g_trainingSubstrate_gradientDensity.y, grad);
+    float3 color = lerp(g_trainingSubstrate_gradientColorA, g_trainingSubstrate_gradientColorB, grad);
+
+    float4 pixel = g_trainingSubstrate_textureRef[id.xy];
+
+    float net_density;
+    if(density > 1) {
+        net_density = lerp(pixel.a, 1, density - 1);
+    } else {
+        net_density = pixel.a * density;
+    }
+
+    g_trainingSubstrate_textureDest[id.xy] = float4(color, net_density);
+}
+
+[numthreads(8,8,1)]
+void GenerateTrainingSubstrate_Hardness(uint3 id : SV_DispatchThreadID) {
+    float4 pixel = g_trainingSubstrate_textureRef[id.xy];
+    float4 l = g_trainingSubstrate_textureRef[id.xy - uint2(1,0)];
+    float4 r = g_trainingSubstrate_textureRef[id.xy + uint2(1,0)];
+    float4 u = g_trainingSubstrate_textureRef[id.xy + uint2(0,1)];
+    float4 d = g_trainingSubstrate_textureRef[id.xy - uint2(0,1)];
+
+    float4 avg = pixel / 2 + (l + r + u + d) / 8;
+    g_trainingSubstrate_textureDest[id.xy] = float4(pixel.xyz, pow(pixel.a, g_trainingSubstrate_hardness));
+}

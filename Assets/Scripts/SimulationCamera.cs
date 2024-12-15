@@ -48,7 +48,7 @@ public class SimulationCamera : MonoBehaviour {
         
         gameObject.SetActive(false);
 
-        _computeShader = (ComputeShader)Resources.Load("Test_Compute");
+        _computeShader = (ComputeShader)Resources.Load("Simulation");
     }
 
     public void Render() {

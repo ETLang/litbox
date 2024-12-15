@@ -67,49 +67,6 @@ float3 ToGrayscale(float3 color)
 
 // Utilities
 
-// https://developer.nvidia.com/gpugems/gpugems3/part-vi-gpu-computing/chapter-37-efficient-random-number-generation-and-application
-
-struct RandomContext
-{
-    uint4 state;
-    float value;
-};
-
-RandomContext CreateRandomContext(uint4 seed)
-{
-    RandomContext ret;
-    ret.state = seed;
-    ret.value = 2.3283064365387e-10 * (ret.state.x ^ ret.state.y ^ ret.state.z ^ ret.state.w);
-    return ret;
-}
-
-uint TausStep(uint z, int S1, int S2, int S3, uint M)
-{
-    uint b = (((z << S1) ^ z) >> S2);
-    return (((z & M) << S3) ^ b);
-}
-
-uint LCGStep(uint z, uint A, uint C)
-{
-    return (A * z + C);
-}
-
-RandomContext NextRandom(RandomContext ctx)
-{
-    RandomContext next;
-
-    next.state.x = TausStep(ctx.state.x, 13, 19, 12, 4294967294);
-    next.state.y = TausStep(ctx.state.y, 2, 25, 4, 4294967288);
-    next.state.z = TausStep(ctx.state.z, 3, 11, 17, 4294967280);
-    next.state.w = LCGStep(ctx.state.w, 1664525, 1013904223);
-    next.value = 2.3283064365387e-10 * (next.state.x ^ next.state.y ^ next.state.z ^ next.state.w);
-
-    return next;
-}
-
-//#define INIT_RANDOM(seed) RandomContext __rc = CreateRandomContext(seed);
-//#define RAND_NEXT() __rc = NextRandom(__rc)
-
 #define DECLARE_LUT(type, name) \
 Texture2D<type> name;           \
 SamplerState sampler##name;     \
@@ -131,7 +88,7 @@ float2 lut_slice_window_##name;
 #define SampleLUT2D(name,uv) name.SampleLevel(sampler##name, float2( \
     dot(float2(1,uv.x),lut_window_##name.xy), \
     dot(float2(1,uv.y),lut_window_##name.zw)), 0)
-    
+
 #define SampleLUT3D(name,uvw) name.SampleLevel(sampler##name, float3( \
     dot(float2(1,uvw.x),lut_window_##name.xy), \
     dot(float2(1,uvw.y),lut_window_##name.zw), \

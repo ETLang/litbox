@@ -162,7 +162,7 @@ public class Simulation : SimulationBaseBehavior
 
     private void Start()
     {
-        _computeShader = (ComputeShader)Resources.Load("Test_Compute");
+        _computeShader = (ComputeShader)Resources.Load("Simulation");
 
         //GET RENDERER COMPONENT REFERENCE
         TryGetComponent(out _renderer);
