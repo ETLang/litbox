@@ -175,4 +175,69 @@ public static class MiscExtensions {
         texture.Apply();
         return texture;
     }
+
+
+    public static Texture AsTexture(this float[,,] lut) {
+        var texture = new Texture3D(lut.GetLength(0), lut.GetLength(1), lut.GetLength(2), TextureFormat.RFloat, false, true);
+        Color[] c = new Color[lut.GetLength(0) * lut.GetLength(1) * lut.GetLength(2)];
+        for(int i = 0;i < lut.GetLength(0);i++) {
+            for(int j = 0;j < lut.GetLength(1);j++) {
+                for(int k = 0;k < lut.GetLength(2);k++) {
+                    var val = lut[i,j,k];
+                    c[i + j * lut.GetLength(0) + k * lut.GetLength(0) * lut.GetLength(1)] = new Color(val, 0, 0, 0);
+                }
+            }
+        }
+        texture.SetPixels(c);
+        texture.Apply();
+        return texture;
+    }
+
+    public static Texture AsTexture(this float2[,,] lut) {
+        var texture = new Texture3D(lut.GetLength(0), lut.GetLength(1), lut.GetLength(2), TextureFormat.RGFloat, false, true);
+        Color[] c = new Color[lut.GetLength(0) * lut.GetLength(1) * lut.GetLength(2)];
+        for(int i = 0;i < lut.GetLength(0);i++) {
+            for(int j = 0;j < lut.GetLength(1);j++) {
+                for(int k = 0;k < lut.GetLength(2);k++) {
+                    var val = lut[i,j,k];
+                    c[i + j * lut.GetLength(0) + k * lut.GetLength(0) * lut.GetLength(1)] = new Color(val.x, val.y, 0, 0);
+                }
+            }
+        }
+        texture.SetPixels(c);
+        texture.Apply();
+        return texture;
+    }
+
+    public static Texture AsTexture(this float3[,,] lut) {
+        var texture = new Texture3D(lut.GetLength(0), lut.GetLength(1), lut.GetLength(2), TextureFormat.RGBAFloat, false, true);
+        Color[] c = new Color[lut.GetLength(0) * lut.GetLength(1) * lut.GetLength(2)];
+        for(int i = 0;i < lut.GetLength(0);i++) {
+            for(int j = 0;j < lut.GetLength(1);j++) {
+                for(int k = 0;k < lut.GetLength(2);k++) {
+                    var val = lut[i,j,k];
+                    c[i + j * lut.GetLength(0) + k * lut.GetLength(0) * lut.GetLength(1)] = new Color(val.x, val.y, val.z, 0);
+                }
+            }
+        }
+        texture.SetPixels(c);
+        texture.Apply();
+        return texture;
+    }
+
+    public static Texture AsTexture(this float4[,,] lut) {
+        var texture = new Texture3D(lut.GetLength(0), lut.GetLength(1), lut.GetLength(2), TextureFormat.RGBAFloat, false, true);
+        Color[] c = new Color[lut.GetLength(0) * lut.GetLength(1) * lut.GetLength(2)];
+        for(int i = 0;i < lut.GetLength(0);i++) {
+            for(int j = 0;j < lut.GetLength(1);j++) {
+                for(int k = 0;k < lut.GetLength(2);k++) {
+                    var val = lut[i,j,k];
+                    c[i + j * lut.GetLength(0) + k * lut.GetLength(0) * lut.GetLength(1)] = new Color(val.x, val.y, val.z, val.w);
+                }
+            }
+        }
+        texture.SetPixels(c);
+        texture.Apply();
+        return texture;
+    }
 }

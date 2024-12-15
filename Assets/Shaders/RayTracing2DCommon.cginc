@@ -115,4 +115,24 @@ Texture2D<type> name;           \
 SamplerState sampler##name;     \
 float2 lut_window_##name;
 
+#define DECLARE_LUT_2D(type, name)  \
+Texture2D<type> name;               \
+SamplerState sampler##name;         \
+float4 lut_window_##name;
+
+#define DECLARE_LUT_3D(type, name)  \
+Texture3D<type> name;               \
+SamplerState sampler##name;         \
+float4 lut_window_##name;           \
+float2 lut_slice_window_##name;
+
 #define SampleLUT(name,u) name.SampleLevel(sampler##name, float2(dot(float2(1,u),lut_window_##name),0), 0)
+
+#define SampleLUT2D(name,uv) name.SampleLevel(sampler##name, float2( \
+    dot(float2(1,uv.x),lut_window_##name.xy), \
+    dot(float2(1,uv.y),lut_window_##name.zw)), 0)
+    
+#define SampleLUT3D(name,uvw) name.SampleLevel(sampler##name, float3( \
+    dot(float2(1,uvw.x),lut_window_##name.xy), \
+    dot(float2(1,uvw.y),lut_window_##name.zw), \
+    dot(float2(1,uvw.z),lut_slice_window_##name)), 0)

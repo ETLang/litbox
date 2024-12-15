@@ -37,7 +37,11 @@ public class Simulation : SimulationBaseBehavior
         public uint IsActive;
         public uint HasConverged;
         public uint FrameCount;
+        public float TargetTransmission;
+        public float TransmissionSpread;
         public float Reserved0;
+        public float Reserved1;
+        public float Reserved2;
     }
 
     struct ConvergenceCellOutput {
@@ -93,6 +97,7 @@ public class Simulation : SimulationBaseBehavior
     private RenderBuffer[][] _gBuffer;
     private Texture _mieScatteringLUT;
     private Texture _teardropScatteringLUT;
+    private Texture _quantumTunnelingLUT;
     private int[] _kernelsHandles;
 
     private Renderer _renderer;
@@ -194,7 +199,9 @@ public class Simulation : SimulationBaseBehavior
             {
                 IsActive = 1,
                 HasConverged = 0,
-                FrameCount = 0
+                FrameCount = 0,
+                TargetTransmission = 1,
+                TransmissionSpread = 0,
             };
         }
         _gridCellInputInitialValue = (ConvergenceCellInput[])_gridCellInput.Clone();
@@ -228,6 +235,8 @@ public class Simulation : SimulationBaseBehavior
         DisposeOnDisable(() => DestroyImmediate(_mieScatteringLUT));
         _teardropScatteringLUT = LUT.CreateTeardropScatteringLUT(4).AsTexture();
         DisposeOnDisable(() => DestroyImmediate(_teardropScatteringLUT));
+        _quantumTunnelingLUT = LUT.CreateQuantumTunnelingLUT().AsTexture();
+        DisposeOnDisable(() => DestroyImmediate(_quantumTunnelingLUT));
 
         EfficiencyDiagnostic = new Texture2D((int)gridCells.x, (int)gridCells.y, TextureFormat.RGBAFloat, false)
         {
@@ -393,9 +402,6 @@ public class Simulation : SimulationBaseBehavior
         _computeShader.SetFloat("g_lightEmissionOutscatter", 0);
         _computeShader.SetFloat("g_outscatterCoefficient", outscatterCoefficient);
 
-        _computeShader.SetVector("g_teardropScatteringLUTWindow",
-            new Vector2(0.5f / _teardropScatteringLUT.width, 1 - 1.0f / _teardropScatteringLUT.width));
-
         float energyNormPerFrame = 1;
         float pixelCount = textureResolution * textureResolution;
         
@@ -467,6 +473,7 @@ public class Simulation : SimulationBaseBehavior
                     ("g_quadTreeLeaves", GBufferQuadTreeLeaves),
                     ("g_mieScatteringLUT", _mieScatteringLUT),
                     ("g_teardropScatteringLUT", _teardropScatteringLUT),
+                    ("g_quantumTunnelingLUT", _quantumTunnelingLUT),
                     ("g_convergenceCellStateIn", _gridCellInputBuffer),
                     ("g_convergenceCellStateOut", _gridCellOutputBuffer));
                 break;
@@ -504,7 +511,8 @@ public class Simulation : SimulationBaseBehavior
             OnConverged?.Invoke();
         }
 
-        if(ConvergenceMeasurementInterval != 0 && framesSinceClear % ConvergenceMeasurementInterval == 0) {
+        if( ConvergenceMeasurementInterval != 0 && framesSinceClear % ConvergenceMeasurementInterval == 0 ||
+            framesSinceClear == 1) {
             MeasureConvergence();
         }
 
@@ -547,7 +555,8 @@ public class Simulation : SimulationBaseBehavior
         _gridCellInputBuffer.SetData(_gridCellInput);
 
         _computeShader.SetVector("g_convergenceCells", new Vector2(gridCells.x, gridCells.y));
-        _computeShader.SetFloat("g_getCellTransmissibility_lod", GBufferTransmissibility.mipmapCount -5);
+        _computeShader.SetFloat("g_getCellTransmissibility_lod", GBufferTransmissibility.mipmapCount
+            - Mathf.Ceil(Mathf.Log(Mathf.Max(gridCells.x, gridCells.y),2)) - 1);
 
         if(true || !hasValidGridTransmissibility) {
             RunKernel(_computeShader, "GetCellTransmissibility", (int)gridCells.x, (int)gridCells.y,
@@ -587,13 +596,10 @@ public class Simulation : SimulationBaseBehavior
                     continue;
 
                 _gridCellState[i].CumulativePhotonCount += outputState.PhotonCount;
-                float efficiency = outputState.PhotonCount / ((1 - outputState.Transmissibility) * cellArea * ConvergenceMeasurementInterval);
-                efficiencies[i] = efficiency;
 
-                if(efficiency < minEfficiency) {
-                    minEfficiency = efficiency;
-                    minEfficiencyIndex = i;
-                }
+                float averagePhotonCount = _gridCellState[i].CumulativePhotonCount / (float)_gridCellInput[i].FrameCount;
+                float efficiency = averagePhotonCount / ((1 - outputState.Transmissibility) * cellArea * ConvergenceMeasurementInterval);
+                efficiencies[i] = efficiency;
 
                 float flux = _gridCellState[i].CumulativePhotonCount / cellArea;
 
@@ -610,18 +616,96 @@ public class Simulation : SimulationBaseBehavior
                 if(localHasConverged) {
                     totalConverged++;
                 }
+
+                if(_gridCellInput[i].IsActive != 0 && efficiency < minEfficiency) {
+                    minEfficiency = efficiency;
+                    minEfficiencyIndex = i;
+                }
             }
 
             { // target the lowest efficiency cell
-                int xCell = minEfficiencyIndex % (int)gridCells.x;
-                int yCell = minEfficiencyIndex / (int)gridCells.y;
+                int xTargetCell = minEfficiencyIndex % (int)gridCells.x;
+                int yTargetCell = minEfficiencyIndex / (int)gridCells.y;
+
+                Vector2 targetCell = new Vector2 {
+                    x = xTargetCell + 0.5f,
+                    y = yTargetCell + 0.5f
+                };
 
                 var currentIdealTarget = new Vector2(
-                    (xCell + 0.5f) / gridCells.x,
-                    (yCell + 0.5f) / gridCells.y
+                    (xTargetCell + 0.5f) / gridCells.x,
+                    (yTargetCell + 0.5f) / gridCells.y
                 );
 
-                ImportanceSamplingTarget = 0.9f * ImportanceSamplingTarget + 0.1f * currentIdealTarget;
+                ImportanceSamplingTarget = currentIdealTarget;//0.9f * ImportanceSamplingTarget + 0.1f * currentIdealTarget;
+
+                for(int i = 0;i < gridCells.x;i++) {
+                    for(int j = 0;j < gridCells.y;j++) {
+                        long index = i + j * gridCells.x;
+
+                        // Accumulate net transmissibility from cell[i,j] to targetCell
+                        Vector2 originCell = new Vector2 {
+                            x = i + 0.5f,
+                            y = j + 0.5f
+                        };
+
+                        Vector2 direction = targetCell - originCell;
+                        float distance = direction.magnitude;
+                        direction.Normalize();
+
+                        int xDir = direction.x < 0 ? -1 : direction.x > 0 ? 1 : 0;
+                        int yDir = direction.y < 0 ? -1 : direction.y > 0 ? 1 : 0;
+
+                        int marchX = i;
+                        int marchY = j;
+
+                        float xBoundary = i + Math.Max(xDir, 0);
+                        int yBoundary = j + Math.Max(yDir, 0);
+
+                        float uCurrent = 0;
+                        float uNextX = xDir == 0 ? float.MaxValue : (xBoundary - originCell.x) / direction.x;
+                        float uNextY = yDir == 0 ? float.MaxValue : (yBoundary - originCell.y) / direction.y;
+                        float netTransmissibility = 1;
+
+                        while(uCurrent < distance) {
+                            float cellDistance;
+                            float uNext;
+                            float cellTransmissibility = _gridCellOutput[marchX + gridCells.x * marchY].Transmissibility;                        
+
+                            if(uNextX < uNextY) {
+                                cellDistance = uNextX - uCurrent;
+                                uNext = uNextX;
+                                marchX += xDir;
+                                xBoundary += xDir;
+                                uNextX = (xBoundary - originCell.x) / direction.x;
+                            } else {
+                                cellDistance = uNextY - uCurrent;
+                                uNext = uNextY;
+                                marchY += yDir;
+                                yBoundary += yDir;
+                                uNextY = (yBoundary - originCell.y) / direction.y;
+                            }
+
+                            if(uNext > distance) {
+                                uNext = distance;
+                            }
+
+                            netTransmissibility *= Mathf.Pow(cellTransmissibility, uNext - uCurrent);
+                            uCurrent = uNext;
+                        }
+
+                        _gridCellInput[index].TargetTransmission = netTransmissibility;
+                        _gridCellInput[index].TransmissionSpread = 0.9f;
+
+                        // TargetTransmission should be an estimate of the net transmissibility
+                        // from the origin cell to the target cell.
+                        // TransmissionSpread should be determined by estimating the likelihood of escape and comparing that to the target.
+                        // Or it can be estimated from the cell size.
+                        // Or it can be constant, might work ok.
+                        // 
+                        //_gridCellInput[index].TargetTransmission
+                    }
+                }
             }
 
             for(int i = 0;i < gridCells.x;i++) {
@@ -740,6 +824,7 @@ public class Simulation : SimulationBaseBehavior
         _computeShader.SetTexture(simulateKernel, "g_quadTreeLeaves", GBufferQuadTreeLeaves);
         _computeShader.SetTexture(simulateKernel, "g_mieScatteringLUT", _mieScatteringLUT);
         _computeShader.SetTexture(simulateKernel, "g_teardropScatteringLUT", _teardropScatteringLUT);
+        _computeShader.SetTexture(simulateKernel, "g_quantumTunnelingLUT", _quantumTunnelingLUT);
         _computeShader.SetBuffer(simulateKernel, "g_convergenceCellStateIn", _gridCellInputBuffer);
         _computeShader.SetBuffer(simulateKernel, "g_convergenceCellStateOut", _gridCellOutputBuffer);
 

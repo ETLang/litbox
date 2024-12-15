@@ -108,6 +108,11 @@ public class SimulationBaseBehavior : MonoBehaviour {
                 shader.SetVector($"lut_window_{tuple.Item1}", new Vector4(
                     0.5f / texture.width, 1 - 1.0f / texture.width,
                     0.5f / texture.height, 1 - 1.0f / texture.height));
+
+                if(texture is Texture3D tex3D) {
+                    shader.SetVector($"lut_slice_window_{tuple.Item1}", new Vector2(
+                        0.5f / tex3D.depth, 1 - 1.0f / tex3D.depth));
+                }
                 break;
             case ComputeBuffer buffer:
                 shader.SetBuffer(kernelID, tuple.Item1, buffer);

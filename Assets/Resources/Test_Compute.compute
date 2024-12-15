@@ -49,7 +49,7 @@ Texture2D<float4> g_quadTreeLeaves;
 
 DECLARE_LUT(float2, g_mieScatteringLUT)
 DECLARE_LUT(float3, g_teardropScatteringLUT)
-DECLARE_LUT(float2, g_quantumTunnelingLUT)
+DECLARE_LUT_3D(float2, g_quantumTunnelingLUT)
 
 RWTexture2D<float4> g_result;
 RWTexture2D<float4> g_previousResult;
@@ -59,7 +59,9 @@ struct ConvergenceCellInput {
     uint IsActive;
     uint HasConverged;
     uint FrameCount;
-    float Reserved[1];
+    float TargetTransmission;
+    float TransmissionSpread;
+    float Reserved[3];
 };
 
 struct ConvergenceCellOutput {
