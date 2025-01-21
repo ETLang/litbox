@@ -237,13 +237,14 @@ static class LUT
         Func<float,float,float,float> tunnelingPDF = (float x, float focalDistance, float spread) =>
             Mathf.Exp(-Mathf.Pow(Mathf.Log(focalDistance/x) / Mathf.Log(spread),2));
 
-        float2[,,] output = new float2[2048,256,16];
+        //float2[,,] output = new float2[2048,256,16];
+        float2[,,] output = new float2[512,16,16];
 
         for(int k = 0;k < output.GetLength(2);k++) {
             float spread = 0.00001f + (0.99f - 0.00001f) * k / output.GetLength(2);
             for(int j = 0;j < output.GetLength(1);j++) {
                 float focalDistance = (float)j / output.GetLength(1);
-                float2[] linePDF = CreatePDFLUT(x => tunnelingPDF(x, focalDistance, spread), 1e-4f, 1, 2048);
+                float2[] linePDF = CreatePDFLUT(x => tunnelingPDF(x, focalDistance, spread), 1e-4f, 1, output.GetLength(0));
 
                 for(int i = 0;i < linePDF.GetLength(0);i++) {
                     output[i,j,k] = linePDF[i];

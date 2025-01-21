@@ -60,7 +60,6 @@ public class SimulationCamera : MonoBehaviour {
     }
 
     void OnPreRender() {
-
         var gBuffer = new RenderBuffer[]
         {
             GBufferAlbedo.colorBuffer,

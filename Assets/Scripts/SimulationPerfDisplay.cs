@@ -1,9 +1,9 @@
 using System.Collections;
 using System.Collections.Generic;
 using UnityEngine;
-using TMPro;
+using UnityEngine.UIElements;
 
-[RequireComponent(typeof(TMP_Text))]
+[RequireComponent(typeof(UIDocument))]
 public class SimulationPerfDisplay : MonoBehaviour
 {
     public enum PerfDisplayType {
@@ -14,11 +14,23 @@ public class SimulationPerfDisplay : MonoBehaviour
 
     [SerializeField] private Simulation simulation;
     [SerializeField] private PerfDisplayType displayData;
+    [SerializeField] private string labelName;
+
+    private Label target;
 
     void Start()
     {
         if(!simulation)
             Debug.Log("simulation property is not set on SimulationPerfDisplay");
+
+        // Get the root visual element from the UIDocument
+        UIDocument uiDocument = GetComponent<UIDocument>();
+        VisualElement root = uiDocument.rootVisualElement;
+
+        // Find a specific UI element by its name
+        target = root.Q<Label>(labelName);
+
+        // Change the text of the label
     }
 
     // Update is called once per frame
@@ -41,7 +53,8 @@ public class SimulationPerfDisplay : MonoBehaviour
         }
 
         if(simulation && doUpdate) {
-            GetComponent<TMP_Text>().text = value;
+            if(target != null) target.text = value;
+            //GetComponent<TMP_Text>().text = value;
         }
     }
 }

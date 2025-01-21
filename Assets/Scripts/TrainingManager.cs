@@ -261,7 +261,7 @@ public class TrainingManager : MonoBehaviour {
             });
 
             light.color = _rand.NextLightColor();
-            light.intensity = _rand.NextRange(0.1f, 5.0f, 0.2f);
+            light.intensity = _rand.NextRange(0.01f, 1.5f, 0.2f);
 
             switch(light.type) {
             case "Directional":
