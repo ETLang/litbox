@@ -12,6 +12,7 @@ UserSettings/**
 *.onnx
 *.onnx.meta
 *.blob
-/obj/Debug
-/.vs/photoner
+/obj
+/.vs
 /UIElementsSchema
+/bin
