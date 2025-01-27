@@ -602,15 +602,16 @@ MonoBehaviour:
     m_Bits: 64
   frameLimit: -1
   textureResolution: 512
-  strategy: 2
+  strategy: 0
   gridCells:
     x: 16
     y: 16
-  raysPerFrame: 4096000
+  raysPerFrame: 40960000
+  energyPrecision: 1000
   photonBounces: -1
   pathSamples: 10
   pathBalance: 0.5
-  transmissibilityVariationEpsilon: 0.01
+  transmissibilityVariationEpsilon: 0.001
   outscatterCoefficient: 0.05
   _convergenceThreshold: 10
   framesSinceClear: 0

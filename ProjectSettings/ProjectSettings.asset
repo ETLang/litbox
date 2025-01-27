@@ -82,7 +82,7 @@ PlayerSettings:
   androidApplicationEntry: 1
   defaultIsNativeResolution: 1
   macRetinaSupport: 1
-  runInBackground: 0
+  runInBackground: 1
   muteOtherAudioSources: 0
   Prepare IOS For Recording: 0
   Force IOS Speakers When Recording: 0
@@ -832,8 +832,8 @@ PlayerSettings:
   editorAssembliesCompatibilityLevel: 1
   m_RenderingPath: 1
   m_MobileRenderingPath: 1
-  metroPackageName: Unity_Testbed
-  metroPackageVersion: 
+  metroPackageName: UnityTestbed
+  metroPackageVersion: 1.0.0.0
   metroCertificatePath: 
   metroCertificatePassword: 
   metroCertificateSubject: 
@@ -841,7 +841,7 @@ PlayerSettings:
   metroCertificateNotAfter: 0000000000000000
   metroApplicationDescription: Unity_Testbed
   wsaImages: {}
-  metroTileShortName: 
+  metroTileShortName: Unity_Testbed
   metroTileShowName: 0
   metroMediumTileShowName: 0
   metroLargeTileShowName: 0

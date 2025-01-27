@@ -1095,7 +1095,7 @@ MonoBehaviour:
   m_Name: 
   m_EditorClassIdentifier: 
   _train: 1
-  _continuePreviousSession: 0
+  _continuePreviousSession: 1
   outputFolder: /home/evan/Pictures/training_output
   _samplesToGenerate: 30000
   inputProfiles:
@@ -1142,7 +1142,7 @@ MonoBehaviour:
   _spotLightPrefab: {fileID: 3944455307740111456, guid: e352ba77fe7468bb8988f3d07aa3a902, type: 3}
   _laserLightPrefab: {fileID: 8780435749890055110, guid: 89ca6a0506bec49e099c4e4c12b6ce44, type: 3}
   _sampleDisplay: {fileID: 752464865427857415}
-  _showProfile: 1
+  _showProfile: 2
   _debugScenePath: 
 --- !u!4 &906946635
 Transform:
@@ -1197,17 +1197,18 @@ MonoBehaviour:
     m_Bits: 64
   frameLimit: -1
   textureResolution: 512
-  strategy: 2
+  strategy: 0
   gridCells:
     x: 8
     y: 8
   raysPerFrame: 409600
+  energyPrecision: 1000
   photonBounces: -1
   pathSamples: 10
   pathBalance: 0.5
   transmissibilityVariationEpsilon: 0.01
   outscatterCoefficient: 0.01
-  _convergenceThreshold: 1
+  _convergenceThreshold: 2
   framesSinceClear: 0
   convergenceProgress: 100000
   hasConverged: 0
@@ -1365,63 +1366,6 @@ MonoBehaviour:
   m_Script: {fileID: 11500000, guid: c24d706a4ef70dba6a6d3b70dbc44aa1, type: 3}
   m_Name: 
   m_EditorClassIdentifier: 
---- !u!1 &1572877539
-GameObject:
-  m_ObjectHideFlags: 0
-  m_CorrespondingSourceObject: {fileID: 0}
-  m_PrefabInstance: {fileID: 0}
-  m_PrefabAsset: {fileID: 0}
-  serializedVersion: 6
-  m_Component:
-  - component: {fileID: 1572877542}
-  - component: {fileID: 1572877541}
-  - component: {fileID: 1572877540}
-  m_Layer: 0
-  m_Name: EventSystem
-  m_TagString: Untagged
-  m_Icon: {fileID: 0}
-  m_NavMeshLayer: 0
-  m_StaticEditorFlags: 0
-  m_IsActive: 1
---- !u!114 &1572877540
-MonoBehaviour:
-  m_ObjectHideFlags: 0
-  m_CorrespondingSourceObject: {fileID: 0}
-  m_PrefabInstance: {fileID: 0}
-  m_PrefabAsset: {fileID: 0}
-  m_GameObject: {fileID: 1572877539}
-  m_Enabled: 1
-  m_EditorHideFlags: 0
-  m_Script: {fileID: 11500000, guid: 4f231c4fb786f3946a6b90b886c48677, type: 3}
-  m_Name: 
-  m_EditorClassIdentifier: 
---- !u!114 &1572877541
-MonoBehaviour:
-  m_ObjectHideFlags: 0
-  m_CorrespondingSourceObject: {fileID: 0}
-  m_PrefabInstance: {fileID: 0}
-  m_PrefabAsset: {fileID: 0}
-  m_GameObject: {fileID: 1572877539}
-  m_Enabled: 1
-  m_EditorHideFlags: 0
-  m_Script: {fileID: 11500000, guid: 76c392e42b5098c458856cdf6ecaaaa1, type: 3}
-  m_Name: 
-  m_EditorClassIdentifier: 
---- !u!4 &1572877542
-Transform:
-  m_ObjectHideFlags: 0
-  m_CorrespondingSourceObject: {fileID: 0}
-  m_PrefabInstance: {fileID: 0}
-  m_PrefabAsset: {fileID: 0}
-  m_GameObject: {fileID: 1572877539}
-  serializedVersion: 2
-  m_LocalRotation: {x: 0, y: 0, z: 0, w: 1}
-  m_LocalPosition: {x: 0, y: 0, z: 0}
-  m_LocalScale: {x: 1, y: 1, z: 1}
-  m_ConstrainProportionsScale: 0
-  m_Children: []
-  m_Father: {fileID: 0}
-  m_LocalEulerAnglesHint: {x: 0, y: 0, z: 0}
 --- !u!1001 &1749118431
 PrefabInstance:
   m_ObjectHideFlags: 0
@@ -1544,7 +1488,7 @@ MeshRenderer:
   m_RenderingLayerMask: 1
   m_RendererPriority: 0
   m_Materials:
-  - {fileID: 2100000, guid: 35bd38f6701480111958828fcd7144f6, type: 2}
+  - {fileID: 2100000, guid: 485a3bcb9611bed4e8aff5901b9b288a, type: 2}
   m_StaticBatchInfo:
     firstSubMesh: 0
     subMeshCount: 0
@@ -2315,7 +2259,6 @@ SceneRoots:
   m_Roots:
   - {fileID: 503795292}
   - {fileID: 923172390}
-  - {fileID: 1572877542}
   - {fileID: 906946635}
   - {fileID: 1313813224220063961}
   - {fileID: 368087404}

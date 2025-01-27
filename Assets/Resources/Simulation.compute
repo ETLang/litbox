@@ -495,7 +495,7 @@ void Simulate_View_Backward (uint3 id : SV_DispatchThreadID) {
             sum += sim.SimulateBackward(sim.EmitPath(id.xy)); 
         }
         sum *= g_albedo.Load(uint3(id.xy,0)).rgb / g_samples_per_pixel;
-
+        sum *= 1-g_transmissibility.Load(uint3(id.xy, 0)).x;
         sum = lerp(sum, ReadForwardPhoton_Indexed(id.xy), g_path_balance);
     } else {
         sum = ReadForwardPhoton_Indexed(id.xy);

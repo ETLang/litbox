@@ -67,7 +67,8 @@ public class Simulation : SimulationBaseBehavior
 
     [SerializeField] private Strategy strategy = Strategy.LightTransport;
     [SerializeField] private uint2 gridCells = new uint2(8,8);
-    [SerializeField] private int raysPerFrame = 4096;
+    [SerializeField] private int raysPerFrame = 4096000;
+    [SerializeField] private int energyPrecision = 1;
     [SerializeField] private int photonBounces = -1;
     [SerializeField] private int pathSamples = 10;
     [SerializeField, Range(0,1)] private float pathBalance = 0.5f;
@@ -434,7 +435,7 @@ public class Simulation : SimulationBaseBehavior
 
                 */
                 energyNormPerFrame = raysPerFrame / pixelCount;
-                _computeShader.SetFloat("g_energy_norm", (float)((double)uint.MaxValue / pixelCount));
+                _computeShader.SetFloat("g_energy_norm", (float)((double)uint.MaxValue / pixelCount * energyPrecision));
 
                 SetShaderFlag(_computeShader, "FILTER_INACTIVE_CELLS", true);
                 foreach(var light in allLights) {
@@ -466,7 +467,7 @@ public class Simulation : SimulationBaseBehavior
                 //    that energy is propagated to the tracing pixel.
 
                 energyNormPerFrame = raysPerFrame / pixelCount;
-                _computeShader.SetFloat("g_energy_norm", (float)((double)uint.MaxValue / pixelCount));
+                _computeShader.SetFloat("g_energy_norm", (float)((double)uint.MaxValue / pixelCount * energyPrecision));
                 _computeShader.SetFloat("g_path_balance", pathBalance);
 
                 // Clear intermediate target
@@ -814,7 +815,7 @@ public class Simulation : SimulationBaseBehavior
         string simulateKernel = null;
         int simulateKernelId = -1;
         var lightToTargetSpace = worldToTargetSpace * light.WorldTransform;
-        double photonEnergy = (double)uint.MaxValue / raysPerFrame;
+        double photonEnergy = (double)uint.MaxValue / raysPerFrame * energyPrecision;
 
         string kernelFormat;
 
