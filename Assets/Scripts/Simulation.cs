@@ -116,6 +116,7 @@ public class Simulation : SimulationBaseBehavior
     private RenderTexture[] _gBufferTransmissibility = new RenderTexture[2];
     private RenderTexture[] _gBufferNormalSlope = new RenderTexture[2];
     private int _gBufferNextTarget = 0;
+    private bool _validationFailed = false;
 
     public RenderTexture GBufferAlbedo { get; private set; }
     public RenderTexture GBufferTransmissibility { get; private set; }
@@ -177,6 +178,14 @@ public class Simulation : SimulationBaseBehavior
         }
     }
 
+    void ValidateTargets()
+    {
+        if (_renderTexture[0] == null || _renderTexture[0].width != textureResolution) {
+            CreateTargetBuffers();
+            _validationFailed = true;
+        }
+    }
+
     private void Start()
     {
         _computeShader = (ComputeShader)Resources.Load("Simulation");
@@ -184,9 +193,10 @@ public class Simulation : SimulationBaseBehavior
         //GET RENDERER COMPONENT REFERENCE
         TryGetComponent(out _renderer);
 
-        for (int i = 0; i < _renderTexture.Length; i++) {
-            _renderTexture[i] = CreateRWTexture(textureResolution, textureResolution, RenderTextureFormat.DefaultHDR);
-        }
+        _realContentCamera = new GameObject("__Simulation_Camera", typeof(SimulationCamera)).GetComponent<SimulationCamera>();
+        _realContentCamera.Initialize(transform, rayTracedLayers.value);
+
+        CreateTargetBuffers();
 
         _gridCellState = new ConvergenceCellState[gridCells.x * gridCells.y];
         for(int i = 0;i < _gridCellState.Length;i++) {
@@ -221,19 +231,6 @@ public class Simulation : SimulationBaseBehavior
         }
         _gridCellOutputInitialValue = (ConvergenceCellOutput[])_gridCellOutput.Clone();
         _gridCellOutputBuffer = CreateStructuredBuffer(_gridCellOutput);
-
-        SimulationPhotonsForward = CreateRWTexture(textureResolution * 3, textureResolution, RenderTextureFormat.RInt);
-        SimulationOutputRaw = CreateRWTexture(textureResolution * 3, textureResolution, RenderTextureFormat.RInt);
-        SimulationOutputAccumulated = CreateRWTexture(textureResolution, textureResolution, RenderTextureFormat.ARGBFloat);
-        SimulationOutputHDR = CreateRWTexture(textureResolution, textureResolution, RenderTextureFormat.ARGBFloat);
-
-        for(int i = 0;i < 2;i++) {
-            _gBufferAlbedo[i] = CreateRWTextureWithMips(textureResolution, textureResolution, RenderTextureFormat.ARGBFloat);
-            _gBufferTransmissibility[i] = CreateRWTextureWithMips(textureResolution, textureResolution, RenderTextureFormat.ARGBFloat);
-            _gBufferNormalSlope[i] = CreateRWTextureWithMips(textureResolution, textureResolution, RenderTextureFormat.ARGBFloat);
-        }
-
-        GBufferQuadTreeLeaves = CreateRWTexture(textureResolution, textureResolution, RenderTextureFormat.ARGBHalf);
 
         _mieScatteringLUT = LUT.CreateMieScatteringLUT().AsTexture();
         DisposeOnDisable(() => DestroyImmediate(_mieScatteringLUT));
@@ -270,8 +267,27 @@ public class Simulation : SimulationBaseBehavior
         }
         //EfficiencyDiagnostic.SetPixels()
 
-        _realContentCamera = new GameObject("__Simulation_Camera", typeof(SimulationCamera)).GetComponent<SimulationCamera>();
-        _realContentCamera.Initialize(transform, rayTracedLayers.value);
+        SwapGBuffer();
+    }
+
+    private void CreateTargetBuffers()
+    {
+        for (int i = 0; i < _renderTexture.Length; i++) {
+            _renderTexture[i] = CreateRWTexture(textureResolution, textureResolution, RenderTextureFormat.DefaultHDR);
+        }
+
+        SimulationPhotonsForward = CreateRWTexture(textureResolution * 3, textureResolution, RenderTextureFormat.RInt);
+        SimulationOutputRaw = CreateRWTexture(textureResolution * 3, textureResolution, RenderTextureFormat.RInt);
+        SimulationOutputAccumulated = CreateRWTexture(textureResolution, textureResolution, RenderTextureFormat.ARGBFloat);
+        SimulationOutputHDR = CreateRWTexture(textureResolution, textureResolution, RenderTextureFormat.ARGBFloat);
+
+        for (int i = 0; i < 2; i++) {
+            _gBufferAlbedo[i] = CreateRWTextureWithMips(textureResolution, textureResolution, RenderTextureFormat.ARGBFloat);
+            _gBufferTransmissibility[i] = CreateRWTextureWithMips(textureResolution, textureResolution, RenderTextureFormat.ARGBFloat);
+            _gBufferNormalSlope[i] = CreateRWTextureWithMips(textureResolution, textureResolution, RenderTextureFormat.ARGBFloat);
+        }
+
+        GBufferQuadTreeLeaves = CreateRWTexture(textureResolution, textureResolution, RenderTextureFormat.ARGBHalf);
 
         SwapGBuffer();
     }
@@ -334,6 +350,7 @@ public class Simulation : SimulationBaseBehavior
     void Update() {
         _realContentCamera?.Render();
 
+        ValidateTargets();
         ValidateRandomBuffer();
 
         var worldToPresentation = transform.worldToLocalMatrix;
@@ -366,8 +383,9 @@ public class Simulation : SimulationBaseBehavior
         TraversalsPerSecond = total;
 
         // CHANGE DETECTION
-        if(CheckChanged(allLights, allObjects, worldToPresentation)) {
+        if(CheckChanged(allLights, allObjects, worldToPresentation) || _validationFailed) {
             hasConverged = false;
+            _validationFailed = false;
             framesSinceClear = 0;
             _gridCellInput = (ConvergenceCellInput[])_gridCellInputInitialValue.Clone();
             _sceneId++;

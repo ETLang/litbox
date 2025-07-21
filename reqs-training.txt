@@ -1,0 +1,91 @@
+Write a python script using Pytorch and CUDA to train a neural network model. Save it to train_photoner_3.py
+
+--High Level Project Description--
+I have a ray tracing application that needs to run in realtime, and therefore the images it produces have gaps where no photons hit, and other areas that are grainy and not smooth. Part of the way this is compensated for is by rendering to a lower resolution target (1/2 or 1/4 native resolution).
+ 
+--Problem Statement--
+The machine learning model needs to effectively perform gap filling, smoothing, and 2x or 4x upsampling simultaneously, in real time.
+The structure of the model is described in the "Model" section found below. Your task is to write the python script that will train this model and export it as an ONNX file. The script should prefer using EXR files as input, but should support more typical SRGB image formats such as PNG. The file type of image used for training can be assumed to be uniform for the entire training session. Handling SRGB in the training images is going to be important, as the model is essentially operating on a light field, which exists in linear color space.
+
+Color channels should be treated identically by the model, so training input can be reduced to a single color channel, and evaluated output images need to apply the model three times; one for each color channel. If this can be done in parallel, that would be a good point of optimization.
+
+The script should be in training mode by default, but should also have an evaluation mode specified by the -eval parameter.
+
+In training mode, the model should be trained on a set of input images and corresponding training images. Since training may take a while, at checkpoint intervals (roughly every N seconds, specified by an input argument), create a folder for that particular checkpoint. Within that folder, save the current state of the model. Also, evaluate the model using the collection of checkpoint test images (specified by the -checkpoint-tests parameter) and save the output of each test to the checkpoint folder.
+
+The script should use pytorch, and should prefer CUDA if it is available.
+
+--Input--
+The script requires the following input arguments:
+- help -- Displays documentation regarding these arguments.
+- eval -- This is a boolean argument. If present, the script will run in evaluation mode. Otherwise, it will run in training mode.
+- input-location:<path> -- Required. This is a path that can include wildcard characters (*) to identify a set of EXR or PNG image files inside a desired folder. For example, data/input/input_image_*.EXR. Supported file formats are EXR (preferred), PNG, and other common image formats. In eval mode, all specified input images are evaluated.
+- training-location:<path> -- Required in training mode. Unused in eval mode. This is the same type of parameter as input-location, except instead of identifying input images, it identifies training images.
+- output-folder:<folder> -- Required in eval mode. Specifies a folder where evaluated images are to be saved. The evaluated image file names should match the pattern <input-filename>_eval.<input-extension>
+- model-path:<path> -- File path of the saved model. In training mode, this is the output path of the trained model. In eval mode, this is the input path of the model used for evaluation.
+- checkpoint-interval:<seconds> -- Training mode only. Optional. The number of seconds between each checkpoint. If 
+- checkpoint-folder:<folder> -- Training mode only. Required if -checkpoint-interval is specified. Folder in which to save checkpoint data. Each checkpoint will create a subfolder within this folder named numerically according to the number of seconds that have elapsed since training began. Checkpoint data will be saved inside the subfolder.
+- checkpoint-tests:<path> -- Training mode only. Optional. This is the same type of parameter as input-location, except instead of specifying input images used for training, these are test input images used to evaluate the model at checkpoints.
+- test-ratio:<percentage> -- Training mode only. Specifies the percentage of input/training image pairs that will be set aside for testing the model. Optional. Default to an industry standard.
+- epochs:<number> -- Training mode only. Specifies the number of epochs to run. Optional. Defaults to 1.
+- log-space -- Boolean. If present, and if the input data is in EXR format, transform training data into log(base 2) space as part of its input stage, prior to normalization. Add an epsilon bias to avoid taking the log of zero. During evaluation, the model output must be transformed back into linear space and the epsilon subtracted.
+- crop-size:<number> -- Training mode only. Optional. Defaults to 64. Specifies the resolution of the training images fed into the model. Raw input images may be larger than this, but during the input stage a random crop will be taken from each.
+- upsample:<number> -- Optional. Defaults to 1. Acceptable values are 1, 2, 4, or 8. In training mode, specifies the amount of upsampling the model is being trained to perform. In eval mode, specifies the amount of upsampling that the provided model was trained to perform (if that's necessary)
+- onnx-export:<path> -- Optional. Training mode only. Specifies the path of the ONNX file to export the model to.
+
+-- Handling Input Data --
+For the problem of matching an input images to its associated training image, we can safely assume that the sets of input and training images will match one to one as long as they are sorted by filename similarly (such that input_image_0001.exr will naturally match training_image_0001.exr).
+For SRGB-encoded images, it's going to be important to convert their pixels into linear space before using them for training. This is why the script will generally prefer EXR input images.
+
+-- Console Output --
+Roughly every 5 seconds, the script should update the user with console output representing relevant metrics: time passed, current epoch, number of training images processed, and convergence characteristics. The output should be comma-delimited so that it can be piped to a CSV file and easily loaded into a spreadsheet.
+
+-- Loss Function --
+A combination of loss functions would be beneficial:
+Pixel-wise Loss (e.g., L1 or L2 Loss): Measures the average absolute or squared difference between the predicted and ground truth pixel values. This encourages overall pixel accuracy.
+Perceptual Loss (using features from a pre-trained image classification network like VGG or ResNet): Measures the difference in high-level feature representations, helping to preserve perceptual similarity and avoid blurry results.
+Structural Similarity Index Measure (SSIM) Loss: Encourages the preservation of image structure and can be combined with pixel-wise losses.
+
+-- Model --
+Model Architecture: Hybrid Convolutional and Transformer Network
+
+Given the need for both local detail processing (smoothing, gap filling) and global context understanding (upsampling coherent structures), a hybrid architecture leveraging the strengths of Convolutional Neural Networks (CNNs) and Transformers seems promising.
+
+Input Stage:
+The input to the model would be the low-resolution, noisy, and gappy rendered image. The training data may be of larger and/or varying sized images, so each should have a randomly cropped fragment taken from them according to the crop-size parameter. Further, each color channel can be presumed to be treated identically by the model, so training input can select the color channel with the largest range and just use that.
+For SRGB input images, transform the values to linear space and normalize to the range [0,1] (if they aren't inherently normalized already).
+For EXR input images, use mean-variance normalization. if the -log-space argument is specified, first transform the images into log(base 2) space.
+
+Convolutional Feature Extraction:
+A series of convolutional layers with GELU activation functions would act as the initial feature extractor.
+These layers would learn local patterns, edges, and initial representations from the noisy input.
+The number of layers and filters would need to be tuned based on the complexity of the rendering and the desired level of detail.
+Use residual connections to help with training deeper networks and gradient flow.
+
+Transformer Blocks for Global Context:
+To capture long-range dependencies and understand the overall scene structure (crucial for coherent upsampling and gap filling of larger missing regions), we can introduce Transformer encoder blocks.
+Before feeding into the Transformer, the convolutional feature maps would be flattened into a sequence of tokens (e.g., by treating each spatial location's feature vector as a token).
+The Transformer's self-attention mechanism can then learn relationships between different parts of the low-resolution image, understanding how edges and textures connect across larger distances.
+Positional embeddings would be necessary to provide spatial information to the Transformer.
+Multiple Transformer blocks can be stacked to learn increasingly complex global relationships.
+
+Upsampling and Detail Synthesis:
+After the Transformer blocks, we need to upsample the feature maps to the target high resolution. Values can be 1, 2, 4, or 8. If the upsample parameter is 1, no upsampling is performed.
+Utilize the "pixel shuffle" technique to rearrange the channels of a lower-resolution feature map into a higher-resolution spatial grid.
+
+Gap Filling and Smoothing Integration:
+The convolutional layers in the feature extraction stage will inherently perform some initial smoothing and gap filling by learning to predict missing pixel values based on their neighbors.
+The global context learned by the Transformer will further aid in filling larger gaps by understanding the surrounding scene structure.
+The final convolutional layers after upsampling will refine the details, smooth out remaining noise, and ensure consistency in the filled regions.
+
+Output Stage:
+The final layer will be a convolutional layer with a single output channel. Remember that the model applies identically to each RGB color channel.
+If trained on SRGB images, the activation function of the output layer would be a sigmoid (for normalized [0, 1] output).
+If trained on EXR images, there would be no activation step.
+
+Real-time Considerations:
+Model Size and Complexity: The number of layers, filters, and Transformer heads will significantly impact the model's computational cost and inference time. Careful architecture design and pruning techniques might be necessary to achieve real-time performance.
+
+Efficient Operations:
+Prioritize using efficient convolutional operations (e.g., depthwise separable convolutions) and optimized Transformer implementations.
+

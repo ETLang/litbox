@@ -58,7 +58,9 @@ public class TrainingManager : MonoBehaviour {
 
     Random _rand;
     List<GameObject> _generatedObjects = new List<GameObject>();
+    int _samplesToGenerateThisSession;
     int _generatedSamples;
+    int _sampleIdOffset = 0;
     string _datasetName;
     string _datasetPath;
 
@@ -67,8 +69,19 @@ public class TrainingManager : MonoBehaviour {
     string _imagePathEXR;
     RenderTexture[] profileSamples;
 
+    public bool IsGenerating { get; private set; }
+
+    int FindNextAvailableSampleID()
+    {
+        int i = 0;
+        while (File.Exists(Path.Combine(_datasetPath, $"Input_0_{i:0000}.png")))
+            i++;
+        return i;
+    }
+
     void AdvanceTrainingState() {
-        while(_generatedSamples < _samplesToGenerate) {
+        while(_generatedSamples < _samplesToGenerateThisSession) {
+            int sampleId;
             if(_activeProfile == inputProfiles.Length) {
                 _imagePathPNG = null;
                 _imagePathEXR = null;
@@ -79,10 +92,15 @@ public class TrainingManager : MonoBehaviour {
                     }
                 }
 
-                JsonSceneData sceneDesc;
-                var scenePath = Path.Combine(_datasetPath, $"Scene_{_generatedSamples:0000}.json");
+                if (_generatedSamples == _samplesToGenerateThisSession)
+                    break;
 
-                if(!File.Exists(scenePath)) {
+                sampleId = _generatedSamples + _sampleIdOffset;
+
+                JsonSceneData sceneDesc;
+                var scenePath = Path.Combine(_datasetPath, $"Scene_{sampleId:0000}.json");
+
+                if (!File.Exists(scenePath)) {
                     sceneDesc = GenerateRandomSceneDescription();
                     File.WriteAllText(scenePath, JsonUtility.ToJson(sceneDesc, true));
                 } else {
@@ -92,15 +110,18 @@ public class TrainingManager : MonoBehaviour {
                 LoadSceneFromDescription(sceneDesc);
 
                 _activeProfile = -1;
+            } else {
+                sampleId = _generatedSamples + _sampleIdOffset;
             }
+
             _activeProfile++;
 
             if(_activeProfile == inputProfiles.Length) {
-                _imagePathPNG = Path.Combine(_datasetPath, $"Output_{_generatedSamples:0000}.png");
-                _imagePathEXR = Path.Combine(_datasetPath, $"Output_{_generatedSamples:0000}.exr");
+                _imagePathPNG = Path.Combine(_datasetPath, $"Output_{sampleId:0000}.png");
+                _imagePathEXR = Path.Combine(_datasetPath, $"Output_{sampleId:0000}.exr");
             } else {
-                _imagePathPNG = Path.Combine(_datasetPath, $"Input_{_activeProfile}_{_generatedSamples:0000}.png");
-                _imagePathEXR = Path.Combine(_datasetPath, $"Input_{_activeProfile}_{_generatedSamples:0000}.exr");
+                _imagePathPNG = Path.Combine(_datasetPath, $"Input_{_activeProfile}_{sampleId:0000}.png");
+                _imagePathEXR = Path.Combine(_datasetPath, $"Input_{_activeProfile}_{sampleId:0000}.exr");
             }
 
             if(File.Exists(_imagePathPNG) && File.Exists(_imagePathEXR)) {
@@ -111,6 +132,8 @@ public class TrainingManager : MonoBehaviour {
             _simulation.LoadProfile(profile);
             return;
         }
+
+        IsGenerating = false;
     }
 
     void Start() {
@@ -136,47 +159,7 @@ public class TrainingManager : MonoBehaviour {
         } else if(_train) {
             Debug.Log($"Beginning training session {_datasetName}");
 
-            if(_continuePreviousSession) {
-                var previousProfiles = new List<SimulationProfile>();
-                int i = 0;
-                while(true) {
-                    var profilePath = Path.Combine(_datasetPath, $"inputProfile_{i}.json");
-                    if(!File.Exists(profilePath)) {
-                        break;
-                    }
-
-                    var oldProfile = JsonUtility.FromJson<SimulationProfile>(File.ReadAllText(profilePath));
-                    previousProfiles.Add(oldProfile);
-                    i++;
-                }
-
-                var inputProfileList = inputProfiles.ToList();
-                i = 0;
-                while(i < inputProfileList.Count) {
-                    if(previousProfiles.Contains(inputProfileList[i])) {
-                        inputProfileList.RemoveAt(i);
-                    } else {
-                        i++;
-                    }
-                }
-
-                for(i = 0;i < inputProfileList.Count;i++) {
-                    previousProfiles.Add(inputProfileList[i]);
-                }
-
-                inputProfiles = previousProfiles.ToArray();
-            }
-
-            for(int i = 0;i < inputProfiles.Length;i++) {
-                var path = Path.Combine(_datasetPath, $"inputProfile_{i}.json");
-                if(!File.Exists(path)) {
-                    File.WriteAllText(path, JsonUtility.ToJson(inputProfiles[i], true));
-                }
-            }
-            profileSamples = new RenderTexture[inputProfiles.Length];
-            _activeProfile = inputProfiles.Length;
-            _generatedSamples = -1;
-            AdvanceTrainingState();
+            BeginComposingTrainingImages(false);
         }
 
         _simulation.OnStep += OnSimulationStep;
@@ -215,7 +198,7 @@ public class TrainingManager : MonoBehaviour {
     }
 
     void OnSimulationStep(int frameCount) {
-        if(_train) {
+        if(IsGenerating) {
             if(_sampleDisplay != null && profileSamples[_showProfile] != null) {
                 _sampleDisplay.material.SetTexture("_MainTex", profileSamples[_showProfile]);
             }
@@ -223,7 +206,7 @@ public class TrainingManager : MonoBehaviour {
     }
 
     void OnSimulationConverged() {
-        if(_train) {
+        if(IsGenerating) {
             _simulation.SimulationOutputHDR.SaveTextureEXR(_imagePathEXR);
             _simulation.SimulationOutputToneMapped.SaveTexturePNG(_imagePathPNG);
             if(_activeProfile == inputProfiles.Length) {
@@ -497,5 +480,66 @@ public class TrainingManager : MonoBehaviour {
         - Same, except use 1-4 randomly configured light sources
 
 */
+    }
+
+    public void AcceptCurrentGeneration()
+    {
+        OnSimulationConverged();
+    }
+
+    public void BeginComposingTrainingImages(bool composeOnlyCurrentScene)
+    {
+        if (_continuePreviousSession) {
+            var previousProfiles = new List<SimulationProfile>();
+            int i = 0;
+            while (true) {
+                var profilePath = Path.Combine(_datasetPath, $"inputProfile_{i}.json");
+                if (!File.Exists(profilePath)) {
+                    break;
+                }
+
+                var oldProfile = JsonUtility.FromJson<SimulationProfile>(File.ReadAllText(profilePath));
+                previousProfiles.Add(oldProfile);
+                i++;
+            }
+
+            var inputProfileList = inputProfiles.ToList();
+            i = 0;
+            while (i < inputProfileList.Count) {
+                if (previousProfiles.Contains(inputProfileList[i])) {
+                    inputProfileList.RemoveAt(i);
+                } else {
+                    i++;
+                }
+            }
+
+            for (i = 0; i < inputProfileList.Count; i++) {
+                previousProfiles.Add(inputProfileList[i]);
+            }
+
+            inputProfiles = previousProfiles.ToArray();
+        }
+
+        for (int i = 0; i < inputProfiles.Length; i++) {
+            var path = Path.Combine(_datasetPath, $"inputProfile_{i}.json");
+            if (!File.Exists(path)) {
+                File.WriteAllText(path, JsonUtility.ToJson(inputProfiles[i], true));
+            }
+        }
+        profileSamples = new RenderTexture[inputProfiles.Length];
+
+        if (composeOnlyCurrentScene) {
+            _sampleIdOffset = FindNextAvailableSampleID();
+            _samplesToGenerateThisSession = 1;
+            _activeProfile = -1;
+            _generatedSamples = 0;
+        } else {
+            _sampleIdOffset = 0;
+            _samplesToGenerateThisSession = _samplesToGenerate;
+            _activeProfile = inputProfiles.Length;
+            _generatedSamples = -1;
+        }
+        IsGenerating = true;
+        AdvanceTrainingState();
     }
 }

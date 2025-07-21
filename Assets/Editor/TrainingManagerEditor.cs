@@ -14,7 +14,17 @@ public class TrainingManagerDrawer : Editor
 
         DrawDefaultInspector();
 
-        if(GUILayout.Button("Generate Random Scene")) {
+        if (manager.IsGenerating) {
+            if (GUILayout.Button("Accept Current Scene")) {
+                manager.AcceptCurrentGeneration();
+            }
+        } else {
+            if (GUILayout.Button("Compose Current Scene")) {
+                manager.BeginComposingTrainingImages(true);
+            }
+        }
+
+        if (GUILayout.Button("Generate Random Scene")) {
             manager.SetupRandomScene();
         }
 

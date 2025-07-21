@@ -337,8 +337,9 @@ struct SimulationContext {
         float netTransmissibility = 1;
 
         uHit = 0;
-        for(int steps = 0;steps < 2000;steps++) {
-            float2 pSample = photon.Origin + photon.Direction * uHit;
+        float2 pSample;
+        for(int steps = 0;steps < 3000;steps++) {
+            pSample = photon.Origin + photon.Direction * uHit;
             uint lod = g_quadTreeLeaves.SampleLevel(sampler_point_clamp, pSample, 0).x;
         
             float4 T = g_transmissibility.SampleLevel(samplerg_transmissibility, pSample, lod);
@@ -367,6 +368,7 @@ struct SimulationContext {
 
         // Fail condition... traversal took too many steps
         WritePhoton(photon.Origin, uint3(1000000000, 1000000000, 0));
+        WritePhoton(pSample, uint3(0, 1000000000, 0));
         return false;
     }
 

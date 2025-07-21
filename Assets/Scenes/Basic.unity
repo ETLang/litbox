@@ -606,7 +606,7 @@ MonoBehaviour:
   gridCells:
     x: 16
     y: 16
-  raysPerFrame: 40960000
+  raysPerFrame: 4096000
   energyPrecision: 1000
   photonBounces: -1
   pathSamples: 10
