@@ -1,3 +1,4 @@
+import random
 import torch
 import torch.nn as nn
 import torch.optim as optim
@@ -16,7 +17,7 @@ import array
 import math
 from typing import Tuple, Optional
 import torch.nn.functional as F
-import torchvision
+import torchvision.transforms.functional
 
 # Settings (overridable via command line arguments)
 g_output_upsample = 1 # 4
@@ -30,13 +31,13 @@ g_learn_rate = 0.00001 # 0.001
 # Settings (internal)
 g_unet_size = 5
 g_padding_mode = 'reflect'
-g_initial_features = 8
+g_initial_features = 16
+g_normalize_input = True
 g_use_adam_w = True
 g_weight_decay = 0.01
 g_epsilon = 1e-6  # For log space transformation
 
 # TODO
-g_normalize_input = False
 g_gaussian_initialization = True
 
 
@@ -161,6 +162,11 @@ class PhotonerDataset(Dataset):
             if self.truth_transform:
                 target_tensor = self.truth_transform(target_tensor)
             
+            angles = [0, 90, 180, 270]
+            chosen_angle = random.choice(angles)
+            input_tensor = torchvision.transforms.functional.rotate(input_tensor, chosen_angle)
+            target_tensor = torchvision.transforms.functional.rotate(target_tensor, chosen_angle)
+            
             return input_tensor, target_tensor
         
         return input_tensor, None
@@ -269,6 +275,7 @@ class VGGPerceptualLoss(nn.Module):
 class PhotonerNet(nn.Module):
     def __init__(self, upsample_factor, use_sigmoid=False, use_log_space=True):
         super(PhotonerNet, self).__init__()
+        self.previous_range = -1
         self.use_sigmoid = use_sigmoid
         self.use_log_space = use_log_space
         self.upsample_factor = upsample_factor
@@ -328,13 +335,12 @@ class PhotonerNet(nn.Module):
 
     def pre_transform(self, x):
         if self.use_log_space:
-            #f  = 1
             x = torch.log2(x + g_epsilon)
-            # x = nn.Identity()(x)
-
-            # if g_normalize_input:
-            #     input_max = input_channel.max()
-            #     input_channel /= input_max
+            if g_normalize_input:
+                if self.previous_range != -1:
+                    raise Exception('Cannot pre_transform without first matching a post_transform call for the previous call to pre_transform')
+                self.previous_range = input_channel.max()
+                input_channel /= self.previous_range
         return x
     
     def forward(self, x_lr, mask=None):
@@ -480,12 +486,10 @@ class PhotonerNet(nn.Module):
 
     def post_transform(self, x):
         if self.use_log_space:
-            #f  = 1
-            # if g_normalize_input:
-            #     x *= input_max
-
-            #x = nn.Identity()(x)
-
+            if g_normalize_input:
+                if self.previous_range == -1:
+                    raise Exception('Cannot post_transform without a prior call to pre_transform')
+                x *= self.previous_range
             x = torch.exp2(x) - g_epsilon
         return x
     
@@ -619,15 +623,14 @@ def train(args):
     l1_loss = nn.L1Loss()
     ssim_loss = SSIM()
     # vgg = models.vgg16(weights=models.VGG16_Weights.DEFAULT).features[:16].to(device).eval()
-    perceptual_loss_fn = VGGPerceptualLoss(feature_layers=['relu3_3', 'relu4_3']).to(device)    
+    # perceptual_loss_fn = VGGPerceptualLoss(feature_layers=['relu3_3', 'relu4_3']).to(device)    
 
-    def perceptual_loss(pred, target):
-        # pred and target: [batch, 1, H, W]
-        pred_vgg = pred.repeat(1, 3, 1, 1)     # [batch, 3, H, W]
-        target_vgg = target.repeat(1, 3, 1, 1) # [batch, 3, H, W]
-        with torch.no_grad():
-            return perceptual_loss_fn(pred_vgg, target_vgg)
-            # return F.mse_loss(vgg(pred_vgg), vgg(target_vgg))
+    # def perceptual_loss(pred, target):
+    #     # pred and target: [batch, 1, H, W]
+    #     pred_vgg = pred.repeat(1, 3, 1, 1)     # [batch, 3, H, W]
+    #     target_vgg = target.repeat(1, 3, 1, 1) # [batch, 3, H, W]
+    #     with torch.no_grad():
+    #         return perceptual_loss_fn(pred_vgg, target_vgg)
     
     # Optimizer
     if g_use_adam_w:
@@ -675,7 +678,7 @@ def train(args):
             current_time = time.time()
             if current_time - last_print >= 5:
                 elapsed = current_time - start_time
-                print(f"{elapsed:.2f},{epoch},{batch_idx * len(input_img)},{total_loss.item():.6f}")
+                print(f"{elapsed:.2f},{epoch},{epoch*len(train_dataset) + batch_idx*len(input_img)},{total_loss.item():.6f}")
                 last_print = current_time
                 
                 # Checkpoint if needed
