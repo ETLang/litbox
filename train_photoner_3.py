@@ -23,20 +23,21 @@ g_output_upsample = 1 # 4
 g_checkpoint_interval = 300
 g_test_ratio = 0.0
 g_epochs = 100
-g_crop_size = 64
+g_crop_size = 256
 g_batch_size = 4
 g_learn_rate = 0.00001 # 0.001
 
 # Settings (internal)
+g_unet_size = 5
 g_padding_mode = 'reflect'
-g_initial_features = 64
+g_initial_features = 8
 g_use_adam_w = True
 g_weight_decay = 0.01
+g_epsilon = 1e-6  # For log space transformation
 
 # TODO
-g_normalize_input = True
+g_normalize_input = False
 g_gaussian_initialization = True
-g_unet_size = 3
 
 
 # Check for CUDA availability
@@ -76,15 +77,22 @@ def parse_args():
 
 class PhotonerDataset(Dataset):
     def __init__(self, input_paths: list, training_paths: Optional[list] = None, 
-                 crop_size: int = 64, log_space: bool = False, upsample: int = 1,
+                 crop_size: int = 64, upsample: int = 1,
                  truth_transform=None):
         self.input_paths = input_paths
         self.training_paths = training_paths
         self.crop_size = crop_size
-        self.log_space = log_space
         self.upsample = upsample
-        self.epsilon = 1e-6  # For log space transformation
         self.truth_transform = truth_transform
+
+        if len(input_paths) > 0:
+            test_path = self.input_paths[0]
+            
+            # Check for EXR files or something else (SRGB-based)
+            if test_path.lower().endswith('.exr'):
+                self.exr_source = True
+            else:
+                self.exr_source = False
         
     def __len__(self):
         return len(self.input_paths)
@@ -107,9 +115,6 @@ class PhotonerDataset(Dataset):
         img = np.stack(channels, axis=0)
         tensor = torch.from_numpy(img).float()
         
-        if self.log_space:
-            tensor = torch.log2(tensor + self.epsilon)
-            
         return tensor
     
     def load_srgb(self, path: str) -> torch.Tensor:
@@ -163,23 +168,23 @@ class PhotonerDataset(Dataset):
 class ResidualBlock(nn.Module):
     def __init__(self, in_channels, out_channels):
         super(ResidualBlock, self).__init__()
-        self.conv1 = nn.Conv2d(in_channels, out_channels, kernel_size=3, padding=1, padding_mode=g_padding_mode)
-        self.bn1 = nn.BatchNorm2d(out_channels)
-        self.relu = nn.ReLU(inplace=True)
-        self.conv2 = nn.Conv2d(out_channels, out_channels, kernel_size=3, padding=1, padding_mode=g_padding_mode)
-        self.bn2 = nn.BatchNorm2d(out_channels)
         # Optional: 1x1 conv if in_channels != out_channels for shortcut
         self.shortcut = nn.Conv2d(in_channels, out_channels, kernel_size=1) if in_channels != out_channels else nn.Identity()
 
+        self.primary = nn.Sequential(
+            nn.Conv2d(in_channels, out_channels, kernel_size=3, padding=1, padding_mode=g_padding_mode),
+            nn.BatchNorm2d(out_channels),
+            nn.ReLU(inplace=True),
+            nn.Conv2d(out_channels, out_channels, kernel_size=3, padding=1, padding_mode=g_padding_mode),
+            nn.BatchNorm2d(out_channels))
+        
+        self.final = nn.ReLU(inplace=True)
+
     def forward(self, x):
         residual = self.shortcut(x)
-        out = self.conv1(x)
-        out = self.bn1(out)
-        out = self.relu(out)
-        out = self.conv2(out)
-        out = self.bn2(out)
+        out = self.primary(x)
         out += residual # Add residual connection
-        out = self.relu(out)
+        out = self.final(out)
         return out
 
 # Define Perceptual Lossadfg
@@ -262,44 +267,10 @@ class VGGPerceptualLoss(nn.Module):
         return perceptual_loss
 
 class PhotonerNet(nn.Module):
-    def make_feature_extraction(self, channels_in, features):
-        channels_out = features
-        module = nn.Sequential(
-            nn.Conv2d(channels_in, channels_out, kernel_size=3, padding=1, padding_mode=g_padding_mode),
-            nn.ReLU(inplace=True),
-            ResidualBlock(channels_out, channels_out)
-        )
-        return module, channels_out
-    
-    def make_encoder(self, channels_in):
-        channels_out = channels_in * 2
-        module = ResidualBlock(channels_in, channels_out)
-        return module, channels_out
-    
-    def make_bottleneck(self, channels_in):
-        channels_out = channels_in * 2
-        module = nn.Sequential(
-            ResidualBlock(channels_in, channels_out),
-            ResidualBlock(channels_out, channels_out)
-        )
-        return module, channels_out
-    
-    def make_decoder(self, channels_in):
-        channels_out = channels_in // 2
-        module = nn.Sequential(
-            nn.Conv2d(channels_in, channels_out * (2*2), kernel_size=3, padding=1), # Output for 2x upsample
-            nn.PixelShuffle(2), # Upsamples features by 2x
-        )
-        return module, channels_out
-    
-    def make_skip_connector(self, channels):
-        return nn.Sequential(
-            ResidualBlock(2 * channels, channels),
-            ResidualBlock(channels, channels)
-        )
-    
-    def __init__(self, upsample_factor, use_sigmoid=False):
+    def __init__(self, upsample_factor, use_sigmoid=False, use_log_space=True):
         super(PhotonerNet, self).__init__()
+        self.use_sigmoid = use_sigmoid
+        self.use_log_space = use_log_space
         self.upsample_factor = upsample_factor
         self.unet_encoders = nn.ModuleList()
         self.unet_downsamplers = nn.ModuleList()
@@ -318,12 +289,6 @@ class PhotonerNet(nn.Module):
             self.unet_encoders.append(next_encoder)
             self.unet_downsamplers.append(nn.MaxPool2d(2))
 
-        # self.encoder1, pipeline_channels = self.make_encoder(pipeline_channels)
-        # self.pool1 = nn.MaxPool2d(2) # Downsample 2x
-
-        # self.encoder2, pipeline_channels = self.make_encoder(pipeline_channels)
-        # self.pool2 = nn.MaxPool2d(2) # Downsample 2x
-
         ##########################
         # Bottleneck
         self.bottleneck, pipeline_channels = self.make_bottleneck(pipeline_channels)
@@ -337,12 +302,6 @@ class PhotonerNet(nn.Module):
             next_decoder, pipeline_channels =  self.make_decoder(pipeline_channels)
             self.unet_decoders.append(next_decoder)
             self.unet_skipconns.append(self.make_skip_connector(pipeline_channels))
-
-        # self.upsample1, pipeline_channels =  self.make_decoder(pipeline_channels)
-        # self.skipconn1 = self.make_skip_connector(pipeline_channels)
-
-        # self.upsample2, pipeline_channels =  self.make_decoder(pipeline_channels)
-        # self.skipconn2 = self.make_skip_connector(pipeline_channels)
 
         # Final Convolution
         # Adjust final upsampling if factor is 4x and you only have 2x layers
@@ -364,10 +323,20 @@ class PhotonerNet(nn.Module):
         #     self.conv_out = nn.Conv2d(128, 1, kernel_size=3, padding=1) # No extra upsample needed if input 2x already
         self.conv_out = nn.Conv2d(pipeline_channels, 1, kernel_size=3, padding=1)
         
-        self.use_sigmoid = use_sigmoid
         if use_sigmoid:
             self.clamp_output = nn.Sigmoid() # Or adjust based on your image range [0,1] or [-1,1]
 
+    def pre_transform(self, x):
+        if self.use_log_space:
+            #f  = 1
+            x = torch.log2(x + g_epsilon)
+            # x = nn.Identity()(x)
+
+            # if g_normalize_input:
+            #     input_max = input_channel.max()
+            #     input_channel /= input_max
+        return x
+    
     def forward(self, x_lr, mask=None):
         # x_lr: low-resolution image with potential gaps (e.g., [B, 3, H, W])
         # mask: binary mask, 1 for valid pixels, 0 for gaps (e.g., [B, 1, H, W])
@@ -509,6 +478,53 @@ class PhotonerNet(nn.Module):
         else:
             return output
 
+    def post_transform(self, x):
+        if self.use_log_space:
+            #f  = 1
+            # if g_normalize_input:
+            #     x *= input_max
+
+            #x = nn.Identity()(x)
+
+            x = torch.exp2(x) - g_epsilon
+        return x
+    
+    def make_feature_extraction(self, channels_in, features):
+        channels_out = features
+        module = nn.Sequential(
+            nn.Conv2d(channels_in, channels_out, kernel_size=3, padding=1, padding_mode=g_padding_mode),
+            nn.ReLU(inplace=True),
+            ResidualBlock(channels_out, channels_out)
+        )
+        return module, channels_out
+    
+    def make_encoder(self, channels_in):
+        channels_out = channels_in * 2
+        module = ResidualBlock(channels_in, channels_out)
+        return module, channels_out
+    
+    def make_bottleneck(self, channels_in):
+        channels_out = channels_in * 2
+        module = nn.Sequential(
+            ResidualBlock(channels_in, channels_out),
+            ResidualBlock(channels_out, channels_out)
+        )
+        return module, channels_out
+    
+    def make_decoder(self, channels_in):
+        channels_out = channels_in // 2
+        module = nn.Sequential(
+            nn.Conv2d(channels_in, channels_out * (2*2), kernel_size=3, padding=1), # Output for 2x upsample
+            nn.PixelShuffle(2), # Upsamples features by 2x
+        )
+        return module, channels_out
+    
+    def make_skip_connector(self, channels):
+        return nn.Sequential(
+            ResidualBlock(2 * channels, channels),
+            ResidualBlock(channels, channels)
+        )
+
 class SSIM(nn.Module):
     def __init__(self, window_size=11, size_average=True):
         super().__init__()
@@ -587,16 +603,16 @@ def train(args):
     ])
     
     train_dataset = PhotonerDataset(train_input, train_target, 
-                                  args.crop_size, args.log_space, args.upsample, truth_transform)
+                                  args.crop_size, args.upsample, truth_transform)
     test_dataset = PhotonerDataset(test_input, test_target,
-                                 args.crop_size, args.log_space, args.upsample, truth_transform)
+                                 args.crop_size, args.upsample, truth_transform)
     
     train_loader = DataLoader(train_dataset, batch_size=args.batch_size, shuffle=True, num_workers=4)
     test_loader = DataLoader(test_dataset, batch_size=args.batch_size, shuffle=False, num_workers=4)
     
     # Initialize model and move to device
     use_sigmoid = use_sigmoid_from_input(input_files)
-    model = PhotonerNet(upsample_factor=args.upsample, use_sigmoid=use_sigmoid).to(device)
+    model = PhotonerNet(upsample_factor=args.upsample, use_sigmoid=use_sigmoid, use_log_space=train_dataset.exr_source and args.log_space).to(device)
     
     # Loss functions
     mse_loss = nn.MSELoss()
@@ -624,8 +640,8 @@ def train(args):
     last_checkpoint = start_time
     last_print = start_time
     
+    model.train()
     for epoch in range(args.epochs):
-        model.train()
         for batch_idx, (input_img, target_img) in enumerate(train_loader):
             # Clone tensors to make them resizable
             input_img = input_img.clone().detach().to(device)
@@ -636,8 +652,11 @@ def train(args):
             target_channel = select_largest_range_channel(target_img)
             
             optimizer.zero_grad()
+
+            input_channel = model.pre_transform(input_channel)
             output = model(input_channel)
-            
+            output = model.post_transform(output)
+
             # Calculate losses
             loss_mse = mse_loss(output, target_channel)
             loss_l1 = l1_loss(output, target_channel)
@@ -670,6 +689,7 @@ def train(args):
                     # Evaluate checkpoint tests if provided
                     if args.checkpoint_tests:
                         evaluate(model, args.checkpoint_tests, checkpoint_dir, args)
+                        model.train()
                         
                     last_checkpoint = time.time()
     
@@ -698,7 +718,9 @@ def infer_large(model, img, tile=256, overlap=8):
                 continue
             tile_in = img[:, :, y1:y2, x1:x2]
             # tile_out = model(tile_in)
-            tile_out = transforms.Resize((tile,tile))(model(tile_in))
+            tile_in = model.pre_transform(tile_in)
+            tile_out = model.post_transform(model(tile_in))
+            tile_out = transforms.Resize((tile,tile))(tile_out)
 
             # crop inner region to avoid boundary artefacts
             inner = overlap // 2
@@ -717,7 +739,7 @@ def evaluate(model, input_pattern, output_folder, args):
     with torch.no_grad():
         for input_path in input_files:
             dataset = PhotonerDataset([input_path], None, args.crop_size, 
-                                    args.log_space, args.upsample)
+                                    args.upsample)
             input_img = dataset[0][0].unsqueeze(0).to(device)
             
             # 
@@ -725,14 +747,10 @@ def evaluate(model, input_pattern, output_folder, args):
             output_channels = []
             for c in range(3):
                 # output = model(input_img[:, c:c+1])
-                output = infer_large(model, input_img[:, c:c+1])
+                output = infer_large(model, input_img[:, c:c+1], 256, 1 << g_unet_size)
                 output_channels.append(output)
                 
             output_img = torch.cat(output_channels, dim=1)
-            
-            # Convert back from log space if needed
-            if args.log_space:
-                output_img = torch.exp2(output_img) - dataset.epsilon
                 
             # Save output
             output_name = os.path.basename(input_path).rsplit('.', 1)[0] + '_eval.' + input_path.rsplit('.', 1)[1]
