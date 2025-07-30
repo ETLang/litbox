@@ -6,7 +6,6 @@ Temp/**
 __pycache__/**
 training_data/**
 training_output/**
-checkpoint_tests/**
 UserSettings/**
 .vscode/**
 *.csproj
