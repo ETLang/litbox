@@ -35,7 +35,7 @@ g_initial_features = 16
 g_normalize_input = True
 g_use_adam_w = True
 g_weight_decay = 0.01
-g_epsilon = 1e-6  # For log space transformation
+g_epsilon = 1 # 1e-6  # For log space transformation
 
 # TODO
 g_gaussian_initialization = True
@@ -335,14 +335,14 @@ class PhotonerNet(nn.Module):
 
     def pre_transform(self, x):
         if self.use_log_space:
-            x = torch.log2(x + g_epsilon)
             if g_normalize_input:
                 if self.previous_range != -1:
                     raise Exception('Cannot pre_transform without first matching a post_transform call for the previous call to pre_transform')
-                self.previous_range = input_channel.max()
-                input_channel /= self.previous_range
+                self.previous_range = x.max()
+                x /= self.previous_range
+            x = torch.log2(x + g_epsilon)
         return x
-    
+        
     def forward(self, x_lr, mask=None):
         # x_lr: low-resolution image with potential gaps (e.g., [B, 3, H, W])
         # mask: binary mask, 1 for valid pixels, 0 for gaps (e.g., [B, 1, H, W])
@@ -486,11 +486,12 @@ class PhotonerNet(nn.Module):
 
     def post_transform(self, x):
         if self.use_log_space:
+            x = torch.exp2(x) - g_epsilon
             if g_normalize_input:
                 if self.previous_range == -1:
                     raise Exception('Cannot post_transform without a prior call to pre_transform')
                 x *= self.previous_range
-            x = torch.exp2(x) - g_epsilon
+                self.previous_range = -1
         return x
     
     def make_feature_extraction(self, channels_in, features):
@@ -720,9 +721,17 @@ def infer_large(model, img, tile=256, overlap=8):
             if y2 > H or x2 > W:
                 continue
             tile_in = img[:, :, y1:y2, x1:x2]
-            # tile_out = model(tile_in)
-            tile_in = model.pre_transform(tile_in)
-            tile_out = model.post_transform(model(tile_in))
+
+            # Process each color channel independently
+            channels_out = []
+            for c in range(tile_in.shape[1]):
+                channel_in = tile_in[:, c:c+1]  # Select single channel
+                channel_in = model.pre_transform(channel_in)
+                channel_out = model.post_transform(model(channel_in))
+                channels_out.append(channel_out)
+            
+            # Recombine channels
+            tile_out = torch.cat(channels_out, dim=1)
             tile_out = transforms.Resize((tile,tile))(tile_out)
 
             # crop inner region to avoid boundary artefacts
@@ -777,7 +786,7 @@ def evaluate(model, input_pattern, output_folder, args):
                 output_img = (output_img * 255).byte()
                 output_img = output_img.squeeze(0).cpu().numpy().transpose(1, 2, 0)
                 Image.fromarray(output_img).save(output_path)
-            # return # only process one for now
+            return # only process one for now
 
 def main():
     args = parse_args()
