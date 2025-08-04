@@ -2,6 +2,8 @@
 #include "../Shaders/Random.cginc"
 
 #pragma multi_compile __ FILTER_INACTIVE_CELLS
+#pragma multi_compile __ BILINEAR_PHOTON_DISTRIBUTION
+#pragma multi_compile __ USE_ORIGINAL_HIT_TEST
 
 #pragma kernel Simulate_DefaultLight
 #pragma kernel Simulate_PointLight
@@ -161,9 +163,26 @@ void WritePhoton_Indexed(int2 pixel, uint3 energy, bool suppressPhoton=false) {
         InterlockedAdd(g_output_raw[pixel], energy.b);
 }
 
+void WritePhoton_Bilinear(float2 location, uint3 energy, bool suppressPhoton=false) {
+    if(any(location < 0)) return;
+
+    float2 pixel = location * (g_target_size-1) - 0.5f;
+    int2 pixelFloor = (int2)floor(pixel);
+    float2 pixelFrac = pixel - pixelFloor;
+
+    WritePhoton_Indexed(pixelFloor, energy * (1 - pixelFrac.x) * (1 - pixelFrac.y), suppressPhoton);
+    WritePhoton_Indexed(pixelFloor + int2(1, 0), energy * pixelFrac.x * (1 - pixelFrac.y), suppressPhoton);
+    WritePhoton_Indexed(pixelFloor + int2(0, 1), energy * (1 - pixelFrac.x) * pixelFrac.y, suppressPhoton);
+    WritePhoton_Indexed(pixelFloor + int2(1, 1), energy * pixelFrac.x * pixelFrac.y, suppressPhoton);
+}
+
 void WritePhoton(float2 location, uint3 energy, bool suppressPhoton=false) {
     if(any(location < 0)) return;
+#if BILINEAR_PHOTON_DISTRIBUTION
+    WritePhoton_Bilinear(location, energy, suppressPhoton);
+#else
     WritePhoton_Indexed(location * (g_target_size-1) - 0.5f, energy, suppressPhoton);
+#endif
 }
 
 uint3 ReadPhoton_Indexed(uint2 pixel) {
@@ -320,13 +339,70 @@ struct SimulationContext {
         return emitted;
     }
 
-    float HitTest(Ray photon, out float uHit, float substrateTransmitPotential) {
+    bool HitTest2(Ray photon, inout float probability, out float uHit, out float hitIntensity) { 
         float2 pixelSize = 1.0 / g_target_size;
 
         if(photon.Direction.x == 0) photon.Direction.x = 1e-8;
         if(photon.Direction.y == 0) photon.Direction.y = 1e-8;
 
-        float4 uBoundaryBox = (float4(0,1,0,1) - photon.Origin.xxyy) / photon.Direction.xxyy;
+        float4 uBoundaryBox = (float4(-0.1,1.1,-0.1,1.1) - photon.Origin.xxyy) / photon.Direction.xxyy;
+        float uEnd = min(max(uBoundaryBox[0], uBoundaryBox[1]), max(uBoundaryBox[2], uBoundaryBox[3]));
+
+        float uTarget = rand.Next() * uEnd;
+        float netTransmissibility = 1;
+
+        uHit = 0;
+        float2 pSample;
+        for(int steps = 0;steps < 3000;steps++) {
+            pSample = photon.Origin + photon.Direction * uHit;
+            uint lod = g_quadTreeLeaves.SampleLevel(sampler_point_clamp, pSample, 0).x;
+        
+            float4 T = g_transmissibility.SampleLevel(samplerg_transmissibility, pSample, lod);
+            float minimumTransmissibility = T.y;
+
+            float uHitNext = uHit + pixelSize.x * (1 << lod);
+            while(uHitNext > uTarget && lod > 0) {
+                lod--;
+                T = g_transmissibility.SampleLevel(samplerg_transmissibility, pSample, lod);
+                uHitNext = uHit + pixelSize.x * (1 << lod);
+            }
+        
+            float transmissibility = T.x;
+
+            if(uHitNext > uTarget) { // Scatter occurs within this sample
+                // The following line finds the hit point at sub-pixel accuracy
+                // netTransmissibility *=  TODO: figure this out
+                //uHit += pixelSize.x * log2(substrateTransmitPotential / netTransmissibility) / log2(transmissibility);
+                uHit = uTarget;
+                probability *= netTransmissibility;
+                probability *= uEnd;
+                hitIntensity = probability * (1 - transmissibility);
+                return probability > 1e-9; 
+            } else { // Keep propagating
+                netTransmissibility *= transmissibility;
+                uHit = uHitNext;
+
+                // If the density of the substrate is too high, consider this the new endpoint. Restart propagation
+                // within this newfound range.
+                if(netTransmissibility < 1e-9) {
+                    return false;
+                }
+            }
+        }
+
+        // Fail condition... traversal took too many steps
+        WritePhoton(photon.Origin, uint3(1000000000, 1000000000, 0));
+        WritePhoton(pSample, uint3(0, 1000000000, 0));
+        return false;
+    }
+
+    bool HitTest(Ray photon, out float uHit, float substrateTransmitPotential) {
+        float2 pixelSize = 1.0 / g_target_size;
+
+        if(photon.Direction.x == 0) photon.Direction.x = 1e-8;
+        if(photon.Direction.y == 0) photon.Direction.y = 1e-8;
+
+        float4 uBoundaryBox = (float4(-0.1,1.1,-0.1,1.1) - photon.Origin.xxyy) / photon.Direction.xxyy;
         float uEscape = min(max(uBoundaryBox[0], uBoundaryBox[1]), max(uBoundaryBox[2], uBoundaryBox[3]));
 
         // Raycast to find collision or escape point
@@ -355,7 +431,7 @@ struct SimulationContext {
 
             if(substrateTransmitPotential > netTransmissibility) { // Scatter occurs within this sample
                 // The following line finds the hit point at sub-pixel accuracy
-                //uHit += w * log2(substrateTransmitPotential / netTransmissibility) / log2(transmissibility);
+                uHit += pixelSize.x * (1 << lod) * log2(substrateTransmitPotential / netTransmissibility) / log2(transmissibility);
                 return true;
             } else { // Keep propagating
                 uHit += pixelSize.x * (1 << lod);
@@ -387,13 +463,19 @@ struct SimulationContext {
             WritePhoton(photon.Origin, emissionOutscatter, true);
         }
 
+        float probability = 1;
+
         for(uint bounce = 0;bounce < g_bounces;bounce++) {
             float uScatter;
             float substrateTransmitPotential;
+#if USE_ORIGINAL_HIT_TEST
             float quantumScale;
             GetSubstrateTransmitPDF(substrateTransmitPotential, quantumScale);
-
             bool hit = HitTest(photon, uScatter, substrateTransmitPotential);
+#else
+            float hitIntensity;
+            bool hit = HitTest2(photon, probability, uScatter, hitIntensity);
+#endif
 
             if(!hit) break;
 
@@ -401,9 +483,17 @@ struct SimulationContext {
 
             float3 albedo = g_albedo.SampleLevel(sampler_point_clamp, photon.Origin, 0).rgb;
 
+#if USE_ORIGINAL_HIT_TEST
             photon.Energy *= albedo * quantumScale;
+#else
+            photon.Energy *= albedo;
+#endif
 
+#if USE_ORIGINAL_HIT_TEST
             uint3 outScatter = photon.Energy * photon.FineScale * g_outscatterCoefficient;
+#else
+            uint3 outScatter = photon.Energy * photon.FineScale * hitIntensity;
+#endif
 
             WritePhoton(photon.Origin, outScatter, false);//bounce == 0);
             float3 important_direction = ScatterImportance(photon.Origin);
@@ -429,14 +519,18 @@ struct SimulationContext {
 
     uint3 SimulateBackward(Ray path) {
         float uScatter;
+        float energyScale;
+#if USE_ORIGINAL_HIT_TEST
         float substrateTransmitPotential;
-        float quantumScale;
-        GetSubstrateTransmitPDF(substrateTransmitPotential, quantumScale);
-        
+        GetSubstrateTransmitPDF(substrateTransmitPotential, energyScale);
         bool hit = HitTest(path, uScatter, substrateTransmitPotential);
+#else
+        float probability = 1;
+        bool hit = HitTest2(path, probability, uScatter, energyScale);
+#endif
         
         if(hit) {
-            return ReadForwardPhoton(path.Origin + path.Direction * uScatter) * path.FineScale * quantumScale;
+            return ReadForwardPhoton(path.Origin + path.Direction * uScatter) * path.FineScale * energyScale;
         } else {
             return 0;
         }
@@ -498,7 +592,8 @@ void Simulate_View_Backward (uint3 id : SV_DispatchThreadID) {
         }
         sum *= g_albedo.Load(uint3(id.xy,0)).rgb / g_samples_per_pixel;
         sum *= 1-g_transmissibility.Load(uint3(id.xy, 0)).x;
-        sum = lerp(sum, ReadForwardPhoton_Indexed(id.xy), g_path_balance);
+        //sum = lerp(sum, ReadForwardPhoton_Indexed(id.xy), g_path_balance);
+        sum += ReadForwardPhoton_Indexed(id.xy);
     } else {
         sum = ReadForwardPhoton_Indexed(id.xy);
     }
@@ -562,8 +657,10 @@ void GetCellTransmissibility(uint3 id : SV_DispatchThreadID) {
 void MeasureConvergence (uint3 id : SV_DispatchThreadID) {
     //const uint EnergyMax = (1 << 31);
 
-    float4 a = pow(g_output_tonemapped[id.xy], 1/2.2);
-    float4 b = pow(g_previousResult[id.xy], 1/2.2);
+    // float4 a = pow(g_output_tonemapped[id.xy], 1/2.2);
+    // float4 b = pow(g_previousResult[id.xy], 1/2.2);
+    float4 a = g_output_tonemapped[id.xy];
+    float4 b = g_previousResult[id.xy];
 
     uint3 photon = ReadPhoton_Indexed(id.xy);
     uint pixelMax = max(photon.r, max(photon.g, photon.b));

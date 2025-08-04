@@ -5,7 +5,7 @@ using UnityEngine;
 [RequireComponent(typeof(SpriteRenderer))]
 public class RTLightSource : MonoBehaviour
 {
-    [Range(0, 5)]
+    [Range(0, 500)]
     public float intensity = 1;
     public uint bounces = 2;
 

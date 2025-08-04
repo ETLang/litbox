@@ -606,9 +606,11 @@ MonoBehaviour:
   gridCells:
     x: 16
     y: 16
-  raysPerFrame: 4096000
+  raysPerFrame: 512000
   energyPrecision: 1000
   photonBounces: -1
+  bilinearPhotonWrites: 1
+  useOriginalHitTest: 0
   pathSamples: 10
   pathBalance: 0.5
   transmissibilityVariationEpsilon: 0.001
@@ -824,7 +826,7 @@ MonoBehaviour:
   m_Script: {fileID: 11500000, guid: 58f9e6f458e034bb4a5fe51c97b6d54a, type: 3}
   m_Name: 
   m_EditorClassIdentifier: 
-  intensity: 0.58
+  intensity: 434
   bounces: 4
 --- !u!1 &1038391232
 GameObject:
@@ -1459,7 +1461,7 @@ MonoBehaviour:
   m_Script: {fileID: 11500000, guid: 14a0e5c7ca6748d2da91c7d70db73a3a, type: 3}
   m_Name: 
   m_EditorClassIdentifier: 
-  intensity: 2.7
+  intensity: 317
   bounces: 3
 --- !u!1 &2123204530
 GameObject:
@@ -1561,7 +1563,7 @@ MonoBehaviour:
   m_Script: {fileID: 11500000, guid: aa5e73cb1f064d7c0b0e423c01724af7, type: 3}
   m_Name: 
   m_EditorClassIdentifier: 
-  intensity: 5
+  intensity: 394
   bounces: 4
   emissionOutscatter: 0
 --- !u!1001 &5299118404401602265

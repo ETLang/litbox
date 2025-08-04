@@ -70,6 +70,8 @@ public class Simulation : SimulationBaseBehavior
     [SerializeField] private int raysPerFrame = 4096000;
     [SerializeField] private int energyPrecision = 1;
     [SerializeField] private int photonBounces = -1;
+    [SerializeField] private bool bilinearPhotonWrites = false;
+    [SerializeField] private bool useOriginalHitTest = false;
     [SerializeField] private int pathSamples = 10;
     [SerializeField, Range(0,1)] private float pathBalance = 0.5f;
 
@@ -140,12 +142,15 @@ public class Simulation : SimulationBaseBehavior
     public Vector2 ImportanceSamplingTarget { get; private set; } = new Vector2(0.5f, 0.5f);
     public float ConvergenceStartTime { get; private set; }
     public float Convergence => convergenceProgress;
+    public float EstimatedConvergenceTime => (Time.time - ConvergenceStartTime) * Convergence / _convergenceThreshold;
     public int TextureResolution => textureResolution;
 
     public event SimulationStepEvent OnStep;
     public event SimulationConvergedEvent OnConverged;
+    public event Action<float> OnConvergenceUpdate;
 
-    public void LoadProfile(SimulationProfile profile) {
+    public void LoadProfile(SimulationProfile profile)
+    {
         frameLimit = profile.frameLimit;
         textureResolution = profile.resolution;
         raysPerFrame = profile.raysPerFrame;
@@ -434,6 +439,8 @@ public class Simulation : SimulationBaseBehavior
         _computeShader.SetInt("g_4x4_lod", (int)(GBufferTransmissibility.mipmapCount - 3));
         _computeShader.SetFloat("g_lightEmissionOutscatter", 0);
         _computeShader.SetFloat("g_outscatterCoefficient", outscatterCoefficient);
+        SetShaderFlag(_computeShader, "BILINEAR_PHOTON_DISTRIBUTION", bilinearPhotonWrites);
+        SetShaderFlag(_computeShader, "USE_ORIGINAL_HIT_TEST", useOriginalHitTest);
 
         float energyNormPerFrame = 1;
         float pixelCount = textureResolution * textureResolution;
@@ -811,8 +818,10 @@ public class Simulation : SimulationBaseBehavior
         IdentifyCellInputGroups();
 
         convergenceProgress = overallConvergence / cellArea;
-        //if(totalConverged == feedback.Length) {
-        if(!initial && convergenceProgress < _convergenceThreshold) { 
+        OnConvergenceUpdate?.Invoke(convergenceProgress);
+
+        if (!initial && convergenceProgress < _convergenceThreshold)
+        {
             hasConverged = true;
             OnConverged?.Invoke();
         }
@@ -883,19 +892,7 @@ public class Simulation : SimulationBaseBehavior
         _computeShader.SetVector("g_lightEnergy", light.Energy * (float)photonEnergy);
         _computeShader.SetInt("g_bounces", bounces);
         _computeShader.SetMatrix("g_lightToTarget", lightToTargetSpace.transpose);
-        //_computeShader.SetBuffer(simulateKernelId, "g_rand", _randomBuffer);
-        //_computeShader.SetTexture(simulateKernelId, "g_output_raw", outputTexture);
-        //_computeShader.SetTexture(simulateKernelId, "g_albedo", GBufferAlbedo);
-        //_computeShader.SetTexture(simulateKernelId, "g_transmissibility", GBufferTransmissibility);
-        //_computeShader.SetTexture(simulateKernelId, "g_normalSlope", GBufferNormalSlope);
-        //_computeShader.SetTexture(simulateKernelId, "g_quadTreeLeaves", GBufferQuadTreeLeaves);
-        //_computeShader.SetTexture(simulateKernelId, "g_mieScatteringLUT", _mieScatteringLUT);
-        //_computeShader.SetTexture(simulateKernelId, "g_teardropScatteringLUT", _teardropScatteringLUT);
-        //_computeShader.SetTexture(simulateKernelId, "g_quantumTunnelingLUT", _quantumTunnelingLUT);
-        //_computeShader.SetBuffer(simulateKernelId, "g_convergenceCellStateIn", _gridCellInputBuffer);
-        //_computeShader.SetBuffer(simulateKernelId, "g_convergenceCellStateOut", _gridCellOutputBuffer);
 
-        //_computeShader.Dispatch(simulateKernelId, raysPerFrame / 64, 1, 1);
         RunKernel(_computeShader, simulateKernel, raysPerFrame,
             ("g_rand", _randomBuffer),
             ("g_output_raw", outputTexture),

@@ -63,6 +63,7 @@ public class TrainingManager : MonoBehaviour {
     int _sampleIdOffset = 0;
     string _datasetName;
     string _datasetPath;
+    float _estimatedConvergenceTime = 0;
 
     int _activeProfile;
     string _imagePathPNG;
@@ -139,10 +140,10 @@ public class TrainingManager : MonoBehaviour {
     void Start() {
         _rand = new Random(Environment.TickCount);
 
-        if(_continuePreviousSession) {
+        if (_continuePreviousSession) {
             _datasetPath = Directory.GetDirectories(outputFolder).OrderByDescending(s => s).FirstOrDefault();
 
-            if(string.IsNullOrEmpty(_datasetPath)) {
+            if (string.IsNullOrEmpty(_datasetPath)) {
                 throw new Exception("No previous session to update!");
             }
 
@@ -153,10 +154,10 @@ public class TrainingManager : MonoBehaviour {
             Directory.CreateDirectory(_datasetPath);
         }
 
-        if(!string.IsNullOrEmpty(_debugScenePath)) {
+        if (!string.IsNullOrEmpty(_debugScenePath)) {
             LoadSceneFromDescription(File.ReadAllText(_debugScenePath));
             _train = false;
-        } else if(_train) {
+        } else if (_train) {
             Debug.Log($"Beginning training session {_datasetName}");
 
             BeginComposingTrainingImages(false);
@@ -164,6 +165,7 @@ public class TrainingManager : MonoBehaviour {
 
         _simulation.OnStep += OnSimulationStep;
         _simulation.OnConverged += OnSimulationConverged;
+        _simulation.OnConvergenceUpdate += OnSimulationConvergenceUpdate;
 
 
         /*
@@ -206,13 +208,17 @@ public class TrainingManager : MonoBehaviour {
     }
 
     void OnSimulationConverged() {
-        if(IsGenerating) {
+        if (IsGenerating)
+        {
             _simulation.SimulationOutputHDR.SaveTextureEXR(_imagePathEXR);
             _simulation.SimulationOutputToneMapped.SaveTexturePNG(_imagePathPNG);
-            if(_activeProfile == inputProfiles.Length) {
+            if (_activeProfile == inputProfiles.Length)
+            {
                 _simulation.SimulationOutputToneMapped.SaveTexturePNG(_imagePathPNG);
                 Debug.Log($"Completed Scene {_generatedSamples:0000}");
-            } else {
+            }
+            else
+            {
                 var sample = new RenderTexture(_simulation.SimulationOutputToneMapped);
                 var tmp = RenderTexture.active;
                 Graphics.Blit(_simulation.SimulationOutputToneMapped, sample);
@@ -222,21 +228,51 @@ public class TrainingManager : MonoBehaviour {
 
             AdvanceTrainingState();
         }
+
+        _estimatedConvergenceTime = 0;
+    }
+
+    void OnSimulationConvergenceUpdate(float convergence) {
+        if (Time.time - _simulation.ConvergenceStartTime > 30 && _estimatedConvergenceTime == 0)
+        {
+            _estimatedConvergenceTime = _simulation.EstimatedConvergenceTime;
+            if (_estimatedConvergenceTime < 300)
+            {
+                Debug.Log($"Estimated convergence time: {_estimatedConvergenceTime:0}s");
+            }
+            else
+            {
+                Debug.LogWarning($"Discarding this scene due to long convergence time: {_estimatedConvergenceTime:0}s");
+
+                var sceneid = _generatedSamples + _sampleIdOffset;
+
+                List<string> filesToDelete =
+                    Directory.EnumerateFiles(_datasetPath, $"*_{sceneid:0000}.*").ToList();
+
+                foreach (var file in filesToDelete)
+                {
+                    File.Delete(file);
+                }
+                _activeProfile = inputProfiles.Length;
+                _generatedSamples--;
+                AdvanceTrainingState();
+            }
+        }
     }
 
     public JsonSceneData GenerateRandomSceneDescription() {
         var output = new JsonSceneData();
 
         output.ambientLightColor = _rand.NextLightColor();
-        output.ambientLightIntensity = _rand.NextRange(0,0.5f,-0.5f);
+        output.ambientLightIntensity = _rand.NextRange(0, 0.5f, -0.5f);
         output.backgroundColor = Color.white; // _rand.NextLightColor();
         output.backgroundDensity = _rand.NextRange(-4, -2, -0.4f);
         output.lights = new JsonLightData[_rand.Next(3) + 1];
 
-        for(int i = 0;i < output.lights.Length;i++) {
+        for (int i = 0; i < output.lights.Length; i++) {
             var light = new JsonLightData();
 
-            light.type = _rand.NextWeightedOption(new Dictionary<string,float> {
+            light.type = _rand.NextWeightedOption(new Dictionary<string, float> {
                 { "Directional", 0.0f }, // Disabled because it has bugs
                 { "Point", 0.25f },
                 { "Spot", 0.25f },
@@ -244,37 +280,37 @@ public class TrainingManager : MonoBehaviour {
             });
 
             light.color = _rand.NextLightColor();
-            light.intensity = _rand.NextRange(0.01f, 1.5f, 0.2f);
+            light.intensity = _rand.NextRange(0.01f, 150f, 0.2f);
 
-            switch(light.type) {
-            case "Directional":
-                light.position = Vector2.zero;
-                light.angle = _rand.NextRange(0,360);
-                light.scale = new Vector2(1, 1);
-                break;
-            case "Point":
-                light.position = new Vector2(_rand.NextRange(-5, 5), _rand.NextRange(-5, 5));
-                light.angle = 0;
-                var size = _rand.NextRange(0.4f, 5, 0.1f);
-                light.scale = new Vector2(size, size);
-                break;
-            case "Spot":
-                light.position = new Vector2(_rand.NextRange(-7, 7), _rand.NextRange(-7, 7));
-                var baseAngle = Mathf.Acos(light.position.x / light.position.magnitude) * 180 / Mathf.PI;
-                if(light.position.y < 0)
-                    baseAngle *= -1;
-                baseAngle += 270;
-                light.angle = baseAngle + _rand.NextRange(-80, 80);
-                light.scale = new Vector2(_rand.NextRange(0.3f,1.5f,0.3f), _rand.NextRange(0.5f, 3.0f));
-                break;
-            case "Laser":
-                light.position = new Vector2(_rand.NextRange(-3, 3), _rand.NextRange(-3, 3));
-                light.angle = _rand.NextRange(0,360);
-                light.scale = new Vector2(_rand.NextRange(0.01f, 0.2f, 0.1f), 1);
-                break;
-            default:
-                Debug.LogError("What light type is this? " + light.type);
-                break;
+            switch (light.type) {
+                case "Directional":
+                    light.position = Vector2.zero;
+                    light.angle = _rand.NextRange(0, 360);
+                    light.scale = new Vector2(1, 1);
+                    break;
+                case "Point":
+                    light.position = new Vector2(_rand.NextRange(-5, 5), _rand.NextRange(-5, 5));
+                    light.angle = 0;
+                    var size = _rand.NextRange(0.4f, 5, 0.1f);
+                    light.scale = new Vector2(size, size);
+                    break;
+                case "Spot":
+                    light.position = new Vector2(_rand.NextRange(-7, 7), _rand.NextRange(-7, 7));
+                    var baseAngle = Mathf.Acos(light.position.x / light.position.magnitude) * 180 / Mathf.PI;
+                    if (light.position.y < 0)
+                        baseAngle *= -1;
+                    baseAngle += 270;
+                    light.angle = baseAngle + _rand.NextRange(-80, 80);
+                    light.scale = new Vector2(_rand.NextRange(0.03f, 0.5f, 0.3f), _rand.NextRange(0.05f, 0.5f));
+                    break;
+                case "Laser":
+                    light.position = new Vector2(_rand.NextRange(-3, 3), _rand.NextRange(-3, 3));
+                    light.angle = _rand.NextRange(0, 360);
+                    light.scale = new Vector2(_rand.NextRange(0.01f, 0.2f, 0.1f), 1);
+                    break;
+                default:
+                    Debug.LogError("What light type is this? " + light.type);
+                    break;
             }
 
             output.lights[i] = light;
@@ -283,9 +319,9 @@ public class TrainingManager : MonoBehaviour {
         List<uint> substrates = new List<uint>();
 
         substrates.Add((uint)_rand.Next());
-        if(_rand.NextBool()) {
+        if (_rand.NextBool()) {
             substrates.Add((uint)_rand.Next());
-            if(_rand.NextBool()) {
+            if (_rand.NextBool()) {
                 substrates.Add((uint)_rand.Next());
             }
         }
@@ -376,110 +412,7 @@ public class TrainingManager : MonoBehaviour {
     }
 
     public void SetupRandomScene() {
-        foreach(var oldObject in _generatedObjects)
-            DestroyImmediate(oldObject);
-        _generatedObjects.Clear();
-
-        _ambientLight.GetComponent<SpriteRenderer>().color = _rand.NextLightColor();
-        _ambientLight.intensity = _rand.NextRange(0,0.5f,-0.5f);
-        _backgroundSubstrate.substrateLogDensity = _rand.NextRange(-4, -2, -0.4f);
-        _backgroundSubstrate.GetComponent<SpriteRenderer>().color = _rand.NextLightColor();
-
-        int lightCount = _rand.Next(3) + 1;
-
-        for(int i = 0;i < lightCount;i++) {
-            var lightType = _rand.NextWeightedOption(new Dictionary<string,float> {
-                { "Directional", 0.0f }, // Disabled because it has bugs
-                { "Point", 0.25f },
-                { "Spot", 0.25f },
-                { "Laser", 0.1f }
-            });
-
-            GameObject newLightGO = null;
-            switch(lightType) {
-            case "Directional":
-                newLightGO = Instantiate(_directionalLightPrefab, _lightContainer.transform);
-                newLightGO.name = "Random Directional Light";
-                newLightGO.transform.localRotation = Quaternion.Euler(0,0,_rand.NextRange(0,360));
-                break;
-            case "Point":
-                newLightGO = Instantiate(_pointLightPrefab, _lightContainer.transform);
-                newLightGO.name = "Random Point Light";
-                newLightGO.transform.localPosition = new Vector3(_rand.NextRange(-5, 5), _rand.NextRange(-5, 5), 0);
-                var size = _rand.NextRange(0.4f, 5, 0.1f);
-                newLightGO.transform.localScale = new Vector3(size, size, 1);
-                break;
-            case "Spot":
-                newLightGO = Instantiate(_spotLightPrefab, _lightContainer.transform);
-                newLightGO.name = "Random Spot Light";
-                var pos = new Vector3(_rand.NextRange(-7, 7), _rand.NextRange(-7, 7), 0);
-                newLightGO.transform.localPosition = pos;
-                var baseAngle = Mathf.Acos(pos.x / pos.magnitude) * 180 / Mathf.PI;
-                if(pos.y < 0)
-                    baseAngle *= -1;
-                baseAngle += 270;
-                newLightGO.transform.localRotation = Quaternion.Euler(0,0,baseAngle + _rand.NextRange(-80, 80));
-                newLightGO.transform.localScale = new Vector3(_rand.NextRange(0.3f,1.5f,0.3f), _rand.NextRange(0.5f, 3.0f), 1);
-                break;
-            case "Laser":
-                newLightGO = Instantiate(_laserLightPrefab, _lightContainer.transform);
-                newLightGO.name = "Random Laser Light";
-                newLightGO.transform.localPosition = new Vector3(_rand.NextRange(-3, 3), _rand.NextRange(-3, 3), 0);
-                newLightGO.transform.localRotation = Quaternion.Euler(0,0,_rand.NextRange(0,360));
-                break;
-            default:
-                Debug.LogError("What light type is this? " + lightType);
-                break;
-            }
-
-            _generatedObjects.Add(newLightGO);
-
-            RTLightSource newLight = newLightGO.GetComponent<RTLightSource>();
-            SpriteRenderer lightSprite = newLightGO.GetComponent<SpriteRenderer>();
-
-            lightSprite.color = _rand.NextLightColor();
-            newLight.bounces = 10; // We want a high fidelity result!
-            newLight.intensity = _rand.NextRange(0.1f, 5.0f, 0.2f);
-        }
-
-        _substrateB.gameObject.SetActive(_rand.NextBool());
-        _substrateC.gameObject.SetActive(_substrateB.gameObject.activeSelf && _rand.NextBool());
-
-        _substrateA.GenerateRandom((uint)_rand.Next());
-        _substrateA.ValidateAndApply();
-        if(_substrateB.gameObject.activeSelf) {
-            _substrateB.GenerateRandom((uint)_rand.Next());
-            _substrateB.ValidateAndApply();
-        }
-        if(_substrateC.gameObject.activeSelf) {
-            _substrateC.GenerateRandom((uint)_rand.Next());
-            _substrateC.ValidateAndApply();
-        }
-
-/*
-
-        Training Data Production Procedure:
-
-        - Ambient Intensity: 0-0.5
-        - Background Density: -4 - -2
-
-        Single-Light Process:
-        1. Randomly create a single light source
-        2. Randomly configure background substrate, and two layers of random substrates
-        2. Set up simulation to run N photons with like 10 bounces.
-        3. Run 1 frame
-        4. Capture output as source for training.
-        5. Ensure simulation occurs < 3 ms
-        6. Configure simulation for optimal speed
-        7. Run until convergence
-        8. Capture output as reference for training.
-        9. Save light configuration and substrate configurations to JSON file for future debugging.
-        10. Repeat at least 1000 times
-    
-        Multi-Light Process:
-        - Same, except use 1-4 randomly configured light sources
-
-*/
+        LoadSceneFromDescription(GenerateRandomSceneDescription());
     }
 
     public void AcceptCurrentGeneration()
