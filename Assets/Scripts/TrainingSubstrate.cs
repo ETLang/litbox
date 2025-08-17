@@ -313,8 +313,10 @@ public class TrainingSubstrate : MonoBehaviour {
         shader.Dispatch(kernel, Math.Max(1, textureSize / 8), Math.Max(1, textureSize / 8), 1);
 
         generated = _target[destTarget];
+#if UNITY_EDITOR
         if(EditorApplication.isPlaying)
              GetComponent<Renderer>().material.SetTexture("_MainTex", _target[destTarget]);
+#endif
 
         return _target[1-destTarget];
     }

@@ -1,120 +1,289 @@
+using GLTFast;
+using System;
 using System.Collections.Generic;
+using System.Linq;
+using System.Xml.Linq;
+using UnityEditor;
 using UnityEngine;
+using UnityEngine.Rendering;
 
-[RequireComponent(typeof(MeshFilter))]
-[RequireComponent(typeof(MeshRenderer))]
-public class ProceduralHill : MonoBehaviour
+
+[Serializable]
+public class HillLayerProperties
 {
-    [SerializeField] Color baseColor;
-    [SerializeField] Color highlightColor;
-    [SerializeField] Color leftShadeColor;
-    [SerializeField] Color rightShaderColor;
-    [SerializeField] int rows = 10;
-    [SerializeField] int cols = 10;
-    [SerializeField] float leftHeight;
-    [SerializeField] float rightHeight;
-    [SerializeField, Range(-1,1)] float leftPinch;
-    [SerializeField, Range(-1,1)] float rightPinch;
+    [Header("Material")]
+    public Color fuzzColor;
+    public float fuzzLength;
+    public Color specularColor;
+    public float specularPower;
 
-    private MeshFilter meshFilter;
-    private MeshRenderer meshRenderer;
+    [Header("Farmland")]
+    public Texture hillTexture;
+    public float textureAngle;
+    public float textureOffset;
+    public float textureScale;
+    public int rowCount;
+}
+
+[ExecuteInEditMode]
+[RequireComponent(typeof(PolygonCollider2D))]
+public class ProceduralHill : PhotonerDemoComponent
+{
+    [Header("Hill Shape")]
+    [SerializeField] Mesh hillMesh;
+    [SerializeField] float leftHeight;
+    [SerializeField] float peakHeight;
+    [SerializeField] float rightHeight;
+
+    [Header("Layers")]
+    [SerializeField] public HillLayerProperties[] layers;
+
+    [Header("Scene Context")]
+    [SerializeField] Material hillMat;
+    [SerializeField] Vector3 specularLightSource;
+    [SerializeField] float viewShift;
+    [SerializeField] Color leftAmbience;
+    [SerializeField] Color rightAmbience;
+
+    CommandBuffer cb;
+    MaterialPropertyBlock[] layerPropertyBlocks = new MaterialPropertyBlock[0];
+    HashSet<Camera> registeredCameras = new HashSet<Camera>();
+    PolygonCollider2D _collider;
+
+    public ProceduralHill()
+    {
+        DetectChanges(() => layers);
+        DetectChanges(() => leftHeight);
+        DetectChanges(() => peakHeight);
+        DetectChanges(() => rightHeight);
+        DetectChanges(() => specularLightSource);
+        DetectChanges(() => viewShift);
+        DetectChanges(() => leftAmbience);
+        DetectChanges(() => rightAmbience);
+    }
+
+    private int _layerListeningCount = 0;
+    private void ValidateArrayListeners()
+    {
+        if (layers.Length > _layerListeningCount) {
+            for (int i = _layerListeningCount; i < layers.Length; i++) {
+                ListenOnArray(i);
+            }
+            _layerListeningCount = layers.Length;
+        }
+
+        if (layers.Length != layerPropertyBlocks.Length) {
+            layerPropertyBlocks = new MaterialPropertyBlock[layers.Length];
+
+            for (int i = 0; i < layers.Length; i++) {
+                layerPropertyBlocks[i] = new MaterialPropertyBlock();
+            }
+        }
+
+        for (int i = 0; i < layers.Length; i++) {
+            var matrix = Matrix4x4.TRS(
+                new Vector3(layers[i].textureOffset, 0, 0),
+                Quaternion.AngleAxis(layers[i].textureAngle, Vector3.forward),
+                new Vector3(layers[i].textureScale, layers[i].textureScale, 1));
+
+            layerPropertyBlocks[i].SetColor("_FuzzColor", layers[i].fuzzColor);
+            layerPropertyBlocks[i].SetFloat("_FuzzLength", layers[i].fuzzLength);
+            layerPropertyBlocks[i].SetColor("_SpecularColor", layers[i].specularColor);
+            layerPropertyBlocks[i].SetFloat("_SpecularPower", layers[i].specularPower);
+
+            layerPropertyBlocks[i].SetMatrix("_FarmlandTransform", matrix);
+            layerPropertyBlocks[i].SetFloat("_FarmlandRowCount", layers[i].rowCount);
+            layerPropertyBlocks[i].SetTexture("_MainTex", layers[i].hillTexture);
+            layerPropertyBlocks[i].SetFloat("_ZOffset", 0);// i * 0.000001f);
+
+            layerPropertyBlocks[i].SetFloat("_LeftHeight", leftHeight);
+            layerPropertyBlocks[i].SetFloat("_PeakHeight", peakHeight);
+            layerPropertyBlocks[i].SetFloat("_RightHeight", rightHeight);
+
+            layerPropertyBlocks[i].SetVector("_SpecularSource", specularLightSource);
+            layerPropertyBlocks[i].SetFloat("_ViewXShift", viewShift);
+            layerPropertyBlocks[i].SetColor("_LeftAmbience", leftAmbience);
+            layerPropertyBlocks[i].SetColor("_RightAmbience", rightAmbience);
+        }
+    }
+
+    private void ListenOnArray(int index)
+    {
+        DetectChanges(() => index < layers.Length ? layers[index].fuzzColor : default(Color));
+        DetectChanges(() => index < layers.Length ? layers[index].fuzzLength : default(float));
+        DetectChanges(() => index < layers.Length ? layers[index].specularColor : default(Color));
+        DetectChanges(() => index < layers.Length ? layers[index].specularPower : default(float));
+        DetectChanges(() => index < layers.Length ? layers[index].hillTexture : default(Texture));
+        DetectChanges(() => index < layers.Length ? layers[index].textureAngle : default(float));
+        DetectChanges(() => index < layers.Length ? layers[index].textureOffset : default(float));
+        DetectChanges(() => index < layers.Length ? layers[index].textureScale : default(float));
+        DetectChanges(() => index < layers.Length ? layers[index].rowCount : default(int));
+    }
 
     // Start is called once before the first execution of Update after the MonoBehaviour is created
     void Start()
     {
-        meshFilter = GetComponent<MeshFilter>();
-        meshRenderer = GetComponent<MeshRenderer>();
+        ValidateArrayListeners();
 
-        GenerateMesh();
+        if(Application.isPlaying) {
+            // Configure the collider
+            _collider = GetComponent<PolygonCollider2D>();
+
+            var pts3d = GenerateBoundary();
+            var pts = pts3d.Select(pt => (Vector2)pt).ToArray();
+            _collider.points = pts;
+        }
     }
 
-    // Update is called once per frame
-    void Update()
+    protected override void OnInvalidated()
     {
-        
+        base.OnInvalidated();
+        ValidateArrayListeners();
     }
 
-    void GenerateMesh()
+    void OnEnable()
     {
-        var cellSizeX = 10.0f / cols;
-        var cellSizeY = 10.0f / rows;
-
-        // Ensure that the grid dimensions are at least 1x1.
-        if (rows <= 0 || cols <= 0) {
-            Debug.LogError("Rows and columns must be greater than 0.");
+        // Check for required assets.
+        if (hillMesh == null || hillMat == null) {
+            Debug.LogError("Mesh or Material not assigned. Disabling.");
+            this.enabled = false;
             return;
         }
 
-        Mesh mesh = new Mesh();
-        mesh.name = "ProceduralGridMesh";
+        // Create a new command buffer instance.
+        cb = new CommandBuffer();
+        cb.name = gameObject.name + " CB";
+    }
 
-        // Lists to store the mesh data before assigning it to the mesh.
-        List<Vector3> vertices = new List<Vector3>();
-        List<int> triangles = new List<int>();
-        List<Vector2> uvs = new List<Vector2>();
-
-        // Calculate the total number of vertices needed.
-        int totalVertices = (rows + 1) * (cols + 1);
-        vertices.Capacity = totalVertices;
-        uvs.Capacity = totalVertices;
-
-        // Loop through the grid to create all the vertices and UVs.
-        // The loops run up to and including the outer edges, which is why we use <=.
-        for (int i = 0; i <= rows; i++) {
-            for (int j = 0; j <= cols; j++) {
-               // float w = (1 - Mathf.Cos(u * Mathf.PI)) / 2.0f;
-
-                float xPos = (j * cellSizeX) - (cols * cellSizeX / 2f);
-                float yPos = (i * cellSizeY) - (rows * cellSizeY / 2f);
-                vertices.Add(new Vector3(xPos, yPos, 0f));
-
-                // Calculate UVs, mapping the grid to a texture.
-                // UVs range from 0 to 1, where (0,0) is bottom-left and (1,1) is top-right.
-                uvs.Add(new Vector2((float)j / cols, (float)i / rows));
+    void OnDisable()
+    {
+        // Always remember to remove the command buffer from the camera to avoid memory leaks.
+        if (cb != null) {
+            foreach (var cam in registeredCameras) {
+                if (cam) {
+                    cam.RemoveCommandBuffer(CameraEvent.BeforeForwardOpaque, cb);
+                }
             }
-        }
-
-        // Calculate the total number of triangles needed.
-        // Each quad (cell) has 2 triangles, and each triangle has 3 vertices.
-        int totalTriangles = rows * cols * 6;
-        triangles.Capacity = totalTriangles;
-
-        // Loop through the grid again to create the triangles.
-        // The loops run up to the inner edges, so we use <.
-        for (int i = 0; i < rows; i++) {
-            for (int j = 0; j < cols; j++) {
-                int baseIndex = (i * (cols + 1)) + j;
-
-                // Define the first triangle (bottom-left, top-left, top-right).
-                // The indices refer to the vertices list.
-                triangles.Add(baseIndex);
-                triangles.Add(baseIndex + cols + 1);
-                triangles.Add(baseIndex + cols + 2);
-
-                // Define the second triangle (bottom-left, top-right, bottom-right).
-                triangles.Add(baseIndex);
-                triangles.Add(baseIndex + cols + 2);
-                triangles.Add(baseIndex + 1);
-            }
-        }
-
-        // Assign the calculated data to the mesh.
-        mesh.vertices = vertices.ToArray();
-        mesh.triangles = triangles.ToArray();
-        mesh.uv = uvs.ToArray();
-
-        // Recalculate the normals to ensure the mesh interacts correctly with lighting.
-        mesh.RecalculateNormals();
-
-        // Assign the new mesh to the MeshFilter component.
-        meshFilter.mesh = mesh;
-
-        // Assign a default material to the MeshRenderer if it doesn't have one.
-        if (meshRenderer.sharedMaterial == null) {
-            // Create a default material with a simple color.
-            Material defaultMat = new Material(Shader.Find("Standard"));
-            defaultMat.color = Color.white;
-            meshRenderer.material = defaultMat;
+            registeredCameras.Clear();
+            cb.Release();
+            cb = null;
         }
     }
+
+    private void OnDestroy()
+    {
+        // Always remember to remove the command buffer from the camera to avoid memory leaks.
+        if (cb != null) {
+            foreach (var cam in registeredCameras) {
+                if (cam) {
+                    cam.RemoveCommandBuffer(CameraEvent.BeforeForwardOpaque, cb);
+                }
+            }
+            registeredCameras.Clear();
+            cb.Release();
+            cb = null;
+        }
+    }
+
+    protected override void Update()
+    {
+        base.Update();
+
+        if (enabled) {
+            foreach (var cam in Camera.allCameras)
+                if (!registeredCameras.Contains(cam)) {
+                    cam.AddCommandBuffer(CameraEvent.BeforeForwardOpaque, cb);
+                    registeredCameras.Add(cam);
+                }
+
+#if UNITY_EDITOR
+            var sceneCam = SceneView.lastActiveSceneView?.camera;
+            if (sceneCam != null && !registeredCameras.Contains(sceneCam)) {
+                sceneCam.AddCommandBuffer(CameraEvent.BeforeForwardOpaque, cb);
+                registeredCameras.Add(sceneCam);
+            }
+#endif
+        }
+
+        var matrix = transform.localToWorldMatrix;
+
+        cb.Clear();
+        for (int i = 0; i < layerPropertyBlocks.Length; i++) {
+            cb.DrawMesh(hillMesh, matrix, hillMat, 0, Math.Min(i, 1), layerPropertyBlocks[i]);
+        }
+    }
+
+    Vector3 ComputeHillVertex(float u, float v)
+    {
+        const float perspective = 2;
+        const float xLeft = -5;
+        const float xRight = 5;
+        const float gaussianLimit = 2;
+        float gaussianLowerbound = Mathf.Exp(-Mathf.Pow(gaussianLimit, 2));
+
+        float x = Mathf.Lerp(xLeft, xRight, u) * Mathf.Lerp(perspective, 1, 1 - Mathf.Pow(1 - v, 2)); ;
+        float wx = Mathf.Lerp(-gaussianLimit, gaussianLimit, u);
+        float w = Mathf.Exp(-Mathf.Pow(wx, 2));
+        float dy = -2 * wx * w;
+        w = (w - gaussianLowerbound) / (1 - gaussianLowerbound);
+        float top;
+
+        if (u < 0.5) {
+            top = Mathf.Lerp(leftHeight, peakHeight, w);
+            dy *= (peakHeight - leftHeight);
+        } else {
+            top = Mathf.Lerp(rightHeight, peakHeight, w);
+            dy *= (peakHeight - rightHeight);
+        }
+        float y = top * (Mathf.Exp(-Mathf.Pow(1 - v, 2)) - Mathf.Exp(-1)) / (1 - Mathf.Exp(-1)); // v;
+
+        return new Vector3(x, y, 0);
+    }
+
+    Vector3[] GenerateBoundary()
+    {
+        const int edgePts = 50;
+        Gizmos.color = new Color(1, 1, 1, 1);
+        var pts = new Vector3[4 * edgePts - 3];
+
+        int i = 0;
+        for (; i < edgePts; i++) {
+            float u = i / (float)(edgePts - 1);
+            pts[i] = ComputeHillVertex(u, 0);
+        }
+        for (; i < 2 * edgePts - 1; i++) {
+            float v = (i - (edgePts - 1)) / (float)(edgePts - 1);
+            pts[i] = ComputeHillVertex(1, v);
+        }
+        for (; i < 3 * edgePts - 2; i++) {
+            float u = 1 - (i - (2 * edgePts - 2)) / (float)(edgePts - 1);
+            pts[i] = ComputeHillVertex(u, 1);
+        }
+        for (; i < 4 * edgePts - 3; i++) {
+            float v = 1 - (i - (3 * edgePts - 3)) / (float)(edgePts - 1);
+            pts[i] = ComputeHillVertex(0, v);
+        }
+        return pts;
+    }
+
+#if UNITY_EDITOR
+    void OnDrawGizmos()
+    {
+        Gizmos.color = new Color(1, 1, 1, 0);
+        var yLocalCenter = peakHeight / 2.0f;
+        var worldMat = transform.localToWorldMatrix;
+
+        var position = worldMat.MultiplyPoint(new Vector3(0, yLocalCenter, 0));
+        Gizmos.DrawCube(position, new Vector3(transform.localScale.x * 5, peakHeight, 1));
+
+        if (UnityEditor.Selection.Contains(gameObject)) {
+            var pts = GenerateBoundary();
+            for(int i = 0;i < pts.Length;i++) {
+                pts[i] = worldMat.MultiplyPoint(pts[i]);
+            }
+
+            Gizmos.DrawLineStrip(pts, true);
+        }
+    }
+#endif
 }

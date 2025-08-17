@@ -1,13 +1,9 @@
 using System;
-using System.Collections;
 using System.Collections.Generic;
 using UnityEngine;
 using Unity.Mathematics;
 using UnityEngine.Rendering;
-using Unity.Collections;
 using System.Linq;
-using System.Threading;
-using Mono.Cecil.Cil;
 
 
 public delegate void SimulationStepEvent(int frameCount);

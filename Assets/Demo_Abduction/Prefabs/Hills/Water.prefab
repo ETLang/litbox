@@ -1,0 +1,144 @@
+%YAML 1.1
+%TAG !u! tag:unity3d.com,2011:
+--- !u!1 &6499316569297523086
+GameObject:
+  m_ObjectHideFlags: 0
+  m_CorrespondingSourceObject: {fileID: 0}
+  m_PrefabInstance: {fileID: 0}
+  m_PrefabAsset: {fileID: 0}
+  serializedVersion: 6
+  m_Component:
+  - component: {fileID: 6592509386542216017}
+  - component: {fileID: 617172442286495213}
+  - component: {fileID: 5335359655619309373}
+  - component: {fileID: 3721683902058459822}
+  m_Layer: 0
+  m_Name: Water
+  m_TagString: Untagged
+  m_Icon: {fileID: 0}
+  m_NavMeshLayer: 0
+  m_StaticEditorFlags: 0
+  m_IsActive: 1
+--- !u!4 &6592509386542216017
+Transform:
+  m_ObjectHideFlags: 0
+  m_CorrespondingSourceObject: {fileID: 0}
+  m_PrefabInstance: {fileID: 0}
+  m_PrefabAsset: {fileID: 0}
+  m_GameObject: {fileID: 6499316569297523086}
+  serializedVersion: 2
+  m_LocalRotation: {x: 0, y: 0, z: 0, w: 1}
+  m_LocalPosition: {x: -0.77, y: -5.32, z: 10}
+  m_LocalScale: {x: 2.19, y: 1, z: 1}
+  m_ConstrainProportionsScale: 0
+  m_Children: []
+  m_Father: {fileID: 0}
+  m_LocalEulerAnglesHint: {x: 0, y: 0, z: 0}
+--- !u!114 &617172442286495213
+MonoBehaviour:
+  m_ObjectHideFlags: 0
+  m_CorrespondingSourceObject: {fileID: 0}
+  m_PrefabInstance: {fileID: 0}
+  m_PrefabAsset: {fileID: 0}
+  m_GameObject: {fileID: 6499316569297523086}
+  m_Enabled: 1
+  m_EditorHideFlags: 0
+  m_Script: {fileID: 11500000, guid: b99251e475ac2134799b2a9f4dc5fc40, type: 3}
+  m_Name: 
+  m_EditorClassIdentifier: 
+  rate1: 0.3
+  rate2: 0.4
+--- !u!114 &5335359655619309373
+MonoBehaviour:
+  m_ObjectHideFlags: 0
+  m_CorrespondingSourceObject: {fileID: 0}
+  m_PrefabInstance: {fileID: 0}
+  m_PrefabAsset: {fileID: 0}
+  m_GameObject: {fileID: 6499316569297523086}
+  m_Enabled: 1
+  m_EditorHideFlags: 0
+  m_Script: {fileID: 11500000, guid: 225e0515454c972429f9811e506feede, type: 3}
+  m_Name: 
+  m_EditorClassIdentifier: 
+  hillMesh: {fileID: 4300000, guid: fd14a3736af965342adca141ec7f01c0, type: 2}
+  leftHeight: 5
+  peakHeight: 5
+  rightHeight: 5
+  layers:
+  - fuzzColor: {r: 0, g: 0, b: 0, a: 0}
+    fuzzLength: 0
+    specularColor: {r: 0.23773581, g: 0.23773581, b: 0.23773581, a: 0}
+    specularPower: 5.66
+    hillTexture: {fileID: 2800000, guid: 67770033ba3a4e147ad4853079c44679, type: 2}
+    textureAngle: 22.4
+    textureOffset: 0
+    textureScale: 7.63
+    rowCount: -1
+  - fuzzColor: {r: 1, g: 1, b: 1, a: 0}
+    fuzzLength: 0.05
+    specularColor: {r: 0.86415094, g: 0.85925955, b: 0.85925955, a: 0}
+    specularPower: 12.7
+    hillTexture: {fileID: 2800000, guid: 9ae09ffa7d937774088c91dfa5a623e8, type: 2}
+    textureAngle: 153
+    textureOffset: 0
+    textureScale: 6.72
+    rowCount: -1
+  hillMat: {fileID: 2100000, guid: f5f74823e0d31b1419117a4126f463f4, type: 2}
+  specularLightSource: {x: -5.06, y: 1.22, z: 3.45}
+  viewShift: 2.93
+  leftAmbience: {r: 1, g: 1, b: 1, a: 0}
+  rightAmbience: {r: 0.35686275, g: 0.35686275, b: 0.35686275, a: 0}
+--- !u!60 &3721683902058459822
+PolygonCollider2D:
+  m_ObjectHideFlags: 0
+  m_CorrespondingSourceObject: {fileID: 0}
+  m_PrefabInstance: {fileID: 0}
+  m_PrefabAsset: {fileID: 0}
+  m_GameObject: {fileID: 6499316569297523086}
+  m_Enabled: 0
+  serializedVersion: 3
+  m_Density: 1
+  m_Material: {fileID: 0}
+  m_IncludeLayers:
+    serializedVersion: 2
+    m_Bits: 0
+  m_ExcludeLayers:
+    serializedVersion: 2
+    m_Bits: 0
+  m_LayerOverridePriority: 0
+  m_ForceSendLayers:
+    serializedVersion: 2
+    m_Bits: 4294967295
+  m_ForceReceiveLayers:
+    serializedVersion: 2
+    m_Bits: 4294967295
+  m_ContactCaptureLayers:
+    serializedVersion: 2
+    m_Bits: 4294967295
+  m_CallbackLayers:
+    serializedVersion: 2
+    m_Bits: 4294967295
+  m_IsTrigger: 0
+  m_UsedByEffector: 0
+  m_CompositeOperation: 0
+  m_CompositeOrder: 0
+  m_Offset: {x: 0, y: 0}
+  m_SpriteTilingProperty:
+    border: {x: 0, y: 0, z: 0, w: 0}
+    pivot: {x: 0, y: 0}
+    oldSize: {x: 0, y: 0}
+    newSize: {x: 0, y: 0}
+    adaptiveTilingThreshold: 0
+    drawMode: 0
+    adaptiveTiling: 0
+  m_AutoTiling: 0
+  m_Points:
+    m_Paths:
+    - - {x: 2.5659733, y: 4.030196}
+      - {x: -0.062556244, y: 5.8414106}
+      - {x: -3.0012472, y: 3.440143}
+      - {x: -5.1062965, y: 2.8242702}
+      - {x: -7.4780955, y: 1.3177857}
+      - {x: 1.6351417, y: 2.0385697}
+      - {x: 8.876698, y: 1.0953311}
+  m_UseDelaunayMesh: 0
