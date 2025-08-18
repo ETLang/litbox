@@ -27,7 +27,7 @@ struct Random
     float4 Next4() { return float4(Next(), Next(), Next(), Next()); }
     
     float2 NextDirection() {
-        float theta = Next() * 2 * PI;
+        float theta = Next() * 2 * 3.141592654f;
         float2 dir;
         sincos(theta, dir.x, dir.y);
         return dir;
