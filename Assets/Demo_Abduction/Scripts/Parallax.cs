@@ -5,12 +5,12 @@ public class Parallax : MonoBehaviour
     [SerializeField] float parallaxRateX;
     [SerializeField] float parallaxRateY;
 
-    Vector3 initialDelta;
+    Vector3 previousCameraPosition;
 
     // Start is called once before the first execution of Update after the MonoBehaviour is created
     void Start()
     {
-        initialDelta = transform.position - Camera.main.transform.position;
+        //initialDelta = transform.position - Camera.main.transform.position;
     }
 
     // Update is called once per frame
@@ -18,9 +18,12 @@ public class Parallax : MonoBehaviour
     {
         var cameraPos = Camera.main.transform.position;
 
-        cameraPos.x *= (1 - parallaxRateX);
-        cameraPos.y *= (1 - parallaxRateY);
+        var cameraDelta = cameraPos - previousCameraPosition;
 
-        transform.position = cameraPos + initialDelta;
+        cameraDelta.x *= (1 - parallaxRateX);
+        cameraDelta.y *= (1 - parallaxRateY);
+
+        transform.position += cameraDelta;
+        previousCameraPosition = cameraPos;
     }
 }
