@@ -38,17 +38,17 @@ Shader "Unlit/SkyShader"
             {
                 v2f o;
                 o.vertex = UnityObjectToClipPos(v.vertex);
-                o.uv = TRANSFORM_TEX(v.uv, _MainTex);
+                o.uv = v.uv;
                 return o;
             }
 
             fixed4 frag (v2f i) : SV_Target
             {
-                // sample the texture
-                fixed4 col = tex2D(_MainTex, i.uv);
-                // float noise = frac(sin(dot(i.uv, float2(12.9898, 78.233))) * 43758.5453);
-                // col.rgb += noise * 0.05; // Add a small amount of noise
-                return col;
+                float noise = frac(sin(dot(i.uv*float2(10,100), float2(12.9898, 78.233))) * 43758.5453);
+                noise *= 2;
+                noise -= 1;
+                float2 uv = i.uv + noise.xx * (0.005f + i.uv.y * 0.015f);
+                return tex2D(_MainTex, uv);
             }
             ENDCG
         }
