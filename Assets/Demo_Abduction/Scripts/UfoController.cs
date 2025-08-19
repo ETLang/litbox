@@ -21,6 +21,10 @@ public class UfoController : MonoBehaviour
     {
         var body = GetComponent<Rigidbody2D>();
 
+        if(body.IsSleeping()) {
+            return;
+        } 
+
         if (_thrusterEngaged) {
             //body.WakeUp();
             body.AddRelativeForceY(thrustPower);
@@ -75,5 +79,14 @@ public class UfoController : MonoBehaviour
     void OnControlsChanged()
     {
         Debug.Log("INPUT: Controls Changed");
+    }
+
+    private void OnPause()
+    {
+        if (GameStateController.Instance.State != GameStates.Paused) {
+            GameStateController.Instance.State = GameStates.Paused;
+        } else {
+            GameStateController.Instance.State = GameStates.Playing;
+        }
     }
 }
