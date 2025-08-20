@@ -51,6 +51,8 @@ def parse_args():
     parser = argparse.ArgumentParser(description='Photoner Neural Network Training Script')
    # parser.add_argument('--help', action='help', help='Displays documentation regarding these arguments')
     parser.add_argument('--eval', action='store_true', help='Run in evaluation mode')
+    parser.add_argument('--input-easy-location', help='Path to easy input images, for curriculum training')
+    parser.add_argument('--input-medium-location', help='Path to input images, for curriculum training')
     parser.add_argument('--input-location', required=True, help='Path to input images')
     parser.add_argument('--training-location', help='Path to training images')
     parser.add_argument('--output-folder', help='Output folder for evaluated images')
@@ -59,7 +61,7 @@ def parse_args():
     parser.add_argument('--checkpoint-folder', help='Folder to save checkpoint data')
     parser.add_argument('--checkpoint-tests', help='Path to test images for checkpoints')
     parser.add_argument('--test-ratio', type=float, default=g_test_ratio, help='Percentage of data for testing')
-    parser.add_argument('--epochs', type=int, default=g_epochs, help='Number of epochs to train')
+    parser.add_argument('--epochs', type=int, default=g_epochs, help='Number of epochs to train, per curriculum stage')
     parser.add_argument('--log-space', action='store_true', help='Transform EXR data to log space')
     parser.add_argument('--crop-size', type=int, default=g_crop_size, help='Resolution of training crops')
     parser.add_argument('--upsample', type=int, default=g_output_upsample, choices=[1, 2, 4, 8], help='Upsampling factor')
@@ -98,127 +100,140 @@ def use_sigmoid_from_input(input_files):
 
 def train(args):
     # Create datasets
-    input_files = sorted(glob.glob(args.input_location))
+    input_sets = []
     training_files = sorted(glob.glob(args.training_location))
-    
-    if len(input_files) < len(training_files):
+    if args.input_easy_location:
+        input_easy_files = sorted(glob.glob(args.input_easy_location))
+        if len(input_easy_files) < len(training_files):
+            raise ValueError("There are fewer input files than training files. Each training file must have a corresponding input file.")
+        input_easy_files = input_easy_files[:len(training_files)]
+        input_sets.append(("Easy", input_easy_files))
+    if args.input_medium_location:
+        input_medium_files = sorted(glob.glob(args.input_medium_location))
+        if len(input_medium_files) < len(training_files):
+            raise ValueError("There are fewer input files than training files. Each training file must have a corresponding input file.")
+        input_medium_files = input_medium_files[:len(training_files)]
+        input_sets.append(("Medium", input_medium_files))
+    input_final_files = sorted(glob.glob(args.input_location))
+    if len(input_final_files) < len(training_files):
         raise ValueError("There are fewer input files than training files. Each training file must have a corresponding input file.")
-    # Only use the first N input files, where N is the number of training files
-    input_files = input_files[:len(training_files)]
-    
-    # Split into train and test sets
-    split_idx = int(len(input_files) * (1 - args.test_ratio))
-    train_input = input_files[:split_idx]
-    train_target = training_files[:split_idx]
-    test_input = input_files[split_idx:]
-    test_target = training_files[split_idx:]
+    input_final_files = input_final_files[:len(training_files)]
+    input_sets.append(("Final", input_final_files))
 
-    truth_transform = transforms.Compose([
-        # transforms.Resize((8,8))
-    ])
-    
-    train_dataset = PhotonerDataset(train_input, train_target, 
-                                  args.crop_size, args.upsample, truth_transform)
-    test_dataset = PhotonerDataset(test_input, test_target,
-                                 args.crop_size, args.upsample, truth_transform)
-    
-    train_loader = DataLoader(train_dataset, batch_size=args.batch_size, shuffle=True, num_workers=4)
-    test_loader = DataLoader(test_dataset, batch_size=args.batch_size, shuffle=False, num_workers=4)
-    
-    # Initialize model and move to device
-    use_sigmoid = use_sigmoid_from_input(input_files)
-    model = PhotonerNet(
-        upsample_factor=args.upsample, 
-        use_sigmoid=use_sigmoid, 
-        use_log_space=train_dataset.exr_source and args.log_space,
-        normalize_input=g_normalize_input, 
-        initial_features=g_initial_features,
-        unet_size=g_unet_size, 
-        epsilon=g_epsilon, 
-        padding_mode=g_padding_mode).to(device)
+    for curriculum_name, input_files in input_sets:
+        # Split into train and test sets
+        split_idx = int(len(training_files) * (1 - args.test_ratio))
+        train_input = input_files[:split_idx]
+        train_target = training_files[:split_idx]
+        test_input = input_files[split_idx:]
+        test_target = training_files[split_idx:]
 
-    
-    # Loss functions
-    hdr_loss = HdrLoss()
-    # mse_loss = nn.MSELoss()
-    # l1_loss = nn.L1Loss()
-    # ssim_loss = SSIM()
-    # vgg = models.vgg16(weights=models.VGG16_Weights.DEFAULT).features[:16].to(device).eval()
-    # perceptual_loss_fn = VGGPerceptualLoss(feature_layers=['relu3_3', 'relu4_3']).to(device)    
+        truth_transform = transforms.Compose([
+            # transforms.Resize((8,8))
+        ])
+        
+        train_dataset = PhotonerDataset(train_input, train_target, 
+                                    args.crop_size, args.upsample, truth_transform)
+        test_dataset = PhotonerDataset(test_input, test_target,
+                                    args.crop_size, args.upsample, truth_transform)
+        
+        train_loader = DataLoader(train_dataset, batch_size=args.batch_size, shuffle=True, num_workers=4)
+        test_loader = DataLoader(test_dataset, batch_size=args.batch_size, shuffle=False, num_workers=4)
+        
+        # Initialize model and move to device
+        use_sigmoid = use_sigmoid_from_input(input_files)
+        model = PhotonerNet(
+            upsample_factor=args.upsample, 
+            use_sigmoid=use_sigmoid, 
+            use_log_space=train_dataset.exr_source and args.log_space,
+            normalize_input=g_normalize_input, 
+            initial_features=g_initial_features,
+            unet_size=g_unet_size, 
+            epsilon=g_epsilon, 
+            padding_mode=g_padding_mode).to(device)
 
-    # def perceptual_loss(pred, target):
-    #     # pred and target: [batch, 1, H, W]
-    #     pred_vgg = pred.repeat(1, 3, 1, 1)     # [batch, 3, H, W]
-    #     target_vgg = target.repeat(1, 3, 1, 1) # [batch, 3, H, W]
-    #     with torch.no_grad():
-    #         return perceptual_loss_fn(pred_vgg, target_vgg)
-    
-    # Optimizer
-    if g_use_adam_w:
-        optimizer = optim.Adam(model.parameters(), lr=args.learn_rate, weight_decay=g_weight_decay)
-    else:
-        optimizer = optim.Adam(model.parameters(), lr=args.learn_rate)
-    
-    # Training loop
-    start_time = time.time()
-    last_checkpoint = start_time
-    last_print = start_time
-    
-    model.train()
-    for epoch in range(args.epochs):
-        for batch_idx, (input_img, target_img) in enumerate(train_loader):
-            # Clone tensors to make them resizable
-            # TODO: Check if this is necessary
-            input_img = input_img.clone().detach().to(device)
-            target_img = target_img.clone().detach().to(device)
-            
-            # Select random channel for both input and target (using same index)
-            input_channel, target_channel = select_random_channel(input_img, target_img)
-            
-            optimizer.zero_grad()
+        
+        # Loss functions
+        hdr_loss = HdrLoss()
+        # mse_loss = nn.MSELoss()
+        # l1_loss = nn.L1Loss()
+        # ssim_loss = SSIM()
+        # vgg = models.vgg16(weights=models.VGG16_Weights.DEFAULT).features[:16].to(device).eval()
+        # perceptual_loss_fn = VGGPerceptualLoss(feature_layers=['relu3_3', 'relu4_3']).to(device)    
 
-            input_channel = model.pre_transform(input_channel)
-            output = model(input_channel)
-            output = model.post_transform(output)
-
-            # Calculate losses
-            loss = hdr_loss(output, target_channel)
-            # loss_mse = mse_loss(output, target_channel)
-            # loss_l1 = l1_loss(output, target_channel)
-            # loss_ssim = 1 - ssim_loss(output, target_channel)
-            # loss_perceptual = perceptual_loss(output, target_channel)
-            
-            # total_loss = loss_mse + 0.5 * loss_ssim + 0.1 * loss_perceptual
-            # total_loss = loss_l1 + 0.25 * loss_mse
-            # total_loss = 0.5 * loss_l1 + loss_mse
-            # total_loss = loss_l1
-            
-            # total_loss.requires_grad = True
-            # total_loss.backward()
-            loss.backward()
-            optimizer.step()
-            
-            # Console output every 5 seconds
-            current_time = time.time()
-            if current_time - last_print >= 5:
-                elapsed = current_time - start_time
-                print(f"{elapsed:.2f},{epoch},{epoch*len(train_dataset) + batch_idx*len(input_img)},{loss.item():.6f}")
-                last_print = current_time
+        # def perceptual_loss(pred, target):
+        #     # pred and target: [batch, 1, H, W]
+        #     pred_vgg = pred.repeat(1, 3, 1, 1)     # [batch, 3, H, W]
+        #     target_vgg = target.repeat(1, 3, 1, 1) # [batch, 3, H, W]
+        #     with torch.no_grad():
+        #         return perceptual_loss_fn(pred_vgg, target_vgg)
+        
+        # Optimizer
+        if g_use_adam_w:
+            optimizer = optim.Adam(model.parameters(), lr=args.learn_rate, weight_decay=g_weight_decay)
+        else:
+            optimizer = optim.Adam(model.parameters(), lr=args.learn_rate)
+        
+        # Training loop
+        start_time = time.time()
+        last_checkpoint = start_time
+        last_print = start_time
+        
+        model.train()
+        for epoch in range(args.epochs):
+            for batch_idx, (input_img, target_img) in enumerate(train_loader):
+                # Clone tensors to make them resizable
+                # TODO: Check if this is necessary
+                input_img = input_img.clone().detach().to(device)
+                target_img = target_img.clone().detach().to(device)
                 
-                # Checkpoint if needed
-                if args.checkpoint_interval and current_time - last_checkpoint >= args.checkpoint_interval:
-                    checkpoint_dir = os.path.join(args.checkpoint_folder, f"{int(elapsed)}")
-                    os.makedirs(checkpoint_dir, exist_ok=True)
+                # Select random channel for both input and target (using same index)
+                input_channel, target_channel = select_random_channel(input_img, target_img)
+                
+                optimizer.zero_grad()
+
+                input_channel = model.pre_transform(input_channel)
+                output = model(input_channel)
+                output = model.post_transform(output)
+
+                # Calculate losses
+                loss = hdr_loss(output, target_channel)
+                # loss_mse = mse_loss(output, target_channel)
+                # loss_l1 = l1_loss(output, target_channel)
+                # loss_ssim = 1 - ssim_loss(output, target_channel)
+                # loss_perceptual = perceptual_loss(output, target_channel)
+                
+                # total_loss = loss_mse + 0.5 * loss_ssim + 0.1 * loss_perceptual
+                # total_loss = loss_l1 + 0.25 * loss_mse
+                # total_loss = 0.5 * loss_l1 + loss_mse
+                # total_loss = loss_l1
+                
+                # total_loss.requires_grad = True
+                # total_loss.backward()
+                loss.backward()
+                optimizer.step()
+                
+                # Console output every 5 seconds
+                current_time = time.time()
+                if current_time - last_print >= 5:
+                    elapsed = current_time - start_time
+                    print(f"{elapsed:.2f},{curriculum_name},{epoch},{epoch*len(train_dataset) + batch_idx*len(input_img)},{loss.item():.6f}")
+                    last_print = current_time
                     
-                    # Save model
-                    torch.save(model.state_dict(), os.path.join(checkpoint_dir, "model.pth"))
-                    
-                    # Evaluate checkpoint tests if provided
-                    if args.checkpoint_tests:
-                        evaluate(model, args.checkpoint_tests, checkpoint_dir, args)
-                        model.train()
+                    # Checkpoint if needed
+                    if args.checkpoint_interval and current_time - last_checkpoint >= args.checkpoint_interval:
+                        checkpoint_dir = os.path.join(args.checkpoint_folder, f"{int(elapsed)}")
+                        os.makedirs(checkpoint_dir, exist_ok=True)
                         
-                    last_checkpoint = time.time()
+                        # Save model
+                        torch.save(model.state_dict(), os.path.join(checkpoint_dir, "model.pth"))
+                        
+                        # Evaluate checkpoint tests if provided
+                        if args.checkpoint_tests:
+                            evaluate(model, args.checkpoint_tests, checkpoint_dir, args)
+                            model.train()
+                            
+                        last_checkpoint = time.time()
     
     # Save final model
     torch.save(model.state_dict(), args.model_path)
