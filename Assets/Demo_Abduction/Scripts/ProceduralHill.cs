@@ -42,8 +42,10 @@ public class ProceduralHill : PhotonerDemoComponent
     [SerializeField] Material hillMat;
     [SerializeField] Vector3 specularLightSource;
     [SerializeField] float viewShift;
-    [SerializeField] Color leftAmbience;
-    [SerializeField] Color rightAmbience;
+    [SerializeField] public Color leftAmbience;
+    [SerializeField] public Color rightAmbience;
+    [SerializeField] public Color specularFilter = Color.white;
+    [SerializeField] public Color haze;
 
     CommandBuffer cb;
     MaterialPropertyBlock[] layerPropertyBlocks = new MaterialPropertyBlock[0];
@@ -60,6 +62,8 @@ public class ProceduralHill : PhotonerDemoComponent
         DetectChanges(() => viewShift);
         DetectChanges(() => leftAmbience);
         DetectChanges(() => rightAmbience);
+        DetectChanges(() => specularFilter);
+        DetectChanges(() => haze);
     }
 
     private int _layerListeningCount = 0;
@@ -88,7 +92,7 @@ public class ProceduralHill : PhotonerDemoComponent
 
             layerPropertyBlocks[i].SetColor("_FuzzColor", layers[i].fuzzColor);
             layerPropertyBlocks[i].SetFloat("_FuzzLength", layers[i].fuzzLength);
-            layerPropertyBlocks[i].SetColor("_SpecularColor", layers[i].specularColor);
+            layerPropertyBlocks[i].SetColor("_SpecularColor", layers[i].specularColor * specularFilter);
             layerPropertyBlocks[i].SetFloat("_SpecularPower", layers[i].specularPower);
 
             layerPropertyBlocks[i].SetMatrix("_FarmlandTransform", matrix);
@@ -104,6 +108,7 @@ public class ProceduralHill : PhotonerDemoComponent
             layerPropertyBlocks[i].SetFloat("_ViewXShift", viewShift);
             layerPropertyBlocks[i].SetColor("_LeftAmbience", leftAmbience);
             layerPropertyBlocks[i].SetColor("_RightAmbience", rightAmbience);
+            layerPropertyBlocks[i].SetColor("_Haze", haze);
         }
     }
 
@@ -125,7 +130,7 @@ public class ProceduralHill : PhotonerDemoComponent
     {
         ValidateArrayListeners();
 
-        if(Application.isPlaying) {
+        if (Application.isPlaying) {
             // Configure the collider
             _collider = GetComponent<PolygonCollider2D>();
 
@@ -170,8 +175,10 @@ public class ProceduralHill : PhotonerDemoComponent
         }
     }
 
-    private void OnDestroy()
+    protected override void OnDestroy()
     {
+        base.OnDestroy();
+
         // Always remember to remove the command buffer from the camera to avoid memory leaks.
         if (cb != null) {
             foreach (var cam in registeredCameras) {

@@ -25,6 +25,7 @@ float4 _BaseColor;
 float _SpecularPower;
 float4 _LeftAmbience;
 float4 _RightAmbience;
+float4 _Haze;
 float4 _SpecularColor;
 float4 _SpecularSource;
 float _ViewXShift;
@@ -109,6 +110,8 @@ fixed4 hill_frag(v2f i) : SV_Target
     float specular_factor = pow(saturate(dot(normalize(reflect(view_vec, i.normal)), specular_source)), _SpecularPower);
 
     float3 specular_color = _SpecularColor.rgb * specular_factor;
+    
+    float3 final_color = lerp(diffuse_color + specular_color, _Haze.rgb, _Haze.a);
 
-    return float4(diffuse_color + specular_color, 1) * farmland_color.a;
+    return float4(final_color, 1) * farmland_color.a;
 }

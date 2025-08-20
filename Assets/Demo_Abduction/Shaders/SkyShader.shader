@@ -47,7 +47,7 @@ Shader "Unlit/SkyShader"
                 float noise = frac(sin(dot(i.uv*float2(10,100), float2(12.9898, 78.233))) * 43758.5453);
                 noise *= 2;
                 noise -= 1;
-                float2 uv = i.uv + noise.xx * (0.005f + i.uv.y * 0.015f);
+                float2 uv = i.uv + noise.xx * (0.005f + i.uv.y * 0.115f);
                 return tex2D(_MainTex, uv);
             }
             ENDCG

@@ -18,7 +18,7 @@ public class PhotonerDemoComponent : MonoBehaviour
     {
         _autoUpdate = autoUpdate;
 
-        _onGlobalChangeCheck += () => OnInvalidated();
+        _onGlobalChangeCheck += OnInvalidated;
     }
 
     private void Invalidate()
@@ -55,5 +55,10 @@ public class PhotonerDemoComponent : MonoBehaviour
         if (_autoUpdate) {
             CheckChanged();
         }
+    }
+
+    protected virtual void OnDestroy()
+    {
+        _onGlobalChangeCheck -= OnInvalidated;
     }
 }
