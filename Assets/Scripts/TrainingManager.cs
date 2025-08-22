@@ -75,7 +75,7 @@ public class TrainingManager : MonoBehaviour {
     int FindNextAvailableSampleID()
     {
         int i = 0;
-        while (File.Exists(Path.Combine(_datasetPath, $"Input_0_{i:0000}.png")))
+        while (File.Exists(Path.Combine(_datasetPath, $"Input_0_{i:00000}.png")))
             i++;
         return i;
     }
@@ -99,7 +99,7 @@ public class TrainingManager : MonoBehaviour {
                 sampleId = _generatedSamples + _sampleIdOffset;
 
                 JsonSceneData sceneDesc;
-                var scenePath = Path.Combine(_datasetPath, $"Scene_{sampleId:0000}.json");
+                var scenePath = Path.Combine(_datasetPath, $"Scene_{sampleId:00000}.json");
 
                 if (!File.Exists(scenePath)) {
                     sceneDesc = GenerateRandomSceneDescription();
@@ -118,11 +118,11 @@ public class TrainingManager : MonoBehaviour {
             _activeProfile++;
 
             if(_activeProfile == inputProfiles.Length) {
-                _imagePathPNG = Path.Combine(_datasetPath, $"Output_{sampleId:0000}.png");
-                _imagePathEXR = Path.Combine(_datasetPath, $"Output_{sampleId:0000}.exr");
+                _imagePathPNG = Path.Combine(_datasetPath, $"Output_{sampleId:00000}.png");
+                _imagePathEXR = Path.Combine(_datasetPath, $"Output_{sampleId:00000}.exr");
             } else {
-                _imagePathPNG = Path.Combine(_datasetPath, $"Input_{_activeProfile}_{sampleId:0000}.png");
-                _imagePathEXR = Path.Combine(_datasetPath, $"Input_{_activeProfile}_{sampleId:0000}.exr");
+                _imagePathPNG = Path.Combine(_datasetPath, $"Input_{_activeProfile}_{sampleId:00000}.png");
+                _imagePathEXR = Path.Combine(_datasetPath, $"Input_{_activeProfile}_{sampleId:00000}.exr");
             }
 
             if(File.Exists(_imagePathPNG) && File.Exists(_imagePathEXR)) {
@@ -215,7 +215,7 @@ public class TrainingManager : MonoBehaviour {
             if (_activeProfile == inputProfiles.Length)
             {
                 _simulation.SimulationOutputToneMapped.SaveTexturePNG(_imagePathPNG);
-                Debug.Log($"Completed Scene {_generatedSamples:0000}");
+                Debug.Log($"Completed Scene {_generatedSamples:00000}");
             }
             else
             {
@@ -247,7 +247,7 @@ public class TrainingManager : MonoBehaviour {
                 var sceneid = _generatedSamples + _sampleIdOffset;
 
                 List<string> filesToDelete =
-                    Directory.EnumerateFiles(_datasetPath, $"*_{sceneid:0000}.*").ToList();
+                    Directory.EnumerateFiles(_datasetPath, $"*_{sceneid:00000}.*").ToList();
 
                 foreach (var file in filesToDelete)
                 {
