@@ -67,6 +67,17 @@
                 },
                 {
                     "name": "",
+                    "id": "a6c3be3d-7f46-46be-845f-f9696b47e8b0",
+                    "path": "<Touchscreen>/Press",
+                    "interactions": "",
+                    "processors": "",
+                    "groups": "",
+                    "action": "Thrust",
+                    "isComposite": false,
+                    "isPartOfComposite": false
+                },
+                {
+                    "name": "",
                     "id": "70aeca5d-5e09-4172-b41d-27e320f56dd7",
                     "path": "<Keyboard>/e",
                     "interactions": "",
@@ -141,6 +152,17 @@
                     "action": "Move",
                     "isComposite": false,
                     "isPartOfComposite": true
+                },
+                {
+                    "name": "",
+                    "id": "19cc153d-d980-4ea2-b544-c2132d31773f",
+                    "path": "<Touchscreen>/position/x",
+                    "interactions": "",
+                    "processors": "Normalize(max=2000,zero=1000)",
+                    "groups": "",
+                    "action": "Move",
+                    "isComposite": false,
+                    "isPartOfComposite": false
                 },
                 {
                     "name": "",

@@ -17,6 +17,8 @@ public class GameStateController : MonoBehaviour
     [SerializeField] GameObject titleScreen;
     [SerializeField] GameObject pauseScreen;
     [SerializeField] Rigidbody2D player;
+    [SerializeField] GameObject[] desktopOnlyThings;
+    [SerializeField] GameObject[] mobileOnlyThings;
 
     Dictionary<(GameStates, GameStates), Action> _transitions = new Dictionary<(GameStates, GameStates), Action>();
 
@@ -51,6 +53,20 @@ public class GameStateController : MonoBehaviour
             pauseScreen.SetActive(false); 
             titleScreen.SetActive(true);
         };
+
+        if(MobileDetector.IsMobileDevice) {
+            if(mobileOnlyThings != null) {
+                foreach(var thing in mobileOnlyThings) {
+                    thing?.SetActive(true);
+                }
+            }
+        } else {
+            if(desktopOnlyThings != null) {
+                foreach(var thing in desktopOnlyThings) {
+                    thing?.SetActive(true);
+                }
+            }
+        }
     }
 
     public void PlayButtonPressed()
