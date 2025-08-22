@@ -47,7 +47,7 @@ class PhotonerNet(nn.Module):
         self.unet_downsamplers = nn.ModuleList()
         self.unet_decoders = nn.ModuleList()
         self.unet_skipconns = nn.ModuleList()
-        pipeline_channels = 2
+        pipeline_channels = 1
         
         #########################
         # Initial Feature Extraction
@@ -97,15 +97,20 @@ class PhotonerNet(nn.Module):
         if use_sigmoid:
             self.clamp_output = nn.Sigmoid() # Or adjust based on your image range [0,1] or [-1,1]
 
-    def pre_transform(self, x):
+    def pre_transform(self, x): # [B, 1, H, W]
         if self.use_log_space:
-            if self.normalize_input:
-                if self.previous_range != -1:
-                    raise Exception('Cannot pre_transform without first matching a post_transform call for the previous call to pre_transform')
-                self.previous_range = x.max()
-                x /= self.previous_range
-            x_log = torch.log2(x + self.epsilon)
-            x = torch.cat([x, x_log], dim=1)  # Concatenate log and original for dual input
+            x = torch.log2(x + self.epsilon)
+        if self.normalize_input:
+            if self.previous_range != -1:
+                raise Exception('Cannot pre_transform without first matching a post_transform call for the previous call to pre_transform')
+            # compute mean and std for normalization
+            self.mean = x.mean(dim=[2, 3], keepdim=True)
+            self.std = x.std(dim=[2, 3], keepdim=True)
+            self.previous_range = 1
+
+            # Normalize input mean to 0 and std to 1
+            x = (x - self.mean) / (self.std + self.epsilon)
+            # x = torch.cat([x, x_log], dim=1)  # Concatenate log and original for dual input
         return x
         
     def forward(self, x_lr, mask=None):
@@ -250,13 +255,14 @@ class PhotonerNet(nn.Module):
             return output
 
     def post_transform(self, x):
+        if self.normalize_input:
+            if self.previous_range == -1:
+                raise Exception('Cannot post_transform without a prior call to pre_transform')
+            x *= (self.std + self.epsilon)
+            x += self.mean
+            self.previous_range = -1
         if self.use_log_space:
             x = torch.exp2(x) - self.epsilon
-            if self.normalize_input:
-                if self.previous_range == -1:
-                    raise Exception('Cannot post_transform without a prior call to pre_transform')
-                x *= self.previous_range
-                self.previous_range = -1
         return x
     
     def make_feature_extraction(self, channels_in, features):

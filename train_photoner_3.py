@@ -6,6 +6,7 @@ from torch.utils.data import Dataset, DataLoader
 import torchvision.models as models
 from torchvision import transforms
 import numpy as np
+import matplotlib.pyplot as plt
 import os
 import glob
 import time
@@ -18,6 +19,7 @@ import math
 from typing import Tuple, Optional
 import torch.nn.functional as F
 import torchvision.transforms.functional
+from photoner_display import PhotonerDisplay
 from photoner_loss import HdrLoss
 from photoner_dataset import PhotonerDataset
 from photoner_model import PhotonerNet
@@ -26,7 +28,7 @@ from photoner_model import PhotonerNet
 g_output_upsample = 1 # 4
 g_checkpoint_interval = 900
 g_test_ratio = 0.0
-g_epochs = 100
+g_epochs = 20
 g_crop_size = 256
 g_batch_size = 4
 g_learn_rate = 0.00001 # 0.001
@@ -39,6 +41,10 @@ g_normalize_input = False
 g_use_adam_w = True
 g_weight_decay = 0.01
 g_epsilon = 1e-6 
+g_loss_dark_bias = 0.5
+g_loss_bright_weight = 0.6
+g_loss_gradient_weight = 0.4
+g_loss_l1_weight = 1
 
 # TODO
 g_gaussian_initialization = True
@@ -49,7 +55,6 @@ device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
 
 def parse_args():
     parser = argparse.ArgumentParser(description='Photoner Neural Network Training Script')
-   # parser.add_argument('--help', action='help', help='Displays documentation regarding these arguments')
     parser.add_argument('--eval', action='store_true', help='Run in evaluation mode')
     parser.add_argument('--input-easy-location', help='Path to easy input images, for curriculum training')
     parser.add_argument('--input-medium-location', help='Path to input images, for curriculum training')
@@ -99,6 +104,8 @@ def use_sigmoid_from_input(input_files):
     return not input_files[0].lower().endswith('.exr')
 
 def train(args):
+    display = PhotonerDisplay()
+
     # Create datasets
     input_sets = []
     training_files = sorted(glob.glob(args.training_location))
@@ -120,6 +127,36 @@ def train(args):
     input_final_files = input_final_files[:len(training_files)]
     input_sets.append(("Final", input_final_files))
 
+    # Initialize model and move to device
+    use_sigmoid = use_sigmoid_from_input(input_final_files)
+    model = PhotonerNet(
+        upsample_factor=args.upsample, 
+        use_sigmoid=use_sigmoid, 
+        use_log_space=True, #train_dataset.exr_source and args.log_space,
+        normalize_input=g_normalize_input, 
+        initial_features=g_initial_features,
+        unet_size=g_unet_size, 
+        epsilon=g_epsilon, 
+        padding_mode=g_padding_mode).to(device)
+
+    
+    # Loss functions
+    loss_fn = HdrLoss(g_loss_bright_weight, g_loss_gradient_weight, g_loss_l1_weight, g_loss_dark_bias)
+    #loss_fn = nn.MSELoss()
+
+    # Optimizer
+    if g_use_adam_w:
+        optimizer = optim.Adam(model.parameters(), lr=args.learn_rate, weight_decay=g_weight_decay)
+    else:
+        optimizer = optim.Adam(model.parameters(), lr=args.learn_rate)
+    
+    # Training loop
+    start_time = time.time()
+    last_checkpoint = start_time
+    last_print = start_time
+    
+    model.train()
+
     for curriculum_name, input_files in input_sets:
         # Split into train and test sets
         split_idx = int(len(training_files) * (1 - args.test_ratio))
@@ -137,49 +174,9 @@ def train(args):
         test_dataset = PhotonerDataset(test_input, test_target,
                                     args.crop_size, args.upsample, truth_transform)
         
-        train_loader = DataLoader(train_dataset, batch_size=args.batch_size, shuffle=True, num_workers=4)
+        train_loader = DataLoader(train_dataset, batch_size=args.batch_size, shuffle=False, num_workers=4)
         test_loader = DataLoader(test_dataset, batch_size=args.batch_size, shuffle=False, num_workers=4)
         
-        # Initialize model and move to device
-        use_sigmoid = use_sigmoid_from_input(input_files)
-        model = PhotonerNet(
-            upsample_factor=args.upsample, 
-            use_sigmoid=use_sigmoid, 
-            use_log_space=train_dataset.exr_source and args.log_space,
-            normalize_input=g_normalize_input, 
-            initial_features=g_initial_features,
-            unet_size=g_unet_size, 
-            epsilon=g_epsilon, 
-            padding_mode=g_padding_mode).to(device)
-
-        
-        # Loss functions
-        hdr_loss = HdrLoss()
-        # mse_loss = nn.MSELoss()
-        # l1_loss = nn.L1Loss()
-        # ssim_loss = SSIM()
-        # vgg = models.vgg16(weights=models.VGG16_Weights.DEFAULT).features[:16].to(device).eval()
-        # perceptual_loss_fn = VGGPerceptualLoss(feature_layers=['relu3_3', 'relu4_3']).to(device)    
-
-        # def perceptual_loss(pred, target):
-        #     # pred and target: [batch, 1, H, W]
-        #     pred_vgg = pred.repeat(1, 3, 1, 1)     # [batch, 3, H, W]
-        #     target_vgg = target.repeat(1, 3, 1, 1) # [batch, 3, H, W]
-        #     with torch.no_grad():
-        #         return perceptual_loss_fn(pred_vgg, target_vgg)
-        
-        # Optimizer
-        if g_use_adam_w:
-            optimizer = optim.Adam(model.parameters(), lr=args.learn_rate, weight_decay=g_weight_decay)
-        else:
-            optimizer = optim.Adam(model.parameters(), lr=args.learn_rate)
-        
-        # Training loop
-        start_time = time.time()
-        last_checkpoint = start_time
-        last_print = start_time
-        
-        model.train()
         for epoch in range(args.epochs):
             for batch_idx, (input_img, target_img) in enumerate(train_loader):
                 # Clone tensors to make them resizable
@@ -197,28 +194,18 @@ def train(args):
                 output = model.post_transform(output)
 
                 # Calculate losses
-                loss = hdr_loss(output, target_channel)
-                # loss_mse = mse_loss(output, target_channel)
-                # loss_l1 = l1_loss(output, target_channel)
-                # loss_ssim = 1 - ssim_loss(output, target_channel)
-                # loss_perceptual = perceptual_loss(output, target_channel)
-                
-                # total_loss = loss_mse + 0.5 * loss_ssim + 0.1 * loss_perceptual
-                # total_loss = loss_l1 + 0.25 * loss_mse
-                # total_loss = 0.5 * loss_l1 + loss_mse
-                # total_loss = loss_l1
-                
-                # total_loss.requires_grad = True
-                # total_loss.backward()
+                loss = loss_fn(output, target_channel)
                 loss.backward()
                 optimizer.step()
                 
                 # Console output every 5 seconds
                 current_time = time.time()
-                if current_time - last_print >= 5:
+                if current_time - last_print >= 10:
                     elapsed = current_time - start_time
                     print(f"{elapsed:.2f},{curriculum_name},{epoch},{epoch*len(train_dataset) + batch_idx*len(input_img)},{loss.item():.6f}")
                     last_print = current_time
+
+                    display.show(input_channel, output, target_channel)
                     
                     # Checkpoint if needed
                     if args.checkpoint_interval and current_time - last_checkpoint >= args.checkpoint_interval:
@@ -234,6 +221,8 @@ def train(args):
                             model.train()
                             
                         last_checkpoint = time.time()
+    
+    display.shutdown()
     
     # Save final model
     torch.save(model.state_dict(), args.model_path)
