@@ -1,17 +1,17 @@
 using System;
 using UnityEngine;
-using Unity.Sentis;
+
 
 public class AIAccelerator : MonoBehaviour {
     [SerializeField] private Simulation simulation;
-    [SerializeField] private ModelAsset accelerationModel;
+    [SerializeField] private Unity.InferenceEngine.ModelAsset accelerationModel;
     [SerializeField] private bool operateOnToneMapped;
 
     public RenderTexture HDROutputTexture { get; private set; }
     public RenderTexture ToneMappedOutputTexture { get; private set; }
 
-    Worker aiWorker;
-    Tensor<float> sourceTensor;
+    Unity.InferenceEngine.Worker aiWorker;
+    Unity.InferenceEngine.Tensor<float> sourceTensor;
 
 
     void Start() {
@@ -23,8 +23,8 @@ public class AIAccelerator : MonoBehaviour {
             ToneMappedOutputTexture.Create();
         }
 
-        var model = ModelLoader.Load(accelerationModel);
-        aiWorker = new Worker(model, BackendType.GPUCompute);
+        var model = Unity.InferenceEngine.ModelLoader.Load(accelerationModel);
+        aiWorker = new Unity.InferenceEngine.Worker(model, Unity.InferenceEngine.BackendType.GPUCompute);
 
     }
 
@@ -55,28 +55,28 @@ public class AIAccelerator : MonoBehaviour {
     }
 
     void Simulation_OnStep(int frameCount) {
-        Tensor<float> outputTensor = null;
+        Unity.InferenceEngine.Tensor<float> outputTensor = null;
 
         if(operateOnToneMapped) {
             // Push output texture to input tensor
-            sourceTensor = TextureConverter.ToTensor(simulation.SimulationOutputToneMapped);
+            sourceTensor = Unity.InferenceEngine.TextureConverter.ToTensor(simulation.SimulationOutputToneMapped);
             
             // Push input tensor through model
             aiWorker.Schedule(sourceTensor);
-            outputTensor = aiWorker.PeekOutput() as Tensor<float>;
+            outputTensor = aiWorker.PeekOutput() as Unity.InferenceEngine.Tensor<float>;
 
             // Push output tensor to final texture
-            TextureConverter.RenderToTexture(outputTensor, ToneMappedOutputTexture);
+            Unity.InferenceEngine.TextureConverter.RenderToTexture(outputTensor, ToneMappedOutputTexture);
         } else {
             // Push output texture to input tensor
-            sourceTensor = TextureConverter.ToTensor(simulation.SimulationOutputHDR);
+            sourceTensor = Unity.InferenceEngine.TextureConverter.ToTensor(simulation.SimulationOutputHDR);
             
             // Push input tensor through model
             aiWorker.Schedule(sourceTensor);
-            outputTensor = aiWorker.PeekOutput() as Tensor<float>;
+            outputTensor = aiWorker.PeekOutput() as Unity.InferenceEngine.Tensor<float>;
 
             // Push output tensor to final texture
-            TextureConverter.RenderToTexture(outputTensor, HDROutputTexture);
+            Unity.InferenceEngine.TextureConverter.RenderToTexture(outputTensor, HDROutputTexture);
         }
 
         sourceTensor.Dispose();
