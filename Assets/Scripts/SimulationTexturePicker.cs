@@ -35,12 +35,12 @@ public class SimulationTexturePicker : MonoBehaviour {
         Texture value = null;
 
         switch(type) {
-        case TextureType.Photons_Forward:
-            value = simulation?.SimulationPhotonsForward;
-            break;
-        case TextureType.Photons_Raw:
-            value = simulation?.SimulationOutputRaw;
-            break;
+        //case TextureType.Photons_Forward:
+        //    value = simulation?.SimulationPhotonsForward;
+        //    break;
+        //case TextureType.Photons_Raw:
+        //    value = simulation?.SimulationOutputRaw;
+        //    break;
         case TextureType.ToneMapped:
             value = simulation?.SimulationOutputToneMapped;
             break;

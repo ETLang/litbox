@@ -65,10 +65,16 @@ public class SimulationBaseBehavior : MonoBehaviour {
             throw new Exception($"{typeof(T).Name}'s size is {structureSize}. It must be a multiple of 16");
         }
 
-        var output = new ComputeBuffer(data.Length, Marshal.SizeOf<T>(), ComputeBufferType.Structured, ComputeBufferMode.Immutable);
+        var output = new ComputeBuffer(data.Length, structureSize, ComputeBufferType.Structured, ComputeBufferMode.Immutable);
         output.SetData(data);
         DisposeOnDisable(output);
         return output;
+    }
+
+    protected GraphicsBuffer CreateRWStructuredBuffer<T>(int elements)
+    {
+        var structureSize = Marshal.SizeOf<T>();
+        return new GraphicsBuffer(GraphicsBuffer.Target.Structured, elements, structureSize);
     }
 
     protected void Visualize(Texture2D target, IEnumerable<float> data, bool normalize=true) {
@@ -115,6 +121,9 @@ public class SimulationBaseBehavior : MonoBehaviour {
                 break;
             case ComputeBuffer buffer:
                 shader.SetBuffer(kernelID, tuple.Item1, buffer);
+                break;
+            case GraphicsBuffer gb:
+                shader.SetBuffer(kernelID, tuple.Item1, gb);
                 break;
             default:
                 throw new Exception("What is " + tuple.Item1.GetType().Name + "?");
