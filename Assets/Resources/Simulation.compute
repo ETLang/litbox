@@ -1,6 +1,10 @@
 #include "../Shaders/RayTracing2DCommon.cginc"
 #include "../Shaders/Random.cginc"
 
+//#ifdef UNITY_WEBGL
+#define USE_WEBGPU_WORKAROUNDS
+//#endif
+
 #pragma multi_compile __ FILTER_INACTIVE_CELLS
 #pragma multi_compile __ BILINEAR_PHOTON_DISTRIBUTION
 #pragma multi_compile __ USE_ORIGINAL_HIT_TEST
@@ -29,6 +33,10 @@
 #pragma kernel ComputeGBufferVariance
 #pragma kernel GenerateGBufferQuadTree
 
+#ifdef USE_WEBGPU_WORKAROUNDS
+#pragma kernel Clear_Photons
+#endif
+
 struct Ray {
     float2 Origin;
     float2 Direction;
@@ -37,8 +45,13 @@ struct Ray {
 };
 
 RWStructuredBuffer<uint4> g_rand;
-RWTexture2D<uint> g_photons_forward;
+#ifdef USE_WEBGPU_WORKAROUNDS
+RWStructuredBuffer<uint> g_output_raw;
+RWStructuredBuffer<uint> g_photons_forward;
+#else
 RWTexture2D<uint> g_output_raw;
+RWTexture2D<uint> g_photons_forward;
+#endif
 Texture2D<float4> g_albedo;
 Texture2D<float4> g_transmissibility;
 SamplerState samplerg_transmissibility;
@@ -114,12 +127,22 @@ int GetGridCellIndex(uint2 pixel) {
 uint3 ReadForwardPhoton_Indexed(uint2 pixel) {
     uint3 output;
 
+#ifdef USE_WEBGPU_WORKAROUNDS
+    uint pixelSB = pixel.x + pixel.y * g_target_size.x;
+    pixelSB *= 3;
+    output.r = g_photons_forward[pixelSB];
+    pixelSB.x++;
+    output.g = g_photons_forward[pixelSB];
+    pixelSB.x++;
+    output.b = g_photons_forward[pixelSB];
+#else
     pixel.x *= 3;
     output.r = g_photons_forward[pixel];
     pixel.x++;
     output.g = g_photons_forward[pixel];
     pixel.x++;
     output.b = g_photons_forward[pixel];
+#endif
     
     return output;
 }
@@ -129,12 +152,22 @@ uint3 ReadForwardPhoton(float2 location) {
 }
 
 void ClearPhoton_Indexed(int2 pixel) {
+#ifdef USE_WEBGPU_WORKAROUNDS
+    uint pixelSB = pixel.x + pixel.y * g_target_size.x;
+    pixelSB *= 3;
+    g_output_raw[pixelSB] = 0;
+    pixelSB++;
+    g_output_raw[pixelSB] = 0;
+    pixelSB++;
+    g_output_raw[pixelSB] = 0;
+#else
     pixel.x *= 3;
     g_output_raw[pixel] = 0;
     pixel.x++;
     g_output_raw[pixel] = 0;
     pixel.x++;
     g_output_raw[pixel] = 0;
+#endif
 }
 
 void WritePhoton_Indexed(int2 pixel, uint3 energy, bool suppressPhoton=false) {
@@ -152,15 +185,29 @@ void WritePhoton_Indexed(int2 pixel, uint3 energy, bool suppressPhoton=false) {
         InterlockedAdd(g_convergenceCellStateOut[cellIndex].PhotonCount, 1);
     }
 
+#ifdef USE_WEBGPU_WORKAROUNDS
+    uint pixelSB = pixel.x + pixel.y * g_target_size.x;
+    pixelSB *= 3;
+    if (g_output_raw[pixelSB] < EnergyMax)
+        InterlockedAdd(g_output_raw[pixelSB], energy.r);
+    pixelSB++;
+    if (g_output_raw[pixelSB] < EnergyMax)
+        InterlockedAdd(g_output_raw[pixelSB], energy.g);
+    pixelSB++;
+    if (g_output_raw[pixelSB] < EnergyMax)
+        InterlockedAdd(g_output_raw[pixelSB], energy.b);
+#else
+    // TODO: Use RWTexture2D once WebGPU target is fixed.
     pixel.x *= 3;
-    if(g_output_raw[pixel] < EnergyMax)
-        InterlockedAdd(g_output_raw[pixel], energy.r);
+    if (g_output_raw[pixel] < EnergyMax)
+       InterlockedAdd(g_output_raw[pixel], energy.r);
     pixel.x++;
-    if(g_output_raw[pixel] < EnergyMax)
-        InterlockedAdd(g_output_raw[pixel], energy.g);
+    if (g_output_raw[pixel] < EnergyMax)
+       InterlockedAdd(g_output_raw[pixel], energy.g);
     pixel.x++;
-    if(g_output_raw[pixel] < EnergyMax)
-        InterlockedAdd(g_output_raw[pixel], energy.b);
+    if (g_output_raw[pixel] < EnergyMax)
+       InterlockedAdd(g_output_raw[pixel], energy.b);
+#endif
 }
 
 void WritePhoton_Bilinear(float2 location, uint3 energy, bool suppressPhoton=false) {
@@ -187,12 +234,25 @@ void WritePhoton(float2 location, uint3 energy, bool suppressPhoton=false) {
 
 uint3 ReadPhoton_Indexed(uint2 pixel) {
     uint3 output;
+
+#ifdef USE_WEBGPU_WORKAROUNDS
+    // TODO: Use RWTexture2D once WebGPU target is fixed.
+    uint pixelSB = pixel.x + pixel.y * g_target_size.x; 
+    pixelSB *= 3;
+    output.r = g_output_raw[pixelSB];
+    pixelSB++;
+    output.g = g_output_raw[pixelSB];
+    pixelSB++;
+    output.b = g_output_raw[pixelSB];
+#else
     pixel.x *= 3;
     output.r = g_output_raw[pixel];
     pixel.x++;
     output.g = g_output_raw[pixel];
     pixel.x++;
     output.b = g_output_raw[pixel];
+#endif
+
     return output;
 }
 
@@ -588,7 +648,7 @@ void Simulate_View_Backward (uint3 id : SV_DispatchThreadID) {
 
     if(g_path_balance != 1) {
         for(uint i = 0;i < g_samples_per_pixel;i++) {
-            sum += sim.SimulateBackward(sim.EmitPath(id.xy)); 
+            sum += sim.SimulateBackward(sim.EmitPath(id.xy));
         }
         sum *= g_albedo.Load(uint3(id.xy,0)).rgb / g_samples_per_pixel;
         sum *= 1-g_transmissibility.Load(uint3(id.xy, 0)).x;
@@ -602,6 +662,15 @@ void Simulate_View_Backward (uint3 id : SV_DispatchThreadID) {
     g_rand[randIndex] = sim.rand.state;
 }
 
+
+#ifdef USE_WEBGPU_WORKAROUNDS
+// TODO: Use RWTexture2D once WebGPU target is fixed.
+[numthreads(8, 8, 1)]
+void Clear_Photons(uint3 id : SV_DispatchThreadID)
+{
+    ClearPhoton_Indexed(id.xy);
+}
+#endif
 
 /////////////////////////
 // OUTPUT PROCESSING

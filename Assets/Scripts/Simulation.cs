@@ -1,3 +1,7 @@
+#if UNITY_WEBGL
+#define USE_WEBGPU_WORKAROUNDS
+#endif
+
 using System;
 using System.Collections.Generic;
 using UnityEngine;
@@ -121,8 +125,13 @@ public class Simulation : SimulationBaseBehavior
     public RenderTexture GBufferNormalSlope { get; private set; }
     public RenderTexture GBufferQuadTreeLeaves { get; private set; }
 
+#if USE_WEBGPU_WORKAROUNDS
+    public GraphicsBuffer SimulationPhotonsForward { get; private set; }
+    public GraphicsBuffer SimulationOutputRaw { get; private set; }
+#else
     public RenderTexture SimulationPhotonsForward { get; private set; }
     public RenderTexture SimulationOutputRaw { get; private set; }
+#endif
     public RenderTexture SimulationOutputAccumulated { get; private set; }
     public RenderTexture SimulationOutputHDR { get; private set; }
     public RenderTexture SimulationOutputToneMapped { get; private set; }
@@ -277,8 +286,13 @@ public class Simulation : SimulationBaseBehavior
             _renderTexture[i] = CreateRWTexture(textureResolution, textureResolution, RenderTextureFormat.DefaultHDR);
         }
 
+#if USE_WEBGPU_WORKAROUNDS
+        SimulationPhotonsForward = CreateRWStructuredBuffer<uint>(textureResolution * textureResolution * 3);
+        SimulationOutputRaw = CreateRWStructuredBuffer<uint>(textureResolution * textureResolution * 3);
+#else
         SimulationPhotonsForward = CreateRWTexture(textureResolution * 3, textureResolution, RenderTextureFormat.RInt);
         SimulationOutputRaw = CreateRWTexture(textureResolution * 3, textureResolution, RenderTextureFormat.RInt);
+#endif
         SimulationOutputAccumulated = CreateRWTexture(textureResolution, textureResolution, RenderTextureFormat.ARGBFloat);
         SimulationOutputHDR = CreateRWTexture(textureResolution, textureResolution, RenderTextureFormat.ARGBFloat);
 
@@ -349,6 +363,8 @@ public class Simulation : SimulationBaseBehavior
 
     const int ConvergenceMeasurementInterval = 100;
     void Update() {
+        _realContentCamera.GetComponent<Camera>().aspect = transform.lossyScale.x / transform.lossyScale.y;
+        _realContentCamera.GetComponent<Camera>().orthographicSize = transform.lossyScale.y / 2.0f;
         _realContentCamera?.Render();
 
         ValidateTargets();
@@ -408,7 +424,12 @@ public class Simulation : SimulationBaseBehavior
             convergenceProgress = -1;
             ConvergenceStartTime = now;
 
+#if USE_WEBGPU_WORKAROUNDS
+            RunKernel(_computeShader, "Clear_Photons", textureResolution, textureResolution,
+                ("g_output_raw", SimulationOutputRaw));
+#else
             SimulationOutputRaw.Clear(Color.clear);
+#endif
             SimulationOutputAccumulated.Clear(Color.clear);
 
             for (int i = 0; i < _gridCellState.Length;i++) {
@@ -474,7 +495,7 @@ public class Simulation : SimulationBaseBehavior
                 //     When a light source is hit, the value of the light is added to the associated pixel.
 
                 // TODO
-                SimulationPhotonsForward.Clear(Color.clear);
+                //SimulationPhotonsForward.Clear(Color.clear);
                 break;
             case Strategy.Hybrid:
                 // Hybrid forward/backward tracing technique
@@ -492,7 +513,7 @@ public class Simulation : SimulationBaseBehavior
                 _computeShader.SetFloat("g_path_balance", pathBalance);
 
                 // Clear intermediate target
-                SimulationPhotonsForward.Clear(Color.clear);
+                //SimulationPhotonsForward.Clear(Color.clear);
                 SetShaderFlag(_computeShader, "FILTER_INACTIVE_CELLS", false);
                 foreach(var light in allLights) {
                     SimulateLight(light, Strategy.LightTransport, photonBounces != -1 ? photonBounces / 2 : (int)light.bounces, worldToTargetSpace, SimulationPhotonsForward);
@@ -834,7 +855,12 @@ public class Simulation : SimulationBaseBehavior
             ("g_convergenceCellStateIn", _gridCellInputBuffer));
     }
 
-    void SimulateLight(RTLightSource light, Strategy strategy, int bounces, Matrix4x4 worldToTargetSpace, RenderTexture outputTexture) {
+    void SimulateLight(RTLightSource light, Strategy strategy, int bounces, Matrix4x4 worldToTargetSpace,
+#if USE_WEBGPU_WORKAROUNDS
+        GraphicsBuffer outputTexture) {
+#else
+        RenderTexture outputTexture) {
+#endif
         string simulateKernel = null;
         int simulateKernelId = -1;
         var lightToTargetSpace = worldToTargetSpace * light.WorldTransform;
