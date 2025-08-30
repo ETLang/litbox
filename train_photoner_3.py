@@ -41,10 +41,10 @@ g_normalize_input = False
 g_use_adam_w = True
 g_weight_decay = 0.01
 g_epsilon = 1e-6 
-g_loss_dark_bias = 0.5
-g_loss_bright_weight = 0.6
-g_loss_gradient_weight = 0.4
-g_loss_l1_weight = 1
+g_loss_dark_bias = 0.5 # 1.0 is OK
+g_loss_bright_weight = 1.5
+g_loss_gradient_weight = 0.4 # 0.1 is OK
+g_loss_l1_weight = 0.2
 
 # TODO
 g_gaussian_initialization = True
