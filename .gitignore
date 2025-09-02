@@ -20,3 +20,6 @@ UserSettings/**
 /UIElementsSchema
 /bin
 .utmp/**
+
+!Packages/manifest.json
+!Packages/packages-lock.json
