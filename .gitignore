@@ -20,6 +20,7 @@ UserSettings/**
 /UIElementsSchema
 /bin
 .utmp/**
+Assets/Resources/PerformanceTestRun**
 
 !Packages/manifest.json
 !Packages/packages-lock.json
