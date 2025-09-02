@@ -1,14 +1,18 @@
+#define DISABLE
+
 using System;
 using UnityEngine;
 
 
 public class AIAccelerator : MonoBehaviour {
     [SerializeField] private Simulation simulation;
-    [SerializeField] private Unity.InferenceEngine.ModelAsset accelerationModel;
     [SerializeField] private bool operateOnToneMapped;
 
     public RenderTexture HDROutputTexture { get; private set; }
     public RenderTexture ToneMappedOutputTexture { get; private set; }
+
+#if !DISABLE
+    [SerializeField] private Unity.InferenceEngine.ModelAsset accelerationModel;
 
     Unity.InferenceEngine.Worker aiWorker;
     Unity.InferenceEngine.Tensor<float> sourceTensor;
@@ -82,4 +86,5 @@ public class AIAccelerator : MonoBehaviour {
         sourceTensor.Dispose();
         outputTensor.Dispose();
     }
+#endif
 }

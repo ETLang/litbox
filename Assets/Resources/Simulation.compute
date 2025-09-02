@@ -16,7 +16,7 @@
 #pragma kernel Simulate_AmbientLight
 #pragma kernel Simulate_FieldLight
 #pragma kernel Simulate_DirectionalLight
-#pragma kernel Simulate_DefaultLight_Forward
+// #pragma kernel Simulate_DefaultLight_Forward //TODO: Figure out why WebGPU dislikes this
 #pragma kernel Simulate_PointLight_Forward
 #pragma kernel Simulate_SpotLight_Forward
 #pragma kernel Simulate_LaserLight_Forward
