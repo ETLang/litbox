@@ -9,13 +9,6 @@ public static class TrainingUtil
 {
     private static SimpleRNG _rand = new SimpleRNG(0);
 
-    public static void Clear(this RenderTexture target, Color color) {
-        RenderTexture rt = RenderTexture.active;
-        RenderTexture.active = target;
-        GL.Clear(true, true, color);
-        RenderTexture.active = rt;
-    }
-
     public static void SaveTextureEXR(this RenderTexture target, string path)
     {
         if(target.format != RenderTextureFormat.ARGBFloat) {

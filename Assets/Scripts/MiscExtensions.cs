@@ -1,11 +1,35 @@
 using System;
 using System.Collections;
+using System.Collections.Generic;
 using System.Linq;
+using Unity.Mathematics;
+using Unity.VisualScripting;
 using UnityEngine;
 using UnityEngine.UIElements;
-using Unity.Mathematics;
 
 public static class MiscExtensions {
+    public static void Clear(this RenderTexture target, Color color)
+    {
+        RenderTexture rt = RenderTexture.active;
+        RenderTexture.active = target;
+        GL.Clear(true, true, color);
+        RenderTexture.active = rt;
+    }
+
+    // This is very specifically tailored to the graphicsbuffer workaround for webgpu.
+    // Not very well designed, but hopefully we just won't need it for much longer.
+    private static ComputeShader _computeShader;
+    public static void Clear(this GraphicsBuffer target, Color color)
+    {
+        if (_computeShader == null) {
+            _computeShader = (ComputeShader)Resources.Load("Simulation");
+
+        }
+        var resolution = (int)Mathf.Sqrt(target.count);
+        RunKernel(_computeShader, "Clear_Photons", resolution, resolution,
+            ("g_output_raw", target));
+    }
+
     public static T ReadClamped<T>(this T[,] arr, int i, int j) {
         return arr[
             i < 0 ? 0 : (i >= arr.GetLength(0) ? arr.GetLength(0) - 1 : i),
@@ -238,5 +262,87 @@ public static class MiscExtensions {
         texture.SetPixels(c);
         texture.Apply();
         return texture;
+    }
+
+    // COMPUTE SHADER HELPERS
+    public static void RunKernel(this ComputeShader shader, string kernel, int n, params (string, object)[] args)
+    {
+        RunKernel(shader, kernel, n, 1, args);
+    }
+
+    public static void RunKernel(this ComputeShader shader, string kernel, int w, int h, params (string, object)[] args)
+    {
+        var kernelID = shader.FindKernel(kernel);
+
+        foreach (var tuple in args) {
+            switch (tuple.Item2) {
+                case Texture texture:
+                    shader.SetTexture(kernelID, tuple.Item1, texture);
+                    shader.SetVector($"lut_window_{tuple.Item1}", new Vector4(
+                        0.5f / texture.width, 1 - 1.0f / texture.width,
+                        0.5f / texture.height, 1 - 1.0f / texture.height));
+
+                    if (texture is Texture3D tex3D) {
+                        shader.SetVector($"lut_slice_window_{tuple.Item1}", new Vector2(
+                            0.5f / tex3D.depth, 1 - 1.0f / tex3D.depth));
+                    }
+                    break;
+                case ComputeBuffer buffer:
+                    shader.SetBuffer(kernelID, tuple.Item1, buffer);
+                    break;
+                case GraphicsBuffer gb:
+                    shader.SetBuffer(kernelID, tuple.Item1, gb);
+                    break;
+                default:
+                    throw new Exception("What is " + tuple.Item1.GetType().Name + "?");
+            }
+        }
+
+        shader.GetKernelThreadGroupSizes(kernelID, out var sizeX, out var sizeY, out var _);
+        shader.Dispatch(kernelID, (int)((w - 1) / sizeX + 1), (int)((h - 1) / sizeY + 1), 1);
+    }
+
+    public static void SetShaderFlag(this ComputeShader shader, string keyword, bool value)
+    {
+        var id = shader.keywordSpace.FindKeyword(keyword);
+        shader.SetKeyword(id, value);
+    }
+
+    public static IEnumerable<GameObject> FindObjectsInLayerMask(this LayerMask layerMask)
+    {
+        // Get all active GameObjects in the scene
+        GameObject[] allObjects = GameObject.FindObjectsByType<GameObject>(FindObjectsSortMode.None);
+
+        // Loop through all objects and check their layer
+        foreach (GameObject go in allObjects) {
+            if (IsInLayerMask(layerMask, go.layer)) {
+                yield return go;
+            }
+        }
+    }
+
+    public static bool IsInLayerMask(this LayerMask layerMask, int layer)
+    {
+        return layerMask == (layerMask | (1 << layer));
+    }
+
+    public static T GetOrAddComponent<T>(this Component c) where T : Component
+    {
+        var existing = c.GetComponent<T>();
+        if (existing == null) {
+            return c.AddComponent<T>();
+        } else {
+            return existing;
+        }
+    }
+    
+    public static T GetOrAddComponent<T>(this GameObject c) where T : Component
+    {
+        var existing = c.GetComponent<T>();
+        if (existing == null) {
+            return c.AddComponent<T>();
+        } else {
+            return existing;
+        }
     }
 }

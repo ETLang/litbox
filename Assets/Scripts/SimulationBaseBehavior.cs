@@ -35,23 +35,25 @@ public class SimulationBaseBehavior : MonoBehaviour {
     }
 
     // BUFFER HELPERS
-    protected RenderTexture CreateRWTexture(int w, int h, RenderTextureFormat format) {
+    protected RenderTexture CreateRWTexture(int w, int h, RenderTextureFormat format, string name = null) {
         var output = new RenderTexture(w, h, 0, format)
         {
             enableRandomWrite = true,
             useMipMap = false,
+            name = name
         };
         output.Create();
         DisposeOnDisable(() => DestroyImmediate(output));
         return output;
     }
 
-    protected RenderTexture CreateRWTextureWithMips(int w, int h, RenderTextureFormat format) {
+    protected RenderTexture CreateRWTextureWithMips(int w, int h, RenderTextureFormat format, string name = null) {
         var output = new RenderTexture(w, h, 0, format)
         {
             enableRandomWrite = true,
             useMipMap = true,
             autoGenerateMips = false,
+            name = name
         };
         output.Create();
         output.GenerateMips();
@@ -59,13 +61,14 @@ public class SimulationBaseBehavior : MonoBehaviour {
         return output;
     }
 
-    protected ComputeBuffer CreateStructuredBuffer<T>(T[] data) {
+    protected ComputeBuffer CreateStructuredBuffer<T>(T[] data, string name = null) {
         var structureSize = Marshal.SizeOf<T>();
         if(structureSize % 16 != 0) {
             throw new Exception($"{typeof(T).Name}'s size is {structureSize}. It must be a multiple of 16");
         }
 
         var output = new ComputeBuffer(data.Length, structureSize, ComputeBufferType.Structured, ComputeBufferMode.Immutable);
+        output.name = name;
         output.SetData(data);
         DisposeOnDisable(output);
         return output;
@@ -96,46 +99,5 @@ public class SimulationBaseBehavior : MonoBehaviour {
         }
 
         target.Apply();
-    }
-
-    // COMPUTE SHADER HELPERS
-    protected void RunKernel(ComputeShader shader, string kernel, int n, params (string,object)[] args) {
-        RunKernel(shader, kernel, n, 1, args);
-    }
-
-    protected void RunKernel(ComputeShader shader, string kernel, int w, int h, params (string,object)[] args) {
-        var kernelID = shader.FindKernel(kernel);
-
-        foreach(var tuple in args) {
-            switch(tuple.Item2) {
-            case Texture texture:
-                shader.SetTexture(kernelID, tuple.Item1, texture);
-                shader.SetVector($"lut_window_{tuple.Item1}", new Vector4(
-                    0.5f / texture.width, 1 - 1.0f / texture.width,
-                    0.5f / texture.height, 1 - 1.0f / texture.height));
-
-                if(texture is Texture3D tex3D) {
-                    shader.SetVector($"lut_slice_window_{tuple.Item1}", new Vector2(
-                        0.5f / tex3D.depth, 1 - 1.0f / tex3D.depth));
-                }
-                break;
-            case ComputeBuffer buffer:
-                shader.SetBuffer(kernelID, tuple.Item1, buffer);
-                break;
-            case GraphicsBuffer gb:
-                shader.SetBuffer(kernelID, tuple.Item1, gb);
-                break;
-            default:
-                throw new Exception("What is " + tuple.Item1.GetType().Name + "?");
-            }
-        }
-
-        shader.GetKernelThreadGroupSizes(kernelID, out var sizeX, out var sizeY, out var _);
-        shader.Dispatch(kernelID, (int)((w - 1) / sizeX + 1), (int)((h - 1) / sizeY + 1), 1);
-    }
-
-    protected void SetShaderFlag(ComputeShader shader, string keyword, bool value) {
-        var id = shader.keywordSpace.FindKeyword(keyword);
-        shader.SetKeyword(id, value);
     }
 }

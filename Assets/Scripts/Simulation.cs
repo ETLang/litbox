@@ -1,6 +1,6 @@
-#if UNITY_WEBGL
+//#if UNITY_WEBGL
 #define USE_WEBGPU_WORKAROUNDS
-#endif
+//#endif
 
 using System;
 using System.Collections.Generic;
@@ -77,6 +77,8 @@ public class Simulation : SimulationBaseBehavior
 
     [SerializeField] private float transmissibilityVariationEpsilon = 1e-3f;
     [SerializeField, Range(0,0.5f)] private float outscatterCoefficient = 0.01f;
+    [SerializeField] private bool useCustomCameraRendering = false;
+    [SerializeField] private bool useSimulationRunner = false;
 
     private SimulationCamera _realContentCamera;
     private ComputeShader _computeShader;
@@ -204,7 +206,7 @@ public class Simulation : SimulationBaseBehavior
         TryGetComponent(out _renderer);
 
         _realContentCamera = new GameObject("__Simulation_Camera", typeof(SimulationCamera)).GetComponent<SimulationCamera>();
-        _realContentCamera.Initialize(transform, rayTracedLayers.value);
+        _realContentCamera.Initialize(transform, rayTracedLayers.value, useCustomCameraRendering);
 
         CreateTargetBuffers();
 
@@ -278,6 +280,8 @@ public class Simulation : SimulationBaseBehavior
         //EfficiencyDiagnostic.SetPixels()
 
         SwapGBuffer();
+
+        SimulationRunner.OnRender += OnCameraRender;
     }
 
     private void CreateTargetBuffers()
@@ -293,16 +297,16 @@ public class Simulation : SimulationBaseBehavior
         SimulationPhotonsForward = CreateRWTexture(textureResolution * 3, textureResolution, RenderTextureFormat.RInt);
         SimulationOutputRaw = CreateRWTexture(textureResolution * 3, textureResolution, RenderTextureFormat.RInt);
 #endif
-        SimulationOutputAccumulated = CreateRWTexture(textureResolution, textureResolution, RenderTextureFormat.ARGBFloat);
-        SimulationOutputHDR = CreateRWTexture(textureResolution, textureResolution, RenderTextureFormat.ARGBFloat);
+        SimulationOutputAccumulated = CreateRWTexture(textureResolution, textureResolution, RenderTextureFormat.ARGBFloat, "Simulation(Accumulated)");
+        SimulationOutputHDR = CreateRWTexture(textureResolution, textureResolution, RenderTextureFormat.ARGBFloat, "Simulation(HDR)");
 
         for (int i = 0; i < 2; i++) {
-            _gBufferAlbedo[i] = CreateRWTextureWithMips(textureResolution, textureResolution, RenderTextureFormat.ARGBFloat);
-            _gBufferTransmissibility[i] = CreateRWTextureWithMips(textureResolution, textureResolution, RenderTextureFormat.ARGBFloat);
-            _gBufferNormalSlope[i] = CreateRWTextureWithMips(textureResolution, textureResolution, RenderTextureFormat.ARGBFloat);
+            _gBufferAlbedo[i] = CreateRWTextureWithMips(textureResolution, textureResolution, RenderTextureFormat.ARGBFloat, "GBuffer: Albedo");
+            _gBufferTransmissibility[i] = CreateRWTextureWithMips(textureResolution, textureResolution, RenderTextureFormat.ARGBFloat, "GBuffer: Transmissibility");
+            _gBufferNormalSlope[i] = CreateRWTextureWithMips(textureResolution, textureResolution, RenderTextureFormat.ARGBFloat, "GBuffer: NormalSlope");
         }
 
-        GBufferQuadTreeLeaves = CreateRWTexture(textureResolution, textureResolution, RenderTextureFormat.ARGBHalf);
+        GBufferQuadTreeLeaves = CreateRWTexture(textureResolution, textureResolution, RenderTextureFormat.ARGBHalf, "GBufferQuadTree");
 
         SwapGBuffer();
     }
@@ -328,6 +332,11 @@ public class Simulation : SimulationBaseBehavior
         _realContentCamera = null;
 
         base.OnDisable();
+    }
+    
+    private void OnDestroy()
+    {
+        SimulationRunner.OnRender -= OnCameraRender;
     }
 
     Matrix4x4 _previousSimulationMatrix;
@@ -362,11 +371,21 @@ public class Simulation : SimulationBaseBehavior
     }
 
     const int ConvergenceMeasurementInterval = 100;
-    void Update() {
-        _realContentCamera.GetComponent<Camera>().aspect = transform.lossyScale.x / transform.lossyScale.y;
-        _realContentCamera.GetComponent<Camera>().orthographicSize = transform.lossyScale.y / 2.0f;
-        _realContentCamera?.Render();
+    void Update()
+    {
+        if(!useSimulationRunner) {
+            Run();
+        }
+    }
 
+    private void OnCameraRender()
+    {
+        if(useSimulationRunner) {
+            Run();
+        }
+    }
+
+    void Run() {
         ValidateTargets();
         ValidateRandomBuffer();
 
@@ -378,20 +397,20 @@ public class Simulation : SimulationBaseBehavior
 
         // PERFORMANCE MEASUREMENT
         var now = Time.time;
-        while(performanceCounter.Keys.Count != 0 && performanceCounter.Keys.First() < now - 1)
+        while (performanceCounter.Keys.Count != 0 && performanceCounter.Keys.First() < now - 1)
             performanceCounter.Remove(performanceCounter.Keys.First());
-        
+
         uint total = 0;
-        foreach(var value in performanceCounter.Values)
+        foreach (var value in performanceCounter.Values)
             total += value;
         uint bouncesThisFrame = 0;
-        
-        foreach(var bounces in allLights.Select(light => light.bounces))
+
+        foreach (var bounces in allLights.Select(light => light.bounces))
             bouncesThisFrame += bounces;
 
         bouncesThisFrame *= (uint)raysPerFrame;
-        
-        if(performanceCounter.TryGetValue(now, out var existing)) {
+
+        if (performanceCounter.TryGetValue(now, out var existing)) {
             performanceCounter[now] = existing + bouncesThisFrame;
         } else {
             performanceCounter[now] = bouncesThisFrame;
@@ -400,7 +419,7 @@ public class Simulation : SimulationBaseBehavior
         TraversalsPerSecond = total;
 
         // CHANGE DETECTION
-        if(CheckChanged(allLights, allObjects, worldToPresentation) || _validationFailed) {
+        if (CheckChanged(allLights, allObjects, worldToPresentation) || _validationFailed) {
             hasConverged = false;
             _validationFailed = false;
             framesSinceClear = 0;
@@ -408,8 +427,8 @@ public class Simulation : SimulationBaseBehavior
             _sceneId++;
         }
 
-        if(frameLimit != -1) {
-            if(framesSinceClear >= frameLimit)
+        if (frameLimit != -1) {
+            if (framesSinceClear >= frameLimit)
                 return;
             else
                 hasConverged = false;
@@ -418,31 +437,30 @@ public class Simulation : SimulationBaseBehavior
         }
 
         // CLEAR TARGET
-        if(framesSinceClear == 0) {
+        if (framesSinceClear == 0) {
             hasValidGridTransmissibility = false;
             awaitingConvergenceResult = false;
             convergenceProgress = -1;
             ConvergenceStartTime = now;
 
-#if USE_WEBGPU_WORKAROUNDS
-            RunKernel(_computeShader, "Clear_Photons", textureResolution, textureResolution,
-                ("g_output_raw", SimulationOutputRaw));
-#else
             SimulationOutputRaw.Clear(Color.clear);
-#endif
             SimulationOutputAccumulated.Clear(Color.clear);
 
-            for (int i = 0; i < _gridCellState.Length;i++) {
+            for (int i = 0; i < _gridCellState.Length; i++) {
                 _gridCellState[i].CumulativePhotonCount = 0;
             }
 
-            for(int i = 0;i < _gridCellInput.Length;i++) {
+            for (int i = 0; i < _gridCellInput.Length; i++) {
                 _gridCellInput[i].FrameCount = 0;
             }
             _gridCellInputBuffer.SetData(_gridCellInput);
         }
 
         framesSinceClear++;
+
+        _realContentCamera.GetComponent<Camera>().aspect = transform.lossyScale.x / transform.lossyScale.y;
+        _realContentCamera.GetComponent<Camera>().orthographicSize = transform.lossyScale.y / 2.0f;
+        _realContentCamera?.Render();
 
         // RAY TRACING SIMULATION
         _computeShader.SetVector("g_importance_sampling_target", ImportanceSamplingTarget);
@@ -456,13 +474,57 @@ public class Simulation : SimulationBaseBehavior
         _computeShader.SetInt("g_4x4_lod", (int)(GBufferTransmissibility.mipmapCount - 3));
         _computeShader.SetFloat("g_lightEmissionOutscatter", 0);
         _computeShader.SetFloat("g_outscatterCoefficient", outscatterCoefficient);
-        SetShaderFlag(_computeShader, "BILINEAR_PHOTON_DISTRIBUTION", bilinearPhotonWrites);
-        SetShaderFlag(_computeShader, "USE_ORIGINAL_HIT_TEST", useOriginalHitTest);
+        _computeShader.SetShaderFlag("BILINEAR_PHOTON_DISTRIBUTION", bilinearPhotonWrites);
+        _computeShader.SetShaderFlag("USE_ORIGINAL_HIT_TEST", useOriginalHitTest);
 
         float energyNormPerFrame = 1;
         float pixelCount = textureResolution * textureResolution;
-        
-        switch(strategy) {
+
+        var generateGBufferMipsKernel = _computeShader.FindKernel("GenerateGBufferMips");
+        int mipSize = GBufferTransmissibility.width;
+
+        for (int i = 1; i < GBufferTransmissibility.mipmapCount; i++) {
+            mipSize /= 2;
+
+            _computeShader.SetTexture(generateGBufferMipsKernel,
+                "g_destMipLevelAlbedo", GBufferAlbedo, i);
+            _computeShader.SetTexture(generateGBufferMipsKernel,
+                "g_sourceMipLevelAlbedo", GBufferAlbedo, i - 1);
+            _computeShader.SetTexture(generateGBufferMipsKernel,
+                "g_destMipLevelTransmissibility", GBufferTransmissibility, i);
+            _computeShader.SetTexture(generateGBufferMipsKernel,
+                "g_sourceMipLevelTransmissibility", GBufferTransmissibility, i - 1);
+            _computeShader.SetTexture(generateGBufferMipsKernel,
+                "g_destMipLevelNormalSlope", GBufferNormalSlope, i);
+            _computeShader.SetTexture(generateGBufferMipsKernel,
+                "g_sourceMipLevelNormalSlope", GBufferNormalSlope, i - 1);
+            _computeShader.Dispatch(generateGBufferMipsKernel,
+                Math.Max(1, mipSize / 8), Math.Max(1, mipSize / 8), 1);
+        }
+
+        //return;
+        mipSize = GBufferTransmissibility.width;
+        var computeGBufferVarianceKernel = _computeShader.FindKernel("ComputeGBufferVariance");
+        var eps = transmissibilityVariationEpsilon;
+        for (int i = 1; i < GBufferTransmissibility.mipmapCount; i++) {
+            mipSize /= 2;
+            eps /= 2.0f;
+            _computeShader.SetFloat("g_TransmissibilityVariationEpsilon", eps);
+            _computeShader.SetTexture(computeGBufferVarianceKernel,
+                "g_sourceMipLevelTransmissibility", GBufferTransmissibility, i);
+            _computeShader.Dispatch(computeGBufferVarianceKernel,
+                Math.Max(1, mipSize / 8), Math.Max(1, mipSize / 8), 1);
+        }
+
+        var generateQuadTreeKernel = _computeShader.FindKernel("GenerateGBufferQuadTree");
+        _computeShader.SetTexture(generateQuadTreeKernel,
+            "g_transmissibility", GBufferTransmissibility);
+        _computeShader.SetTexture(generateQuadTreeKernel,
+            "g_destQuadTreeLeaves", GBufferQuadTreeLeaves, 0);
+        _computeShader.Dispatch(generateQuadTreeKernel,
+            Math.Max(1, GBufferQuadTreeLeaves.width / 8), Math.Max(1, GBufferQuadTreeLeaves.height / 8), 1);
+
+        switch (strategy) {
             case Strategy.LightTransport:
                 // Forward light tracing technique:
                 // Photons are simulated from each light source.
@@ -478,8 +540,7 @@ public class Simulation : SimulationBaseBehavior
                 */
                 energyNormPerFrame = raysPerFrame / pixelCount;
                 _computeShader.SetFloat("g_energy_norm", (float)((double)uint.MaxValue / pixelCount * energyPrecision));
-
-                SetShaderFlag(_computeShader, "FILTER_INACTIVE_CELLS", true);
+                _computeShader.SetShaderFlag("FILTER_INACTIVE_CELLS", true);
                 foreach(var light in allLights) {
                     SimulateLight(light, strategy, photonBounces != -1 ? photonBounces : (int)light.bounces, worldToTargetSpace, SimulationOutputRaw);
                 }
@@ -495,7 +556,7 @@ public class Simulation : SimulationBaseBehavior
                 //     When a light source is hit, the value of the light is added to the associated pixel.
 
                 // TODO
-                //SimulationPhotonsForward.Clear(Color.clear);
+                SimulationPhotonsForward.Clear(Color.clear);
                 break;
             case Strategy.Hybrid:
                 // Hybrid forward/backward tracing technique
@@ -513,14 +574,14 @@ public class Simulation : SimulationBaseBehavior
                 _computeShader.SetFloat("g_path_balance", pathBalance);
 
                 // Clear intermediate target
-                //SimulationPhotonsForward.Clear(Color.clear);
-                SetShaderFlag(_computeShader, "FILTER_INACTIVE_CELLS", false);
+                SimulationPhotonsForward.Clear(Color.clear);
+                _computeShader.SetShaderFlag("FILTER_INACTIVE_CELLS", false);
                 foreach(var light in allLights) {
                     SimulateLight(light, Strategy.LightTransport, photonBounces != -1 ? photonBounces / 2 : (int)light.bounces, worldToTargetSpace, SimulationPhotonsForward);
                 }
 
-                SetShaderFlag(_computeShader, "FILTER_INACTIVE_CELLS", true);
-                RunKernel(_computeShader, "Simulate_View_Backward", textureResolution, textureResolution,
+                _computeShader.SetShaderFlag("FILTER_INACTIVE_CELLS", true);
+                _computeShader.RunKernel("Simulate_View_Backward", textureResolution, textureResolution,
                     ("g_rand", _randomBuffer),
                     ("g_photons_forward", SimulationPhotonsForward),
                     ("g_output_raw", SimulationOutputRaw),
@@ -544,14 +605,14 @@ public class Simulation : SimulationBaseBehavior
         _gridCellInputBuffer.SetData(_gridCellInput);
 
         // HDR MAPPING
-        RunKernel(_computeShader, "ConvertToHDR", textureResolution, textureResolution,
+        _computeShader.RunKernel("ConvertToHDR", textureResolution, textureResolution,
             ("g_output_raw", SimulationOutputRaw),
             ("g_output_accumulated", SimulationOutputAccumulated),
             ("g_output_hdr", SimulationOutputHDR),
             ("g_convergenceCellStateIn", _gridCellInputBuffer));
 
         // TONE MAPPING
-        RunKernel(_computeShader, "ToneMap", textureResolution, textureResolution,
+        _computeShader.RunKernel("ToneMap", textureResolution, textureResolution,
             ("g_output_hdr", SimulationOutputHDR),
             ("g_output_tonemapped", _renderTexture[_currentRenderTextureIndex]),
             ("g_convergenceCellStateIn", _gridCellInputBuffer));
@@ -623,16 +684,16 @@ public class Simulation : SimulationBaseBehavior
             - Mathf.Ceil(Mathf.Log(Mathf.Max(gridCells.x, gridCells.y),2)) - 1);
 
         if(true || !hasValidGridTransmissibility) {
-            RunKernel(_computeShader, "GetCellTransmissibility", (int)gridCells.x, (int)gridCells.y,
+            _computeShader.RunKernel("GetCellTransmissibility", (int)gridCells.x, (int)gridCells.y,
                 ("g_transmissibility", GBufferTransmissibility),
                 ("g_convergenceCellStateOut", _gridCellOutputBuffer));
             hasValidGridTransmissibility = true;
         }
 
-        RunKernel(_computeShader, "MeasureConvergence", textureResolution, textureResolution,
+        _computeShader.RunKernel("MeasureConvergence", textureResolution, textureResolution,
             ("g_output_raw", SimulationOutputRaw),
             ("g_output_tonemapped", _renderTexture[_currentRenderTextureIndex]),
-            ("g_previousResult", _renderTexture[1-_currentRenderTextureIndex]),
+            ("g_previousResult", _renderTexture[1 - _currentRenderTextureIndex]),
             ("g_convergenceCellStateIn", _gridCellInputBuffer),
             ("g_convergenceCellStateOut", _gridCellOutputBuffer));
         _currentRenderTextureIndex = 1 - _currentRenderTextureIndex;
@@ -849,7 +910,7 @@ public class Simulation : SimulationBaseBehavior
         int h = (int)(textureResolution / gridCells.y);
 
         _computeShader.SetVector("g_accumulate_base_index", new Vector2(xCell * w, yCell * h));
-        RunKernel(_computeShader, "AccumulatePhotons", w, h,
+        _computeShader.RunKernel("AccumulatePhotons", w, h,
             ("g_output_accumulated", SimulationOutputAccumulated),
             ("g_output_raw", SimulationOutputRaw),
             ("g_convergenceCellStateIn", _gridCellInputBuffer));
@@ -915,7 +976,7 @@ public class Simulation : SimulationBaseBehavior
         _computeShader.SetInt("g_bounces", bounces);
         _computeShader.SetMatrix("g_lightToTarget", lightToTargetSpace.transpose);
 
-        RunKernel(_computeShader, simulateKernel, raysPerFrame,
+        _computeShader.RunKernel(simulateKernel, raysPerFrame,
             ("g_rand", _randomBuffer),
             ("g_output_raw", outputTexture),
             ("g_albedo", GBufferAlbedo),

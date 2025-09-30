@@ -8,6 +8,9 @@ public class RTSprite : RTObject
     private Sprite _previousSprite;
     private Color _previousColor;
 
+    public Mesh sharedMesh { get; private set; }
+    public Material sharedMaterial { get; private set; }
+
     new protected void Start() {
         base.Start();
         
@@ -16,6 +19,8 @@ public class RTSprite : RTObject
 
         _previousSprite = spriteRenderer.sprite;
         _previousColor = spriteRenderer.color;
+
+        GetMeshData();
     }
     
     new protected void Update()
@@ -34,5 +39,22 @@ public class RTSprite : RTObject
         if(Changed) {
             spriteRenderer.material.color = spriteRenderer.color;
         }
+    }
+
+    void GetMeshData()
+    {
+        var spriteRenderer = GetComponent<SpriteRenderer>();
+
+        Mesh mesh = new Mesh {
+            vertices = System.Array.ConvertAll(spriteRenderer.sprite.vertices, v => (Vector3)v),
+            uv = spriteRenderer.sprite.uv,
+            triangles = System.Array.ConvertAll(spriteRenderer.sprite.triangles, i => (int)i)
+        };
+
+        mesh.RecalculateNormals();
+        mesh.RecalculateBounds();
+
+        sharedMaterial = spriteRenderer.sharedMaterial;
+        sharedMesh = mesh;
     }
 }

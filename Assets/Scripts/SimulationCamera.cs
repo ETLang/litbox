@@ -1,10 +1,15 @@
 using System;
+using System.Collections.Generic;
+using System.Linq;
 using System.Threading.Tasks;
 using UnityEngine;
 using UnityEngine.Rendering;
 
 [RequireComponent(typeof(Camera))]
 public class SimulationCamera : MonoBehaviour {
+
+    public Material test_mat;
+    public Mesh test_mesh;
 
     private ComputeShader _computeShader;
 
@@ -25,12 +30,13 @@ public class SimulationCamera : MonoBehaviour {
         }
     }
     private float _varianceEpsilon;
+    private bool _useCustomRendering;
 
     public Texture2D TestTexture;
 
     private CommandBuffer _postRenderCommands;
 
-    public void Initialize(Transform parent, int layers) {
+    public void Initialize(Transform parent, int layers, bool useCustomRendering) {
         var cam = GetComponent<Camera>();
         cam.transform.parent = parent;
         cam.transform.localScale = new Vector3(1,1,1);
@@ -49,10 +55,39 @@ public class SimulationCamera : MonoBehaviour {
         gameObject.SetActive(false);
 
         _computeShader = (ComputeShader)Resources.Load("Simulation");
+        _useCustomRendering = useCustomRendering;
     }
 
     public void Render() {
-        GetComponent<Camera>().Render();
+        //return;
+        if (!_useCustomRendering) {
+            GetComponent<Camera>().Render();
+        } else {
+            OnPreRender();
+            var cam = GetComponent<Camera>();
+            var stuffToDraw = ((LayerMask)cam.cullingMask).FindObjectsInLayerMask().ToArray();
+            Array.Sort(stuffToDraw, (a,b) => a.transform.position.z > b.transform.position.z ? 1 : -1);
+            GL.PushMatrix();
+            var viewMat = Matrix4x4.Scale(transform.parent.localScale) * cam.transform.worldToLocalMatrix;
+            var projMat = Matrix4x4.Ortho(-cam.orthographicSize, cam.orthographicSize, -cam.orthographicSize, cam.orthographicSize, -1, 100);
+            GL.LoadProjectionMatrix(projMat * viewMat);
+            GL.LoadIdentity();
+            foreach(var thing in stuffToDraw) {
+                var sprite = thing.GetComponent<RTSprite>();
+                if (sprite != null) {
+                    var mat = sprite.sharedMaterial;
+                    var mesh = sprite.sharedMesh;
+
+                    if (mat != null && mesh != null) {
+                        mat.SetPass(0);
+                        Graphics.DrawMeshNow(mesh, /*viewMat **/ thing.transform.localToWorldMatrix);
+                    }
+                }
+            }
+
+            GL.PopMatrix();
+            OnPostRender();
+        }
     }
 
     public void ClearTargets() {
@@ -69,71 +104,78 @@ public class SimulationCamera : MonoBehaviour {
 
         RenderTexture rt = RenderTexture.active;
         RenderTexture.active = GBufferAlbedo;
-        GL.Clear(false, true, new Color(0,0,0,1));
+        GL.Clear(true, true, new Color(0, 0, 0, 1));
         RenderTexture.active = GBufferTransmissibility;
-        GL.Clear(false, true, new Color(1,1,0,1));
+        GL.Clear(false, true, new Color(1, 1, 0, 1));
         RenderTexture.active = GBufferNormalSlope;
-        GL.Clear(false, true, new Color(0,0,0,0));
+        GL.Clear(false, true, new Color(0, 0, 0, 0));
         RenderTexture.active = GBufferQuadTreeLeaves;
-        GL.Clear(false, true, new Color(0,0,0,0));
+        GL.Clear(false, true, new Color(0, 0, 0, 0));
         RenderTexture.active = rt;
-        GetComponent<Camera>().SetTargetBuffers(gBuffer, GBufferAlbedo.depthBuffer);
+       // return;
+        if (_useCustomRendering) {
+            Graphics.SetRenderTarget(gBuffer, GBufferAlbedo.depthBuffer);
+        } else {
+            GetComponent<Camera>().SetTargetBuffers(gBuffer, GBufferAlbedo.depthBuffer);
+        }
     }
 
     void OnPostRender() {
-        if(_postRenderCommands == null) {
-           _postRenderCommands = new CommandBuffer();
+        //if (_postRenderCommands == null) {
+        //    _postRenderCommands = new CommandBuffer();
+        //    _postRenderCommands.SetExecutionFlags(CommandBufferExecutionFlags.AsyncCompute);
 
-            var generateGBufferMipsKernel = _computeShader.FindKernel("GenerateGBufferMips");
-            int mipSize = GBufferTransmissibility.width;
 
-            _postRenderCommands.SetComputeVectorParam(_computeShader, 
-                "g_target_size", new Vector2(GBufferAlbedo.width, GBufferAlbedo.height));
-            _postRenderCommands.SetComputeIntParam(_computeShader,
-                "g_lowest_lod", (int)(GBufferAlbedo.mipmapCount - 3));
+        //    var generateGBufferMipsKernel = _computeShader.FindKernel("GenerateGBufferMips");
+        //    int mipSize = GBufferTransmissibility.width;
 
-            for(int i = 1;i < GBufferTransmissibility.mipmapCount;i++) {
-                mipSize /= 2;
-                _postRenderCommands.SetComputeTextureParam(_computeShader, generateGBufferMipsKernel, 
-                    "g_destMipLevelAlbedo", GBufferAlbedo, i);
-                _postRenderCommands.SetComputeTextureParam(_computeShader, generateGBufferMipsKernel,
-                    "g_sourceMipLevelAlbedo", GBufferAlbedo, i-1);
-                _postRenderCommands.SetComputeTextureParam(_computeShader, generateGBufferMipsKernel,
-                    "g_destMipLevelTransmissibility", GBufferTransmissibility, i);
-                _postRenderCommands.SetComputeTextureParam(_computeShader, generateGBufferMipsKernel,
-                    "g_sourceMipLevelTransmissibility", GBufferTransmissibility, i-1);
-                _postRenderCommands.SetComputeTextureParam(_computeShader, generateGBufferMipsKernel,
-                    "g_destMipLevelNormalSlope", GBufferNormalSlope, i);
-                _postRenderCommands.SetComputeTextureParam(_computeShader, generateGBufferMipsKernel,   
-                    "g_sourceMipLevelNormalSlope", GBufferNormalSlope, i-1);
-                _postRenderCommands.DispatchCompute(_computeShader, generateGBufferMipsKernel,
-                    Math.Max(1, mipSize / 8), Math.Max(1, mipSize / 8), 1);
-            }
+        //    _postRenderCommands.SetComputeVectorParam(_computeShader, 
+        //        "g_target_size", new Vector2(GBufferAlbedo.width, GBufferAlbedo.height));
+        //    _postRenderCommands.SetComputeIntParam(_computeShader,
+        //        "g_lowest_lod", (int)(GBufferAlbedo.mipmapCount - 3));
 
-            mipSize = GBufferTransmissibility.width;
-            var computeGBufferVarianceKernel = _computeShader.FindKernel("ComputeGBufferVariance");
-            var eps = VarianceEpsilon;
-            for(int i = 1;i < GBufferTransmissibility.mipmapCount;i++) {
-                mipSize /= 2;
-                eps /= 2.0f;
-                _postRenderCommands.SetComputeFloatParam(_computeShader, 
-                    "g_TransmissibilityVariationEpsilon", eps);
-                _postRenderCommands.SetComputeTextureParam(_computeShader, computeGBufferVarianceKernel,
-                    "g_sourceMipLevelTransmissibility", GBufferTransmissibility, i);
-                _postRenderCommands.DispatchCompute(_computeShader, computeGBufferVarianceKernel,
-                    Math.Max(1, mipSize / 8), Math.Max(1, mipSize / 8), 1);
-            }
+        //    for(int i = 1;i < GBufferTransmissibility.mipmapCount;i++) {
+        //        mipSize /= 2;
+        //        _postRenderCommands.SetComputeTextureParam(_computeShader, generateGBufferMipsKernel, 
+        //            "g_destMipLevelAlbedo", GBufferAlbedo, i);
+        //        _postRenderCommands.SetComputeTextureParam(_computeShader, generateGBufferMipsKernel,
+        //            "g_sourceMipLevelAlbedo", GBufferAlbedo, i-1);
+        //        _postRenderCommands.SetComputeTextureParam(_computeShader, generateGBufferMipsKernel,
+        //            "g_destMipLevelTransmissibility", GBufferTransmissibility, i);
+        //        _postRenderCommands.SetComputeTextureParam(_computeShader, generateGBufferMipsKernel,
+        //            "g_sourceMipLevelTransmissibility", GBufferTransmissibility, i-1);
+        //        _postRenderCommands.SetComputeTextureParam(_computeShader, generateGBufferMipsKernel,
+        //            "g_destMipLevelNormalSlope", GBufferNormalSlope, i);
+        //        _postRenderCommands.SetComputeTextureParam(_computeShader, generateGBufferMipsKernel,   
+        //            "g_sourceMipLevelNormalSlope", GBufferNormalSlope, i-1);
+        //        _postRenderCommands.DispatchCompute(_computeShader, generateGBufferMipsKernel,
+        //            Math.Max(1, mipSize / 8), Math.Max(1, mipSize / 8), 1);
+        //    }
 
-            var generateQuadTreeKernel = _computeShader.FindKernel("GenerateGBufferQuadTree");
-            _postRenderCommands.SetComputeTextureParam(_computeShader, generateQuadTreeKernel,
-                "g_transmissibility", GBufferTransmissibility);
-            _postRenderCommands.SetComputeTextureParam(_computeShader, generateQuadTreeKernel,
-                "g_destQuadTreeLeaves", GBufferQuadTreeLeaves, 0);
-            _postRenderCommands.DispatchCompute(_computeShader, generateQuadTreeKernel,
-                Math.Max(1, GBufferQuadTreeLeaves.width / 8), Math.Max(1, GBufferQuadTreeLeaves.height / 8), 1);
+        //    mipSize = GBufferTransmissibility.width;
+        //    var computeGBufferVarianceKernel = _computeShader.FindKernel("ComputeGBufferVariance");
+        //    var eps = VarianceEpsilon;
+        //    for(int i = 1;i < GBufferTransmissibility.mipmapCount;i++) {
+        //        mipSize /= 2;
+        //        eps /= 2.0f;
+        //        _postRenderCommands.SetComputeFloatParam(_computeShader, 
+        //            "g_TransmissibilityVariationEpsilon", eps);
+        //        _postRenderCommands.SetComputeTextureParam(_computeShader, computeGBufferVarianceKernel,
+        //            "g_sourceMipLevelTransmissibility", GBufferTransmissibility, i);
+        //        _postRenderCommands.DispatchCompute(_computeShader, computeGBufferVarianceKernel,
+        //            Math.Max(1, mipSize / 8), Math.Max(1, mipSize / 8), 1);
+        //    }
 
-        }
+        //    var generateQuadTreeKernel = _computeShader.FindKernel("GenerateGBufferQuadTree");
+        //    _postRenderCommands.SetComputeTextureParam(_computeShader, generateQuadTreeKernel,
+        //        "g_transmissibility", GBufferTransmissibility);
+        //    _postRenderCommands.SetComputeTextureParam(_computeShader, generateQuadTreeKernel,
+        //        "g_destQuadTreeLeaves", GBufferQuadTreeLeaves, 0);
+        //    _postRenderCommands.DispatchCompute(_computeShader, generateQuadTreeKernel,
+        //        Math.Max(1, GBufferQuadTreeLeaves.width / 8), Math.Max(1, GBufferQuadTreeLeaves.height / 8), 1);
 
-        Graphics.ExecuteCommandBuffer(_postRenderCommands);
-    }    
+        //}
+
+        //Graphics.ExecuteCommandBufferAsync(_postRenderCommands, ComputeQueueType.Default);
+    }
 }
