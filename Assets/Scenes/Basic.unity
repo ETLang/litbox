@@ -1528,7 +1528,7 @@ MonoBehaviour:
   pathBalance: 0.5
   transmissibilityVariationEpsilon: 0.001
   outscatterCoefficient: 0.05
-  useCustomCameraRendering: 1
+  useCustomCameraRendering: 0
   useSimulationRunner: 0
   _convergenceThreshold: -1
   framesSinceClear: 0

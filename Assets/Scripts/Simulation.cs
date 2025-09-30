@@ -502,7 +502,6 @@ public class Simulation : SimulationBaseBehavior
                 Math.Max(1, mipSize / 8), Math.Max(1, mipSize / 8), 1);
         }
 
-        //return;
         mipSize = GBufferTransmissibility.width;
         var computeGBufferVarianceKernel = _computeShader.FindKernel("ComputeGBufferVariance");
         var eps = transmissibilityVariationEpsilon;
