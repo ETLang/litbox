@@ -17,9 +17,9 @@ public class AIAccelerator : MonoBehaviour {
     void Start() {
         if(simulation) {
             simulation.OnStep += Simulation_OnStep;
-            HDROutputTexture = new RenderTexture(simulation.TextureResolution, simulation.TextureResolution, 0, RenderTextureFormat.ARGBFloat);
+            HDROutputTexture = new RenderTexture(simulation.Width, simulation.Height, 0, RenderTextureFormat.ARGBFloat);
             HDROutputTexture.Create();
-            ToneMappedOutputTexture = new RenderTexture(simulation.TextureResolution, simulation.TextureResolution, 0, RenderTextureFormat.ARGB32);
+            ToneMappedOutputTexture = new RenderTexture(simulation.Width, simulation.Height, 0, RenderTextureFormat.ARGB32);
             ToneMappedOutputTexture.Create();
         }
 

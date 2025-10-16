@@ -30,14 +30,15 @@ public class SimulationCamera : MonoBehaviour {
 
     private CommandBuffer _postRenderCommands;
 
-    public void Initialize(Transform parent, int layers) {
+    public void Initialize(Transform parent, float aspect, int layers) {
         var cam = GetComponent<Camera>();
         cam.transform.parent = parent;
         cam.transform.localScale = new Vector3(1,1,1);
         cam.transform.localRotation = Quaternion.identity;
         cam.transform.localPosition = Vector3.zero;
         cam.orthographic = true;
-        cam.orthographicSize = parent.localScale.x / 2;
+        cam.orthographicSize = parent.localScale.y / 2;
+        cam.aspect = aspect;
         cam.nearClipPlane = -1;
         cam.farClipPlane = 1;
         cam.cullingMask = layers;
@@ -85,7 +86,8 @@ public class SimulationCamera : MonoBehaviour {
            _postRenderCommands = new CommandBuffer();
 
             var generateGBufferMipsKernel = _computeShader.FindKernel("GenerateGBufferMips");
-            int mipSize = GBufferTransmissibility.width;
+            int mipW = GBufferTransmissibility.width;
+            int mipH = GBufferTransmissibility.height;
 
             _postRenderCommands.SetComputeVectorParam(_computeShader, 
                 "g_target_size", new Vector2(GBufferAlbedo.width, GBufferAlbedo.height));
@@ -93,7 +95,8 @@ public class SimulationCamera : MonoBehaviour {
                 "g_lowest_lod", (int)(GBufferAlbedo.mipmapCount - 3));
 
             for(int i = 1;i < GBufferTransmissibility.mipmapCount;i++) {
-                mipSize /= 2;
+                mipW /= 2;
+                mipH /= 2;
                 _postRenderCommands.SetComputeTextureParam(_computeShader, generateGBufferMipsKernel, 
                     "g_destMipLevelAlbedo", GBufferAlbedo, i);
                 _postRenderCommands.SetComputeTextureParam(_computeShader, generateGBufferMipsKernel,
@@ -107,21 +110,23 @@ public class SimulationCamera : MonoBehaviour {
                 _postRenderCommands.SetComputeTextureParam(_computeShader, generateGBufferMipsKernel,   
                     "g_sourceMipLevelNormalSlope", GBufferNormalSlope, i-1);
                 _postRenderCommands.DispatchCompute(_computeShader, generateGBufferMipsKernel,
-                    Math.Max(1, mipSize / 8), Math.Max(1, mipSize / 8), 1);
+                    Math.Max(1, mipW / 8), Math.Max(1, mipH / 8), 1);
             }
 
-            mipSize = GBufferTransmissibility.width;
+            mipW = GBufferTransmissibility.width;
+            mipH = GBufferTransmissibility.height;
             var computeGBufferVarianceKernel = _computeShader.FindKernel("ComputeGBufferVariance");
             var eps = VarianceEpsilon;
             for(int i = 1;i < GBufferTransmissibility.mipmapCount;i++) {
-                mipSize /= 2;
+                mipW /= 2;
+                mipH /= 2;
                 eps /= 2.0f;
                 _postRenderCommands.SetComputeFloatParam(_computeShader, 
                     "g_TransmissibilityVariationEpsilon", eps);
                 _postRenderCommands.SetComputeTextureParam(_computeShader, computeGBufferVarianceKernel,
                     "g_sourceMipLevelTransmissibility", GBufferTransmissibility, i);
                 _postRenderCommands.DispatchCompute(_computeShader, computeGBufferVarianceKernel,
-                    Math.Max(1, mipSize / 8), Math.Max(1, mipSize / 8), 1);
+                    Math.Max(1, mipW / 8), Math.Max(1, mipH / 8), 1);
             }
 
             var generateQuadTreeKernel = _computeShader.FindKernel("GenerateGBufferQuadTree");
