@@ -61,8 +61,8 @@ public class Simulation : SimulationBaseBehavior
 
     [SerializeField] private int frameLimit = -1;
     [RenamedFrom("textureResolution")]
-    [SerializeField] private int width = 256;
-    [SerializeField] private int height = 256;
+    [SerializeField] public int width = 256;
+    [SerializeField] public int height = 256;
 
     [SerializeField] private Strategy strategy = Strategy.LightTransport;
     [SerializeField] private uint2 gridCells = new uint2(8,8);
@@ -141,8 +141,6 @@ public class Simulation : SimulationBaseBehavior
     public float ConvergenceStartTime { get; private set; }
     public float Convergence => convergenceProgress;
     public float EstimatedConvergenceTime => (Time.time - ConvergenceStartTime) * Convergence / _convergenceThreshold;
-    public int Width => width;
-    public int Height => height;
 
     public event SimulationStepEvent OnStep;
     public event SimulationConvergedEvent OnConverged;
