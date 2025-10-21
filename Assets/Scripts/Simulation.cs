@@ -96,8 +96,6 @@ public class Simulation : SimulationBaseBehavior
     private Texture _quantumTunnelingLUT;
     private int[] _kernelsHandles;
 
-    private Renderer _renderer;
-
     [Header("Convergence Information")]
     [SerializeField] private float _convergenceThreshold = 10;
     [SerializeField] private int framesSinceClear = 0;
@@ -193,11 +191,8 @@ public class Simulation : SimulationBaseBehavior
     {
         _computeShader = (ComputeShader)Resources.Load("Simulation");
 
-        //GET RENDERER COMPONENT REFERENCE
-        TryGetComponent(out _renderer);
-
         _realContentCamera = new GameObject("__Simulation_Camera", typeof(SimulationCamera)).GetComponent<SimulationCamera>();
-        _realContentCamera.Initialize(transform, (float)width / height, rayTracedLayers.value);
+        _realContentCamera.Initialize(transform, rayTracedLayers.value);
 
         CreateTargetBuffers();
 
@@ -351,12 +346,16 @@ public class Simulation : SimulationBaseBehavior
 
     const int ConvergenceMeasurementInterval = 100;
     void Update() {
-        _realContentCamera?.Render();
+        if(_realContentCamera == null) {
+            return;
+        }
+
+        _realContentCamera.Render();
 
         ValidateTargets();
         ValidateRandomBuffer();
 
-        var worldToPresentation = transform.worldToLocalMatrix;
+        var worldToPresentation = _realContentCamera.transform.worldToLocalMatrix;
         var presentationToTargetSpace = Matrix4x4.Scale(new Vector3(width, height, 1)) * Matrix4x4.Translate(new Vector3(0.5f, 0.5f, 0));
         //var presentationToTargetSpace = Matrix4x4.Translate(new Vector3(0.5f, 0.5f, 0));
         var worldToTargetSpace = presentationToTargetSpace * worldToPresentation;

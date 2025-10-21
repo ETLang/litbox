@@ -29,23 +29,23 @@ public class SimulationCamera : MonoBehaviour {
     public Texture2D TestTexture;
 
     private CommandBuffer _postRenderCommands;
+    private Camera _cam;
 
-    public void Initialize(Transform parent, float aspect, int layers) {
-        var cam = GetComponent<Camera>();
-        cam.transform.parent = parent;
-        cam.transform.localScale = new Vector3(1,1,1);
-        cam.transform.localRotation = Quaternion.identity;
-        cam.transform.localPosition = Vector3.zero;
-        cam.orthographic = true;
-        cam.orthographicSize = parent.localScale.y / 2;
-        cam.aspect = aspect;
-        cam.nearClipPlane = -1;
-        cam.farClipPlane = 1;
-        cam.cullingMask = layers;
-        cam.clearFlags = CameraClearFlags.Nothing;
-        cam.allowHDR = false;
-        cam.allowMSAA = false;
-        cam.useOcclusionCulling = false;
+    public void Initialize(Transform parent, int layers) {
+        _cam = GetComponent<Camera>();
+        _cam.transform.parent = parent;
+        _cam.transform.localScale = new Vector3(1,1,1);
+        _cam.transform.localRotation = Quaternion.identity;
+        _cam.transform.localPosition = Vector3.zero;
+        _cam.orthographic = true;
+        _cam.orthographicSize = parent.lossyScale.y / 2;
+        _cam.nearClipPlane = -1;
+        _cam.farClipPlane = 1;
+        _cam.cullingMask = layers;
+        _cam.clearFlags = CameraClearFlags.Nothing;
+        _cam.allowHDR = false;
+        _cam.allowMSAA = false;
+        _cam.useOcclusionCulling = false;
         
         gameObject.SetActive(false);
 
@@ -53,11 +53,13 @@ public class SimulationCamera : MonoBehaviour {
     }
 
     public void Render() {
-        GetComponent<Camera>().Render();
+        _cam.aspect = transform.parent.lossyScale.x / transform.parent.lossyScale.y;
+        _cam.orthographicSize = _cam.transform.parent.lossyScale.y / 2;
+        _cam.Render();
     }
 
     public void ClearTargets() {
-        GetComponent<Camera>().targetTexture = null;
+        _cam.targetTexture = null;
     }
 
     void OnPreRender() {
@@ -78,7 +80,7 @@ public class SimulationCamera : MonoBehaviour {
         RenderTexture.active = GBufferQuadTreeLeaves;
         GL.Clear(false, true, new Color(0,0,0,0));
         RenderTexture.active = rt;
-        GetComponent<Camera>().SetTargetBuffers(gBuffer, GBufferAlbedo.depthBuffer);
+        _cam.SetTargetBuffers(gBuffer, GBufferAlbedo.depthBuffer);
     }
 
     void OnPostRender() {
