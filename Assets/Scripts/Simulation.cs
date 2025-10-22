@@ -20,15 +20,20 @@ public struct SimulationProfile {
     public float outscatterCoefficient;
 }
 
+[RequireComponent(typeof(MeshRenderer))]
+[RequireComponent(typeof(MeshFilter))]
+[ExecuteAlways]
 public class Simulation : SimulationBaseBehavior
 {
-    public enum Strategy {
+    public enum Strategy
+    {
         LightTransport,
         PathTracing,
         Hybrid
     }
 
-    struct ConvergenceCellInput {
+    struct ConvergenceCellInput
+    {
         public uint IsActive;
         public uint HasConverged;
         public uint FrameCount;
@@ -39,21 +44,24 @@ public class Simulation : SimulationBaseBehavior
         public float Reserved2;
     }
 
-    struct ConvergenceCellOutput {
+    struct ConvergenceCellOutput
+    {
         public uint MaxValue;
         public uint PixelChange;
         public uint PhotonCount;
         public float Transmissibility;
     }
 
-    struct ConvergenceCellGroup {
+    struct ConvergenceCellGroup
+    {
         public int StartX;
         public int StartY;
         public int EndX;
         public int EndY;
     }
 
-    struct ConvergenceCellState {
+    struct ConvergenceCellState
+    {
         public uint CumulativePhotonCount;
     }
 
@@ -65,17 +73,24 @@ public class Simulation : SimulationBaseBehavior
     [SerializeField] public int height = 256;
 
     [SerializeField] private Strategy strategy = Strategy.LightTransport;
-    [SerializeField] private uint2 gridCells = new uint2(8,8);
-    [SerializeField] private int raysPerFrame = 4096000;
-    [SerializeField] private int energyPrecision = 1;
+    [SerializeField] private uint2 gridCells = new uint2(8, 8);
+    [SerializeField] private int raysPerFrame = 512000;
+    [SerializeField] private int energyPrecision = 100;
     [SerializeField] private int photonBounces = -1;
-    [SerializeField] private bool bilinearPhotonWrites = false;
+    [SerializeField] private bool bilinearPhotonWrites = true;
     [SerializeField] private int pathSamples = 10;
-    [SerializeField, Range(0,1)] private float pathBalance = 0.5f;
+    [SerializeField, Range(0, 1)] private float pathBalance = 0.5f;
 
     [SerializeField] private float transmissibilityVariationEpsilon = 1e-3f;
-    [SerializeField, Range(0,0.5f)] private float outscatterCoefficient = 0.01f;
+    [SerializeField, Range(0, 0.5f)] private float outscatterCoefficient = 0.01f;
 
+    [Header("Convergence Information")]
+    [SerializeField] private float _convergenceThreshold = -1;
+    [SerializeField] private int framesSinceClear = 0;
+    [SerializeField, ReadOnly] private float convergenceProgress = 100000;
+
+    private static int _MainTexID = Shader.PropertyToID("_MainTex");
+    private Material _compositorMat;
     private SimulationCamera _realContentCamera;
     private ComputeShader _computeShader;
     private ComputeBuffer _randomBuffer;
@@ -96,17 +111,12 @@ public class Simulation : SimulationBaseBehavior
     private Texture _quantumTunnelingLUT;
     private int[] _kernelsHandles;
 
-    [Header("Convergence Information")]
-    [SerializeField] private float _convergenceThreshold = 10;
-    [SerializeField] private int framesSinceClear = 0;
-    [SerializeField, ReadOnly] private float convergenceProgress = 100000;
-
     private bool hasValidGridTransmissibility = false;
     private bool awaitingConvergenceResult = false;
     [SerializeField, ReadOnly] public bool hasConverged = false;
 
     private uint4[] convergenceResultResetData = new uint4[] { new uint4(0, 0, 0, 0) };
-    private SortedDictionary<float,uint> performanceCounter = new SortedDictionary<float, uint>();
+    private SortedDictionary<float, uint> performanceCounter = new SortedDictionary<float, uint>();
 
     public uint TraversalsPerSecond { get; private set; }
 
@@ -115,6 +125,8 @@ public class Simulation : SimulationBaseBehavior
     private RenderTexture[] _gBufferNormalSlope = new RenderTexture[2];
     private int _gBufferNextTarget = 0;
     private bool _validationFailed = false;
+    private MeshFilter _meshFilter;
+    private MeshRenderer _meshRenderer;
 
     public RenderTexture GBufferAlbedo { get; private set; }
     public RenderTexture GBufferTransmissibility { get; private set; }
@@ -144,6 +156,18 @@ public class Simulation : SimulationBaseBehavior
     public event SimulationConvergedEvent OnConverged;
     public event Action<float> OnConvergenceUpdate;
 
+    private static Mesh _quadMesh;
+
+    public static Mesh GetBuiltInQuadMesh()
+    {
+        if (_quadMesh == null) {
+            GameObject tempQuad = GameObject.CreatePrimitive(PrimitiveType.Quad);
+            _quadMesh = tempQuad.GetComponent<MeshFilter>().sharedMesh;
+            GameObject.DestroyImmediate(tempQuad);
+        }
+        return _quadMesh;
+    }
+
     public void LoadProfile(SimulationProfile profile)
     {
         frameLimit = profile.frameLimit;
@@ -161,17 +185,20 @@ public class Simulation : SimulationBaseBehavior
     {
         var randSeeds = Math.Max(raysPerFrame, width * height);
 
-        if(_randomBuffer == null || _randomBuffer.count < randSeeds) {
+        if (_randomBuffer == null || _randomBuffer.count < randSeeds)
+        {
             uint4[] seeds = new uint4[randSeeds];
 
-            for (int i = 0; i < seeds.Length; i++) {
+            for (int i = 0; i < seeds.Length; i++)
+            {
                 seeds[i].x = (uint)(UnityEngine.Random.value * 1000000);
                 seeds[i].y = (uint)(UnityEngine.Random.value * 1000000);
                 seeds[i].z = (uint)(UnityEngine.Random.value * 1000000);
                 seeds[i].w = (uint)(UnityEngine.Random.value * 1000000);
             }
 
-            if(_randomBuffer != null) {
+            if (_randomBuffer != null)
+            {
                 _randomBuffer.Release();
             }
 
@@ -181,33 +208,62 @@ public class Simulation : SimulationBaseBehavior
 
     void ValidateTargets()
     {
-        if (_renderTexture[0] == null || _renderTexture[0].width != width || _renderTexture[0].height != height) {
+        if (_renderTexture[0] == null || _renderTexture[0].width != width || _renderTexture[0].height != height)
+        {
             CreateTargetBuffers();
             _validationFailed = true;
         }
     }
 
-    private void Start()
+    private void Awake()
     {
         _computeShader = (ComputeShader)Resources.Load("Simulation");
 
+        _meshFilter = GetComponent<MeshFilter>();
+        _meshRenderer = GetComponent<MeshRenderer>();
+
+        if(_meshFilter.sharedMesh == null) {
+            _meshFilter.sharedMesh = GetBuiltInQuadMesh();
+        }
+
+        if(_meshRenderer.sharedMaterial == null) {
+            _compositorMat = new Material(Shader.Find("Photoner/SimulationCompositor"));
+            _meshRenderer.sharedMaterial = _compositorMat;
+        } else {
+            _compositorMat = _meshRenderer.sharedMaterial;
+        }
+
+#if UNITY_EDITOR
+            UnityEditor.EditorApplication.playModeStateChanged += EditorApplication_playModeStateChanged;
+#endif
+    }
+
+#if UNITY_EDITOR
+    private void EditorApplication_playModeStateChanged(UnityEditor.PlayModeStateChange state)
+    {
+        if(state == UnityEditor.PlayModeStateChange.EnteredPlayMode) {
+            OnStartedPlaying();
+        }
+    }
+#endif
+
+    private void OnStartedPlaying()
+    {
         _realContentCamera = new GameObject("__Simulation_Camera", typeof(SimulationCamera)).GetComponent<SimulationCamera>();
         _realContentCamera.Initialize(transform, rayTracedLayers.value);
 
         CreateTargetBuffers();
 
         _gridCellState = new ConvergenceCellState[gridCells.x * gridCells.y];
-        for(int i = 0;i < _gridCellState.Length;i++) {
-            _gridCellState[i] = new ConvergenceCellState
-            {
+        for (int i = 0; i < _gridCellState.Length; i++) {
+            _gridCellState[i] = new ConvergenceCellState {
                 CumulativePhotonCount = 0
             };
         }
 
         _gridCellInput = new ConvergenceCellInput[gridCells.x * gridCells.y];
-        for(int i = 0;i < _gridCellInput.Length;i++) {
-            _gridCellInput[i] = new ConvergenceCellInput
-            {
+        for (int i = 0; i < _gridCellInput.Length; i++) {
+            _gridCellInput[i] = new ConvergenceCellInput {
                 IsActive = 1,
                 HasConverged = 0,
                 FrameCount = 0,
@@ -219,9 +275,8 @@ public class Simulation : SimulationBaseBehavior
         _gridCellInputBuffer = CreateStructuredBuffer(_gridCellInput);
 
         _gridCellOutput = new ConvergenceCellOutput[gridCells.x * gridCells.y];
-        for(int i = 0;i < _gridCellOutput.Length;i++) {
-            _gridCellOutput[i] = new ConvergenceCellOutput
-            {
+        for (int i = 0; i < _gridCellOutput.Length; i++) {
+            _gridCellOutput[i] = new ConvergenceCellOutput {
                 PixelChange = 0,
                 PhotonCount = 0,
                 MaxValue = 0
@@ -237,40 +292,44 @@ public class Simulation : SimulationBaseBehavior
         _quantumTunnelingLUT = LUT.CreateQuantumTunnelingLUT().AsTexture();
         DisposeOnDisable(() => DestroyImmediate(_quantumTunnelingLUT));
 
-        EfficiencyDiagnostic = new Texture2D((int)gridCells.x, (int)gridCells.y, TextureFormat.RGBAFloat, false)
-        {
+        EfficiencyDiagnostic = new Texture2D((int)gridCells.x, (int)gridCells.y, TextureFormat.RGBAFloat, false) {
             filterMode = FilterMode.Point
         };
-        PhotonsDiagnostic = new Texture2D((int)gridCells.x, (int)gridCells.y, TextureFormat.RGBAFloat, false)
-        {
+        PhotonsDiagnostic = new Texture2D((int)gridCells.x, (int)gridCells.y, TextureFormat.RGBAFloat, false) {
             filterMode = FilterMode.Point
         };
-        MaxValueDiagnostic = new Texture2D((int)gridCells.x, (int)gridCells.y, TextureFormat.RGBAFloat, false)
-        {
+        MaxValueDiagnostic = new Texture2D((int)gridCells.x, (int)gridCells.y, TextureFormat.RGBAFloat, false) {
             filterMode = FilterMode.Point
         };
 
         EfficiencyData = new float[gridCells.x, gridCells.y];
         EfficiencyGradient = new Vector2[gridCells.x, gridCells.y];
-        for(int i = 0;i < gridCells.x;i++) {
-            for(int j = 0;j < gridCells.y;j++) {
-                EfficiencyGradient[i,j] = new Vector2(0,0);
+        for (int i = 0; i < gridCells.x; i++) {
+            for (int j = 0; j < gridCells.y; j++) {
+                EfficiencyGradient[i, j] = new Vector2(0, 0);
             }
         }
         RelaxedEfficiencyGradient = new Vector2[gridCells.x, gridCells.y];
-        for(int i = 0;i < gridCells.x;i++) {
-            for(int j = 0;j < gridCells.y;j++) {
-                RelaxedEfficiencyGradient[i,j] = new Vector2(0,0);
+        for (int i = 0; i < gridCells.x; i++) {
+            for (int j = 0; j < gridCells.y; j++) {
+                RelaxedEfficiencyGradient[i, j] = new Vector2(0, 0);
             }
         }
-        //EfficiencyDiagnostic.SetPixels()
 
         SwapGBuffer();
     }
 
+    private void Start()
+    {
+        if(!Application.isEditor) {
+            OnStartedPlaying();
+        }
+    }
+
     private void CreateTargetBuffers()
     {
-        for (int i = 0; i < _renderTexture.Length; i++) {
+        for (int i = 0; i < _renderTexture.Length; i++)
+        {
             _renderTexture[i] = CreateRWTexture(width, height, RenderTextureFormat.DefaultHDR);
         }
 
@@ -279,7 +338,8 @@ public class Simulation : SimulationBaseBehavior
         SimulationOutputAccumulated = CreateRWTexture(width, height, RenderTextureFormat.ARGBFloat);
         SimulationOutputHDR = CreateRWTexture(width, height, RenderTextureFormat.ARGBFloat);
 
-        for (int i = 0; i < 2; i++) {
+        for (int i = 0; i < 2; i++)
+        {
             _gBufferAlbedo[i] = CreateRWTextureWithMips(width, height, RenderTextureFormat.ARGBFloat);
             _gBufferTransmissibility[i] = CreateRWTextureWithMips(width, height, RenderTextureFormat.ARGBFloat);
             _gBufferNormalSlope[i] = CreateRWTextureWithMips(width, height, RenderTextureFormat.ARGBFloat);
@@ -290,7 +350,8 @@ public class Simulation : SimulationBaseBehavior
         SwapGBuffer();
     }
 
-    private void SwapGBuffer() {
+    private void SwapGBuffer()
+    {
         GBufferAlbedo = _gBufferAlbedo[_gBufferNextTarget];
         GBufferTransmissibility = _gBufferTransmissibility[_gBufferNextTarget];
         GBufferNormalSlope = _gBufferNormalSlope[_gBufferNextTarget];
@@ -306,9 +367,11 @@ public class Simulation : SimulationBaseBehavior
 
     protected override void OnDisable()
     {
-        _realContentCamera.ClearTargets();
-        Destroy(_realContentCamera);
-        _realContentCamera = null;
+        if (_realContentCamera != null) {
+            _realContentCamera.ClearTargets();
+            Destroy(_realContentCamera);
+            _realContentCamera = null;
+        }
 
         base.OnDisable();
     }
@@ -319,8 +382,9 @@ public class Simulation : SimulationBaseBehavior
     float _previousOutscatterCoefficient;
     float _previousPathBalance;
     int _sceneId;
-    bool CheckChanged(RTLightSource[] allLights, RTObject[] allObjects, Matrix4x4 worldToPresentation) {
-        var changed = 
+    bool CheckChanged(RTLightSource[] allLights, RTObject[] allObjects, Matrix4x4 worldToPresentation)
+    {
+        var changed =
             allLights.Length != _previousLightSources.Count ||
             !allLights.All(l => _previousLightSources.Contains(l)) ||
             allLights.Any(l => l.Changed) ||
@@ -335,18 +399,20 @@ public class Simulation : SimulationBaseBehavior
         _previousOutscatterCoefficient = outscatterCoefficient;
         _previousSimulationMatrix = worldToPresentation;
         _previousLightSources.Clear();
-        foreach(var light in allLights)
+        foreach (var light in allLights)
             _previousLightSources.Add(light);
         _previousObjects.Clear();
-        foreach(var o in allObjects)
+        foreach (var o in allObjects)
             _previousObjects.Add(o);
 
         return changed;
     }
 
     const int ConvergenceMeasurementInterval = 100;
-    void Update() {
-        if(_realContentCamera == null) {
+    void Update()
+    {
+        if (_realContentCamera == null)
+        {
             return;
         }
 
@@ -364,29 +430,33 @@ public class Simulation : SimulationBaseBehavior
 
         // PERFORMANCE MEASUREMENT
         var now = Time.time;
-        while(performanceCounter.Keys.Count != 0 && performanceCounter.Keys.First() < now - 1)
+        while (performanceCounter.Keys.Count != 0 && performanceCounter.Keys.First() < now - 1)
             performanceCounter.Remove(performanceCounter.Keys.First());
-        
+
         uint total = 0;
-        foreach(var value in performanceCounter.Values)
+        foreach (var value in performanceCounter.Values)
             total += value;
         uint bouncesThisFrame = 0;
-        
-        foreach(var bounces in allLights.Select(light => light.bounces))
+
+        foreach (var bounces in allLights.Select(light => light.bounces))
             bouncesThisFrame += bounces;
 
         bouncesThisFrame *= (uint)raysPerFrame;
-        
-        if(performanceCounter.TryGetValue(now, out var existing)) {
+
+        if (performanceCounter.TryGetValue(now, out var existing))
+        {
             performanceCounter[now] = existing + bouncesThisFrame;
-        } else {
+        }
+        else
+        {
             performanceCounter[now] = bouncesThisFrame;
         }
 
         TraversalsPerSecond = total;
 
         // CHANGE DETECTION
-        if(CheckChanged(allLights, allObjects, worldToPresentation) || _validationFailed) {
+        if (CheckChanged(allLights, allObjects, worldToPresentation) || _validationFailed)
+        {
             hasConverged = false;
             _validationFailed = false;
             framesSinceClear = 0;
@@ -394,17 +464,21 @@ public class Simulation : SimulationBaseBehavior
             _sceneId++;
         }
 
-        if(frameLimit != -1) {
-            if(framesSinceClear >= frameLimit)
+        if (frameLimit != -1)
+        {
+            if (framesSinceClear >= frameLimit)
                 return;
             else
                 hasConverged = false;
-        } else if (hasConverged) {
+        }
+        else if (hasConverged)
+        {
             return;
         }
 
         // CLEAR TARGET
-        if(framesSinceClear == 0) {
+        if (framesSinceClear == 0)
+        {
             hasValidGridTransmissibility = false;
             awaitingConvergenceResult = false;
             convergenceProgress = -1;
@@ -413,11 +487,13 @@ public class Simulation : SimulationBaseBehavior
             SimulationOutputRaw.Clear(Color.clear);
             SimulationOutputAccumulated.Clear(Color.clear);
 
-            for (int i = 0; i < _gridCellState.Length;i++) {
+            for (int i = 0; i < _gridCellState.Length; i++)
+            {
                 _gridCellState[i].CumulativePhotonCount = 0;
             }
 
-            for(int i = 0;i < _gridCellInput.Length;i++) {
+            for (int i = 0; i < _gridCellInput.Length; i++)
+            {
                 _gridCellInput[i].FrameCount = 0;
             }
             _gridCellInputBuffer.SetData(_gridCellInput);
@@ -441,8 +517,9 @@ public class Simulation : SimulationBaseBehavior
 
         float energyNormPerFrame = 1;
         float pixelCount = width * height;
-        
-        switch(strategy) {
+
+        switch (strategy)
+        {
             case Strategy.LightTransport:
                 // Forward light tracing technique:
                 // Photons are simulated from each light source.
@@ -460,7 +537,8 @@ public class Simulation : SimulationBaseBehavior
                 _computeShader.SetFloat("g_energy_norm", (float)((double)uint.MaxValue / pixelCount * energyPrecision));
 
                 SetShaderFlag(_computeShader, "FILTER_INACTIVE_CELLS", true);
-                foreach(var light in allLights) {
+                foreach (var light in allLights)
+                {
                     SimulateLight(light, strategy, photonBounces != -1 ? photonBounces : (int)light.bounces, worldToTargetSpace, SimulationOutputRaw);
                 }
                 break;
@@ -495,7 +573,8 @@ public class Simulation : SimulationBaseBehavior
                 // Clear intermediate target
                 SimulationPhotonsForward.Clear(Color.clear);
                 SetShaderFlag(_computeShader, "FILTER_INACTIVE_CELLS", false);
-                foreach(var light in allLights) {
+                foreach (var light in allLights)
+                {
                     SimulateLight(light, Strategy.LightTransport, photonBounces != -1 ? photonBounces / 2 : (int)light.bounces, worldToTargetSpace, SimulationPhotonsForward);
                 }
 
@@ -516,8 +595,10 @@ public class Simulation : SimulationBaseBehavior
                 break;
         }
 
-        for (int i = 0; i < _gridCellInput.Length; i++) {
-            if (_gridCellInput[i].IsActive != 0) {
+        for (int i = 0; i < _gridCellInput.Length; i++)
+        {
+            if (_gridCellInput[i].IsActive != 0)
+            {
                 _gridCellInput[i].FrameCount++;
             }
         }
@@ -537,13 +618,16 @@ public class Simulation : SimulationBaseBehavior
             ("g_convergenceCellStateIn", _gridCellInputBuffer));
 
         SimulationOutputToneMapped = _renderTexture[_currentRenderTextureIndex];
+        _compositorMat.SetTexture(_MainTexID, SimulationOutputToneMapped);
 
         OnStep?.Invoke(framesSinceClear);
 
         // CONVERGENCE TESTING
         bool fireConvergedEvent = false;
-        if(frameLimit != -1 && framesSinceClear >= frameLimit) {
-            if(framesSinceClear > frameLimit) {
+        if (frameLimit != -1 && framesSinceClear >= frameLimit)
+        {
+            if (framesSinceClear > frameLimit)
+            {
                 Debug.LogError("Skipped a frame somehow...");
             }
 
@@ -551,19 +635,22 @@ public class Simulation : SimulationBaseBehavior
             fireConvergedEvent = true;
         }
 
-        if( ConvergenceMeasurementInterval != 0 && framesSinceClear % ConvergenceMeasurementInterval == 0 ||
-            framesSinceClear == 1) {
+        if (ConvergenceMeasurementInterval != 0 && framesSinceClear % ConvergenceMeasurementInterval == 0 ||
+            framesSinceClear == 1 && _convergenceThreshold > 0)
+        {
             MeasureConvergence(framesSinceClear == 1);
         }
 
         SwapGBuffer();
 
-        if (fireConvergedEvent) {
+        if (fireConvergedEvent)
+        {
             OnConverged?.Invoke();
         }
     }
 
-    async void MeasureConvergence(bool initial) {
+    async void MeasureConvergence(bool initial)
+    {
         // Convergence: The change in output image approaches zero.
         // There's two ways to measure change:
         //    A. Pixel difference per frame
@@ -592,17 +679,18 @@ public class Simulation : SimulationBaseBehavior
         // If E is large and Pixel delta is small, we're converging!
         // 
 
-        if(awaitingConvergenceResult) return;
+        if (awaitingConvergenceResult) return;
         awaitingConvergenceResult = true;
-        if(hasConverged) return;
+        if (hasConverged) return;
 
         _gridCellInputBuffer.SetData(_gridCellInput);
 
         _computeShader.SetVector("g_convergenceCells", new Vector2(gridCells.x, gridCells.y));
         _computeShader.SetFloat("g_getCellTransmissibility_lod", GBufferTransmissibility.mipmapCount
-            - Mathf.Ceil(Mathf.Log(Mathf.Max(gridCells.x, gridCells.y),2)) - 1);
+            - Mathf.Ceil(Mathf.Log(Mathf.Max(gridCells.x, gridCells.y), 2)) - 1);
 
-        if(true || !hasValidGridTransmissibility) {
+        if (true || !hasValidGridTransmissibility)
+        {
             RunKernel(_computeShader, "GetCellTransmissibility", (int)gridCells.x, (int)gridCells.y,
                 ("g_transmissibility", GBufferTransmissibility),
                 ("g_convergenceCellStateOut", _gridCellOutputBuffer));
@@ -612,7 +700,7 @@ public class Simulation : SimulationBaseBehavior
         RunKernel(_computeShader, "MeasureConvergence", width, height,
             ("g_output_raw", SimulationOutputRaw),
             ("g_output_tonemapped", _renderTexture[_currentRenderTextureIndex]),
-            ("g_previousResult", _renderTexture[1-_currentRenderTextureIndex]),
+            ("g_previousResult", _renderTexture[1 - _currentRenderTextureIndex]),
             ("g_convergenceCellStateIn", _gridCellInputBuffer),
             ("g_convergenceCellStateOut", _gridCellOutputBuffer));
         _currentRenderTextureIndex = 1 - _currentRenderTextureIndex;
@@ -620,9 +708,9 @@ public class Simulation : SimulationBaseBehavior
         int recentSceneId = _sceneId;
         var r = await AsyncGPUReadback.RequestAsync(_gridCellOutputBuffer);
 
-        if(recentSceneId != _sceneId) return;
+        if (recentSceneId != _sceneId) return;
         awaitingConvergenceResult = false;
-        if(!r.done || r.hasError) return;
+        if (!r.done || r.hasError) return;
 
         var feedback = r.GetData<ConvergenceCellOutput>(0);
 
@@ -632,11 +720,12 @@ public class Simulation : SimulationBaseBehavior
         float[] efficiencies = new float[feedback.Length];
         float minEfficiency = float.MaxValue;
         int minEfficiencyIndex = -1;
-        for(int i = 0;i < feedback.Length;i++) {
+        for (int i = 0; i < feedback.Length; i++)
+        {
             var outputState = feedback[i];
             _gridCellOutput[i] = outputState;
 
-            if(outputState.PhotonCount == 0)
+            if (outputState.PhotonCount == 0)
                 continue;
 
             _gridCellState[i].CumulativePhotonCount += outputState.PhotonCount;
@@ -651,18 +740,21 @@ public class Simulation : SimulationBaseBehavior
             //var localConvergence = 1000 / flux;
             bool localHasConverged = localConvergence < _convergenceThreshold;
 
-            if(_gridCellInput[i].IsActive != 0) {
+            if (_gridCellInput[i].IsActive != 0)
+            {
                 //_gridCellInput[i].IsActive = localHasConverged ? 0u : 1u;
                 AccumulatePhotons(i % (int)gridCells.x, i / (int)gridCells.x);
                 //_gridCellInput[i].IsActive = outputState.MaxValue > (1u << 31) ? 0u : 1u;
                 overallConvergence = Math.Max(overallConvergence, localConvergence);
             }
 
-            if(localHasConverged) {
+            if (localHasConverged)
+            {
                 totalConverged++;
             }
 
-            if(_gridCellInput[i].IsActive != 0 && efficiency < minEfficiency) {
+            if (_gridCellInput[i].IsActive != 0 && efficiency < minEfficiency)
+            {
                 minEfficiency = efficiency;
                 minEfficiencyIndex = i;
             }
@@ -695,12 +787,15 @@ public class Simulation : SimulationBaseBehavior
                 ImportanceSamplingTarget = currentIdealTarget;
             }
 
-            for(int i = 0;i < gridCells.x;i++) {
-                for(int j = 0;j < gridCells.y;j++) {
+            for (int i = 0; i < gridCells.x; i++)
+            {
+                for (int j = 0; j < gridCells.y; j++)
+                {
                     long index = i + j * gridCells.x;
 
                     // Accumulate net transmissibility from cell[i,j] to targetCell
-                    Vector2 originCell = new Vector2 {
+                    Vector2 originCell = new Vector2
+                    {
                         x = i + 0.5f,
                         y = j + 0.5f
                     };
@@ -723,18 +818,22 @@ public class Simulation : SimulationBaseBehavior
                     float uNextY = yDir == 0 ? float.MaxValue : (yBoundary - originCell.y) / direction.y;
                     float netTransmissibility = 1;
 
-                    while(uCurrent < distance) {
+                    while (uCurrent < distance)
+                    {
                         float cellDistance;
                         float uNext;
-                        float cellTransmissibility = _gridCellOutput[marchX + gridCells.x * marchY].Transmissibility;                        
+                        float cellTransmissibility = _gridCellOutput[marchX + gridCells.x * marchY].Transmissibility;
 
-                        if(uNextX < uNextY) {
+                        if (uNextX < uNextY)
+                        {
                             cellDistance = uNextX - uCurrent;
                             uNext = uNextX;
                             marchX += xDir;
                             xBoundary += xDir;
                             uNextX = (xBoundary - originCell.x) / direction.x;
-                        } else {
+                        }
+                        else
+                        {
                             cellDistance = uNextY - uCurrent;
                             uNext = uNextY;
                             marchY += yDir;
@@ -742,7 +841,8 @@ public class Simulation : SimulationBaseBehavior
                             uNextY = (yBoundary - originCell.y) / direction.y;
                         }
 
-                        if(uNext > distance) {
+                        if (uNext > distance)
+                        {
                             uNext = distance;
                         }
 
@@ -764,44 +864,54 @@ public class Simulation : SimulationBaseBehavior
             }
         }
 
-        for(int i = 0;i < gridCells.x;i++) {
-            for(int j = 0;j < gridCells.y;j++) {
-                EfficiencyData[i,j] = efficiencies[j * gridCells.x + i];
+        for (int i = 0; i < gridCells.x; i++)
+        {
+            for (int j = 0; j < gridCells.y; j++)
+            {
+                EfficiencyData[i, j] = efficiencies[j * gridCells.x + i];
             }
         }
 
         //float BoundaryEfficiency = 3;
 
-        for(int i = 0;i < gridCells.x;i++) {
-            for(int j = 0;j < gridCells.y;j++) {
-                var g = new Vector2{
+        for (int i = 0; i < gridCells.x; i++)
+        {
+            for (int j = 0; j < gridCells.y; j++)
+            {
+                var g = new Vector2
+                {
                     // x = (EfficiencyData.ReadClampScaled(i+1,j,BoundaryEfficiency) - EfficiencyData.ReadClampScaled(i-1,j,BoundaryEfficiency)) / -2.0f,
                     // y = (EfficiencyData.ReadClampScaled(i,j+1,BoundaryEfficiency) - EfficiencyData.ReadClampScaled(i,j-1,BoundaryEfficiency)) / -2.0f
-                    x = (EfficiencyData.ReadMirrored(i+1,j) - EfficiencyData.ReadMirrored(i-1,j)) / -2.0f,
-                    y = (EfficiencyData.ReadMirrored(i,j+1) - EfficiencyData.ReadMirrored(i,j-1)) / -2.0f
+                    x = (EfficiencyData.ReadMirrored(i + 1, j) - EfficiencyData.ReadMirrored(i - 1, j)) / -2.0f,
+                    y = (EfficiencyData.ReadMirrored(i, j + 1) - EfficiencyData.ReadMirrored(i, j - 1)) / -2.0f
                 };
 
                 g *= g.sqrMagnitude;
 
-                EfficiencyGradient[i,j] = g;
+                EfficiencyGradient[i, j] = g;
             }
         }
 
-        for(int i = 0;i < gridCells.x;i++) {
-            for(int j = 0;j < gridCells.y;j++) {
-                RelaxedEfficiencyGradient[i,j] = EfficiencyGradient[i,j];
+        for (int i = 0; i < gridCells.x; i++)
+        {
+            for (int j = 0; j < gridCells.y; j++)
+            {
+                RelaxedEfficiencyGradient[i, j] = EfficiencyGradient[i, j];
             }
         }
 
         const float w = 0.4f;
         const int JacobianIterations = 1000;
 
-        for(int n = 0;n < JacobianIterations;n++) {
-            for(int i = 0;i < gridCells.x;i++) {
-                for(int j = 0;j < gridCells.y;j++) {
-                    RelaxedEfficiencyGradient[i,j] = (1-w) * EfficiencyGradient[i,j] + w/4.0f * (
-                        RelaxedEfficiencyGradient.ReadClamped(i+1,j) + RelaxedEfficiencyGradient.ReadClamped(i-1,j) +
-                        RelaxedEfficiencyGradient.ReadClamped(i,j+1) + RelaxedEfficiencyGradient.ReadClamped(i,j-1));
+        for (int n = 0; n < JacobianIterations; n++)
+        {
+            for (int i = 0; i < gridCells.x; i++)
+            {
+                for (int j = 0; j < gridCells.y; j++)
+                {
+                    RelaxedEfficiencyGradient[i, j] = (1 - w) * EfficiencyGradient[i, j] + w / 4.0f * (
+                        RelaxedEfficiencyGradient.ReadClamped(i + 1, j) + RelaxedEfficiencyGradient.ReadClamped(i - 1, j) +
+                        RelaxedEfficiencyGradient.ReadClamped(i, j + 1) + RelaxedEfficiencyGradient.ReadClamped(i, j - 1));
                 }
             }
         }
@@ -824,7 +934,8 @@ public class Simulation : SimulationBaseBehavior
         }
     }
 
-    void AccumulatePhotons(int xCell, int yCell) {
+    void AccumulatePhotons(int xCell, int yCell)
+    {
         int w = (int)(width / gridCells.x);
         int h = (int)(height / gridCells.y);
 
@@ -835,7 +946,8 @@ public class Simulation : SimulationBaseBehavior
             ("g_convergenceCellStateIn", _gridCellInputBuffer));
     }
 
-    void SimulateLight(RTLightSource light, Strategy strategy, int bounces, Matrix4x4 worldToTargetSpace, RenderTexture outputTexture) {
+    void SimulateLight(RTLightSource light, Strategy strategy, int bounces, Matrix4x4 worldToTargetSpace, RenderTexture outputTexture)
+    {
         string simulateKernel = null;
         int simulateKernelId = -1;
         var lightToTargetSpace = worldToTargetSpace * light.WorldTransform;
@@ -843,45 +955,47 @@ public class Simulation : SimulationBaseBehavior
 
         string kernelFormat;
 
-        switch(strategy) {
-        case Strategy.LightTransport:
-            kernelFormat = "Simulate_{0}";
-            break;
-        case Strategy.PathTracing:
-            kernelFormat = "Simulate_{0}_Splat";
-            break;
-        case Strategy.Hybrid:
-            kernelFormat = "Simulate_{0}_Forward";
-            break;
-        default:
-            Debug.LogError("What?");
-            return;
+        switch (strategy)
+        {
+            case Strategy.LightTransport:
+                kernelFormat = "Simulate_{0}";
+                break;
+            case Strategy.PathTracing:
+                kernelFormat = "Simulate_{0}_Splat";
+                break;
+            case Strategy.Hybrid:
+                kernelFormat = "Simulate_{0}_Forward";
+                break;
+            default:
+                Debug.LogError("What?");
+                return;
         }
 
-        switch(light) {
-        case RTPointLight pt:
-            simulateKernel = string.Format(kernelFormat, "PointLight");
-            _computeShader.SetFloat("g_lightEmissionOutscatter", pt.emissionOutscatter);
-            break;
-        case RTSpotLight _:
-            simulateKernel = string.Format(kernelFormat, "SpotLight");
-            break;
-        case RTLaserLight _:
-            simulateKernel = string.Format(kernelFormat, "LaserLight");
-            break;
-        case RTAmbientLight _:
-            simulateKernel = string.Format(kernelFormat, "AmbientLight");
-            break;
-        case RTFieldLight field:
-            simulateKernel = string.Format(kernelFormat, "FieldLight");
-            simulateKernelId = _computeShader.FindKernel(simulateKernel);
-            _computeShader.SetTexture(simulateKernelId, "g_lightFieldTexture", field.lightTexture ? field.lightTexture : Texture2D.whiteTexture);
-            _computeShader.SetFloat("g_lightEmissionOutscatter", field.emissionOutscatter);
-            break;
-        case RTDirectionalLight dir:
-            simulateKernel = string.Format(kernelFormat, "DirectionalLight");
-            _computeShader.SetVector("g_directionalLightDirection", lightToTargetSpace.MultiplyVector(new Vector3(0,-1,0)));
-            break;
+        switch (light)
+        {
+            case RTPointLight pt:
+                simulateKernel = string.Format(kernelFormat, "PointLight");
+                _computeShader.SetFloat("g_lightEmissionOutscatter", pt.emissionOutscatter);
+                break;
+            case RTSpotLight _:
+                simulateKernel = string.Format(kernelFormat, "SpotLight");
+                break;
+            case RTLaserLight _:
+                simulateKernel = string.Format(kernelFormat, "LaserLight");
+                break;
+            case RTAmbientLight _:
+                simulateKernel = string.Format(kernelFormat, "AmbientLight");
+                break;
+            case RTFieldLight field:
+                simulateKernel = string.Format(kernelFormat, "FieldLight");
+                simulateKernelId = _computeShader.FindKernel(simulateKernel);
+                _computeShader.SetTexture(simulateKernelId, "g_lightFieldTexture", field.lightTexture ? field.lightTexture : Texture2D.whiteTexture);
+                _computeShader.SetFloat("g_lightEmissionOutscatter", field.emissionOutscatter);
+                break;
+            case RTDirectionalLight dir:
+                simulateKernel = string.Format(kernelFormat, "DirectionalLight");
+                _computeShader.SetVector("g_directionalLightDirection", lightToTargetSpace.MultiplyVector(new Vector3(0, -1, 0)));
+                break;
         }
 
         simulateKernelId = _computeShader.FindKernel(simulateKernel);
@@ -904,16 +1018,18 @@ public class Simulation : SimulationBaseBehavior
             ("g_convergenceCellStateOut", _gridCellOutputBuffer));
     }
 
-    void IdentifyCellInputGroups() {
+    void IdentifyCellInputGroups()
+    {
         _gridCellInputGroups.Clear();
 
         // Case 0:
         //    1 group: the whole image.
-        _gridCellInputGroups.Add(new ConvergenceCellGroup {
-             StartX = 0,
-             StartY = 0,
-             EndX = (int)gridCells.x,
-             EndY = (int)gridCells.y
+        _gridCellInputGroups.Add(new ConvergenceCellGroup
+        {
+            StartX = 0,
+            StartY = 0,
+            EndX = (int)gridCells.x,
+            EndY = (int)gridCells.y
         });
 
         // Case 1:

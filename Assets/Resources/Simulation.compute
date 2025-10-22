@@ -274,8 +274,9 @@ struct SimulationContext {
     Ray EmitAmbientLight() {
         Ray emitted;
 
-        emitted.Origin = rand.Next2() * g_target_size;
-        emitted.Direction = normalize(rand.NextDirection() - (emitted.Origin * 2 - 1)/1.44);
+        float2 nOrigin = rand.Next2();
+        emitted.Origin = nOrigin * g_target_size;
+        emitted.Direction = normalize(rand.NextDirection() - (nOrigin * 2 - 1) / 1.44);
         emitted.Energy = g_lightEnergy;
         emitted.FineScale = 1;
 
