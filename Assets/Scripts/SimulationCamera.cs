@@ -39,8 +39,8 @@ public class SimulationCamera : MonoBehaviour {
         _cam.transform.localPosition = Vector3.zero;
         _cam.orthographic = true;
         _cam.orthographicSize = parent.lossyScale.y / 2;
-        _cam.nearClipPlane = -1;
-        _cam.farClipPlane = 1;
+        _cam.nearClipPlane = -100;
+        _cam.farClipPlane = 1000;
         _cam.cullingMask = layers;
         _cam.clearFlags = CameraClearFlags.Nothing;
         _cam.allowHDR = false;
