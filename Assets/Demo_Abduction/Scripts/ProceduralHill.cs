@@ -4,6 +4,7 @@ using System.Collections.Generic;
 using System.Linq;
 using System.Xml.Linq;
 using UnityEditor;
+using UnityEditor.SceneManagement;
 using UnityEngine;
 using UnityEngine.Rendering;
 
@@ -215,6 +216,15 @@ public class ProceduralHill : PhotonerDemoComponent
         var matrix = transform.localToWorldMatrix;
 
         cb.Clear();
+
+#if UNITY_EDITOR
+        var prefabStage = PrefabStageUtility.GetCurrentPrefabStage();
+
+        if(prefabStage != null && !prefabStage.IsPartOfPrefabContents(gameObject)) {
+            return;
+        }
+#endif
+
         for (int i = 0; i < layerPropertyBlocks.Length; i++) {
             cb.DrawMesh(hillMesh, matrix, hillMat, 0, Math.Min(i, 1), layerPropertyBlocks[i]);
         }
