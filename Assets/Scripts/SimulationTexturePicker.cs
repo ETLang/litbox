@@ -18,9 +18,9 @@ public class SimulationTexturePicker : MonoBehaviour {
         MaxCellValue
     }
 
-    [SerializeField] private Simulation simulation;
+    [SerializeField] public Simulation simulation;
     [SerializeField] private AIAccelerator aiAccelerator;
-    [SerializeField] private TextureType type = TextureType.ToneMapped;
+    [SerializeField] public TextureType type = TextureType.ToneMapped;
 
     void OnDisable()
     {

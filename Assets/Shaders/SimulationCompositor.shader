@@ -1,8 +1,8 @@
-Shader "Unlit/SimulationCompositingShader"
+Shader "Photoner/SimulationCompositor"
 {
     Properties
     {
-        _MainTex ("Texture", 2D) = "white" {}
+        _MainTex ("Texture", 2D) = "gray" {}
     }
     SubShader
     {
@@ -12,6 +12,7 @@ Shader "Unlit/SimulationCompositingShader"
         Pass
         {
             Lighting Off
+            Cull Off
             Blend One OneMinusSrcAlpha
 
             CGPROGRAM
@@ -47,8 +48,8 @@ Shader "Unlit/SimulationCompositingShader"
             fixed4 frag (v2f i) : SV_Target
             {
                 fixed4 col = tex2D(_MainTex, i.uv);
-                return fixed4(0.1,0,0,0);
-                //return fixed4(col.rgb,0);
+               // return fixed4(0.1,0,0,0);
+                return fixed4(col.rgb,0);
             }
             ENDCG
         }
