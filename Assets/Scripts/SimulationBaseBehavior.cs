@@ -46,8 +46,8 @@ public class SimulationBaseBehavior : MonoBehaviour {
         return output;
     }
 
-    protected RenderTexture CreateRWTextureWithMips(int w, int h, RenderTextureFormat format) {
-        var output = new RenderTexture(w, h, 0, format)
+    protected RenderTexture CreateRWTextureWithMips(int w, int h, RenderTextureFormat format, int d = 0) {
+        var output = new RenderTexture(w, h, d, format)
         {
             enableRandomWrite = true,
             useMipMap = true,

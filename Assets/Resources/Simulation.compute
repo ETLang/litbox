@@ -436,8 +436,8 @@ struct SimulationContext {
 
             WritePhoton(photon.Origin, outScatter, false);//bounce == 0);
             float3 important_direction = ScatterImportance(photon.Origin);
-            photon.Direction = rand.NextDirection();// important_direction.xy;
-            //photon.FineScale *= important_direction.z;
+            photon.Direction = important_direction.xy; //rand.NextDirection();
+            photon.FineScale *= important_direction.z;
             photon.Energy -= outScatter;
         }
     }

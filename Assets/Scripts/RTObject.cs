@@ -2,7 +2,6 @@ using System.Collections;
 using System.Collections.Generic;
 using UnityEngine;
 
-[RequireComponent(typeof(Renderer))]
 public class RTObject : MonoBehaviour
 {
     [SerializeField] public Texture2D normal;
@@ -18,30 +17,37 @@ public class RTObject : MonoBehaviour
         get => transform.localToWorldMatrix;
     }
 
+    public float SubstrateDensity => Mathf.Pow(10, substrateLogDensity);
     public bool Changed {get; protected set;}
 
     private Matrix4x4 _previousMatrix;
     private Texture2D _previousNormal;
+    private Material _mat;
     private float _previousSubstrateLogDensity;
     private float _previousObjectHeight;
     private bool _externallyInvalidated;
 
+    private static int _substrateDensityId = Shader.PropertyToID("_substrateDensity");
+
     protected void Start() {
         var renderer = GetComponent<Renderer>();
-        
+        var matProvider = GetComponent<IMaterialProvider>();
+        if (renderer != null) {
+            _mat = renderer.material;
+        } else if (matProvider != null) {
+            _mat = matProvider.Material;
+        }
+
         _previousMatrix = WorldTransform;
         _previousNormal = normal;
         _previousSubstrateLogDensity = substrateLogDensity;
         _previousObjectHeight = objectHeight;
 
-        var mat = renderer.material;
-        mat.SetFloat("_substrateDensity", Mathf.Pow(10, substrateLogDensity));
+        _mat?.SetFloat(_substrateDensityId, SubstrateDensity);
     }
     
     protected void Update()
     {
-        var renderer = GetComponent<Renderer>();
-
         Changed =
             _externallyInvalidated ||
             _previousMatrix != WorldTransform || 
@@ -54,10 +60,16 @@ public class RTObject : MonoBehaviour
         _previousSubstrateLogDensity = substrateLogDensity;
         _previousObjectHeight = objectHeight;
 
-        if(Changed) {
-            var mat = renderer.material;
-            mat.SetFloat("_substrateDensity", Mathf.Pow(10, substrateLogDensity));
-        }
+        //if(Changed) {
+            var renderer = GetComponent<Renderer>();
+            var matProvider = GetComponent<IMaterialProvider>();
+            if (renderer != null) {
+                _mat = renderer.material;
+            } else if (matProvider != null) {
+                _mat = matProvider.Material;
+            }
+            _mat?.SetFloat(_substrateDensityId, SubstrateDensity);
+        //}
 
         _externallyInvalidated = false;
     }

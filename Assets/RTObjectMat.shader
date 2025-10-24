@@ -66,20 +66,6 @@ Shader "RT/Object"
                 float4 n = tex2D(_NormalTex, i.uv);
 
 
-
-                // T = 1 / (1 + S)
-                // S = 1/T - 1
-                // Src*Dest
-                // Src = 1-_substrateDensity*t.a
-                // Dest = 1 / (1+Sd)
-                // Ts=1-_substrateDensity*t.a
-                // Ss = 1/Ts
-                // Sfinal = 1/(Src*Dest)-1 = 1/(Ts / (1+Sd))-1
-                //        = (1+Sd)/Ts-1 = 1/Ts + Sd/Ts - 1 = Sd * 1/Ts + 1/Ts - 1
-                // 1/Ts - 1 = 1/Ts * tAlpha;
-                // tAlpha = (1/Ts - 1) / (1/Ts) = Ts * (1/Ts - 1) = 1 - 1/Ts
-                // 1/Ts - 1 = 1/Ts * (1 - 1/Ts)
-
                 output.albedo = float4(c.rgb * _Color.rgb,c.a * _Color.a);
                 float t = 1-_substrateDensity*c.a/sqrt(_ScreenParams.x*_ScreenParams.y)*100;
                 float rT = 1/t;

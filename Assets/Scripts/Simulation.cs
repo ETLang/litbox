@@ -340,7 +340,7 @@ public class Simulation : SimulationBaseBehavior
 
         for (int i = 0; i < 2; i++)
         {
-            _gBufferAlbedo[i] = CreateRWTextureWithMips(width, height, RenderTextureFormat.ARGBFloat);
+            _gBufferAlbedo[i] = CreateRWTextureWithMips(width, height, RenderTextureFormat.ARGBFloat, 32);
             _gBufferTransmissibility[i] = CreateRWTextureWithMips(width, height, RenderTextureFormat.ARGBFloat);
             _gBufferNormalSlope[i] = CreateRWTextureWithMips(width, height, RenderTextureFormat.ARGBFloat);
         }
@@ -425,8 +425,8 @@ public class Simulation : SimulationBaseBehavior
         var presentationToTargetSpace = Matrix4x4.Scale(new Vector3(width, height, 1)) * Matrix4x4.Translate(new Vector3(0.5f, 0.5f, 0));
         //var presentationToTargetSpace = Matrix4x4.Translate(new Vector3(0.5f, 0.5f, 0));
         var worldToTargetSpace = presentationToTargetSpace * worldToPresentation;
-        var allLights = FindObjectsByType<RTLightSource>(FindObjectsSortMode.None);
-        var allObjects = FindObjectsByType<RTObject>(FindObjectsSortMode.None);
+        var allLights = FindObjectsByType<RTLightSource>(FindObjectsInactive.Exclude, FindObjectsSortMode.None);
+        var allObjects = FindObjectsByType<RTObject>(FindObjectsInactive.Exclude, FindObjectsSortMode.None);
 
         // PERFORMANCE MEASUREMENT
         var now = Time.time;

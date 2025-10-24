@@ -28,7 +28,7 @@ public class HillLayerProperties
 
 [ExecuteInEditMode]
 [RequireComponent(typeof(PolygonCollider2D))]
-public class ProceduralHill : PhotonerDemoComponent
+public class ProceduralHill : PhotonerDemoComponent//, IMaterialProvider
 {
     [Header("Hill Shape")]
     [SerializeField] Mesh hillMesh;
@@ -52,6 +52,10 @@ public class ProceduralHill : PhotonerDemoComponent
     MaterialPropertyBlock[] layerPropertyBlocks = new MaterialPropertyBlock[0];
     HashSet<Camera> registeredCameras = new HashSet<Camera>();
     PolygonCollider2D _collider;
+    RTObject _rayTracing;
+    int _layerListeningCount = 0;
+
+   // Material IMaterialProvider.Material => hillMat;
 
     public ProceduralHill()
     {
@@ -67,9 +71,12 @@ public class ProceduralHill : PhotonerDemoComponent
         DetectChanges(() => haze);
     }
 
-    private int _layerListeningCount = 0;
     private void ValidateArrayListeners()
     {
+        if(_rayTracing == null) {
+            _rayTracing = GetComponent<RTObject>();
+        }
+
         if (layers.Length > _layerListeningCount) {
             for (int i = _layerListeningCount; i < layers.Length; i++) {
                 ListenOnArray(i);
@@ -90,6 +97,8 @@ public class ProceduralHill : PhotonerDemoComponent
                 new Vector3(layers[i].textureOffset, 0, 0),
                 Quaternion.AngleAxis(layers[i].textureAngle, Vector3.forward),
                 new Vector3(layers[i].textureScale, layers[i].textureScale, 1));
+
+            var density = _rayTracing.SubstrateDensity;
 
             layerPropertyBlocks[i].SetColor("_FuzzColor", layers[i].fuzzColor);
             layerPropertyBlocks[i].SetFloat("_FuzzLength", layers[i].fuzzLength);
@@ -197,9 +206,22 @@ public class ProceduralHill : PhotonerDemoComponent
     {
         base.Update();
 
+        List<Camera> toRemove = new List<Camera>();
+        foreach(var cam in registeredCameras) {
+            if((cam.cullingMask & (1 << gameObject.layer)) == 0) {
+                cam.RemoveCommandBuffer(CameraEvent.BeforeForwardOpaque, cb);
+                toRemove.Add(cam);
+            }
+        }
+
+        foreach(var cam in toRemove) {
+            registeredCameras.Remove(cam);
+        }
+
         if (enabled) {
-            foreach (var cam in Camera.allCameras)
-                if (!registeredCameras.Contains(cam)) {
+            var allCameras = FindObjectsByType<Camera>(FindObjectsInactive.Include, FindObjectsSortMode.None);
+            foreach (var cam in allCameras)
+                if ((cam.cullingMask & (1 << gameObject.layer)) != 0 && !registeredCameras.Contains(cam)) {
                     cam.AddCommandBuffer(CameraEvent.BeforeForwardOpaque, cb);
                     registeredCameras.Add(cam);
                 }
@@ -226,6 +248,7 @@ public class ProceduralHill : PhotonerDemoComponent
 #endif
 
         for (int i = 0; i < layerPropertyBlocks.Length; i++) {
+            layerPropertyBlocks[i].SetFloat("_substrateDensity", _rayTracing.SubstrateDensity);
             cb.DrawMesh(hillMesh, matrix, hillMat, 0, Math.Min(i, 1), layerPropertyBlocks[i]);
         }
     }

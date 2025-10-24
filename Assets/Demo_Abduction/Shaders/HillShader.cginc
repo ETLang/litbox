@@ -32,6 +32,7 @@ float _ViewXShift;
 float4 _FuzzColor;
 float _FuzzLength;
 float _ZOffset;
+float _substrateDensity;
 
 v2f hill_vert(appdata v)
 {
@@ -86,7 +87,14 @@ float3 tone_map(float3 x)
     return smoothstep(-4, 2, log10(x));
 }
 
-fixed4 hill_frag(v2f i) : SV_Target
+struct gbuffer_output
+{
+    float4 albedo : SV_Target0;
+    float4 transmissibility : SV_Target1;
+    float4 normal : SV_Target2;
+};
+
+gbuffer_output hill_frag(v2f i)
 {
     float2 farmuv = i.farm_uv;
     if (_FarmlandRowCount != -1)
@@ -113,5 +121,10 @@ fixed4 hill_frag(v2f i) : SV_Target
     
     float3 final_color = lerp(diffuse_color + specular_color, _Haze.rgb, _Haze.a);
 
-    return float4(final_color, 1) * farmland_color.a;
+    float t = 1 - _substrateDensity * farmland_color.a / sqrt(_ScreenParams.x * _ScreenParams.y) * 100;
+    gbuffer_output output;
+    output.albedo = float4(final_color, 1) * farmland_color.a;
+    output.transmissibility = float4(t, t, 0, 1);
+    output.normal = float4(0, 1, 0, 0);
+    return output;
 }

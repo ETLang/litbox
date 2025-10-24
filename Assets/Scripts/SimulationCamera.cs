@@ -72,7 +72,7 @@ public class SimulationCamera : MonoBehaviour {
 
         RenderTexture rt = RenderTexture.active;
         RenderTexture.active = GBufferAlbedo;
-        GL.Clear(false, true, new Color(0,0,0,1));
+        GL.Clear(true, true, new Color(0,0,0,1));
         RenderTexture.active = GBufferTransmissibility;
         GL.Clear(false, true, new Color(1,1,0,1));
         RenderTexture.active = GBufferNormalSlope;
