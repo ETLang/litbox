@@ -28,7 +28,7 @@ public class HillLayerProperties
 
 [ExecuteInEditMode]
 [RequireComponent(typeof(PolygonCollider2D))]
-public class ProceduralHill : PhotonerDemoComponent//, IMaterialProvider
+public class ProceduralHill : PhotonerDemoComponent
 {
     [Header("Hill Shape")]
     [SerializeField] Mesh hillMesh;
@@ -54,8 +54,6 @@ public class ProceduralHill : PhotonerDemoComponent//, IMaterialProvider
     PolygonCollider2D _collider;
     RTObject _rayTracing;
     int _layerListeningCount = 0;
-
-   // Material IMaterialProvider.Material => hillMat;
 
     public ProceduralHill()
     {

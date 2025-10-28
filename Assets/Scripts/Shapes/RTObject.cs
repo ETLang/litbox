@@ -6,7 +6,7 @@ public class RTObject : MonoBehaviour
 {
     [SerializeField] public Texture2D normal;
 
-    [Range(-5,5)]
+    [Range(-10,1)]
     [SerializeField] public float substrateLogDensity;
 
     [Range(0,1)]
@@ -31,11 +31,8 @@ public class RTObject : MonoBehaviour
 
     protected void Start() {
         var renderer = GetComponent<Renderer>();
-        var matProvider = GetComponent<IMaterialProvider>();
         if (renderer != null) {
             _mat = renderer.material;
-        } else if (matProvider != null) {
-            _mat = matProvider.Material;
         }
 
         _previousMatrix = WorldTransform;
@@ -62,11 +59,8 @@ public class RTObject : MonoBehaviour
 
         //if(Changed) {
             var renderer = GetComponent<Renderer>();
-            var matProvider = GetComponent<IMaterialProvider>();
             if (renderer != null) {
                 _mat = renderer.material;
-            } else if (matProvider != null) {
-                _mat = matProvider.Material;
             }
             _mat?.SetFloat(_substrateDensityId, SubstrateDensity);
         //}
