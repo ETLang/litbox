@@ -29,7 +29,12 @@ public class RTObject : MonoBehaviour
 
     private static int _substrateDensityId = Shader.PropertyToID("_substrateDensity");
 
-    protected void Start() {
+    protected virtual void Awake()
+    {
+
+    }
+
+    protected virtual void Start() {
         var renderer = GetComponent<Renderer>();
         if (renderer != null) {
             _mat = renderer.material;
@@ -43,7 +48,7 @@ public class RTObject : MonoBehaviour
         _mat?.SetFloat(_substrateDensityId, SubstrateDensity);
     }
     
-    protected void Update()
+    protected virtual void Update()
     {
         Changed =
             _externallyInvalidated ||
@@ -57,13 +62,13 @@ public class RTObject : MonoBehaviour
         _previousSubstrateLogDensity = substrateLogDensity;
         _previousObjectHeight = objectHeight;
 
-        //if(Changed) {
+        if(Changed) {
             var renderer = GetComponent<Renderer>();
             if (renderer != null) {
                 _mat = renderer.material;
             }
             _mat?.SetFloat(_substrateDensityId, SubstrateDensity);
-        //}
+        }
 
         _externallyInvalidated = false;
     }

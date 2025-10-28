@@ -25,12 +25,14 @@ Shader "RT/Object"
             struct appdata
             {
                 float4 vertex : POSITION;
+                float3 normal : NORMAL;
                 float2 uv : TEXCOORD0;
             };
 
             struct v2f
             {
                 float2 uv : TEXCOORD0;
+                float3 normal : NORMAL;
                 float4 vertex : SV_POSITION;
             };
 
@@ -53,6 +55,7 @@ Shader "RT/Object"
             {
                 v2f o;
                 o.vertex = UnityObjectToClipPos(v.vertex);
+                o.normal = UnityObjectToWorldNormal(v.normal);
                 o.uv = TRANSFORM_TEX(v.uv, _MainTex);
                 return o;
             }
@@ -72,7 +75,7 @@ Shader "RT/Object"
 
                 //output.transmissibility = float4(rT,rT,0,1-rT);
                 output.transmissibility = float4(t,t,0,1);
-                output.normal = float4(0,1,0,0);
+                output.normal = float4(i.normal, 1);
 
                 // output.albedo = float4(t.rgb * _Color.rgb, t.a * _Color.a);
                 // output.transmissibility = float4(1 - (_substrateDensity * t.a * _Color.a),1,0,1);
