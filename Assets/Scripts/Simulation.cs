@@ -679,6 +679,9 @@ public class Simulation : SimulationBaseBehavior
         // If E is large and Pixel delta is small, we're converging!
         // 
 
+#if UNITY_EDITOR
+        if (!UnityEditor.EditorApplication.isPlaying) return;
+#endif
         if (awaitingConvergenceResult) return;
         awaitingConvergenceResult = true;
         if (hasConverged) return;
