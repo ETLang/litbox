@@ -41,7 +41,8 @@ RWTexture2D<uint> g_output_raw;
 Texture2D<float4> g_albedo;
 Texture2D<float4> g_transmissibility;
 SamplerState samplerg_transmissibility;
-Texture2D<float4> g_normalSlope;
+Texture2D<float4> g_normalAlignment;
+SamplerState samplerg_normalAlignment;
 Texture2D<float4> g_quadTreeLeaves;
 
 DECLARE_LUT(float2, g_mieScatteringLUT)
@@ -233,7 +234,23 @@ struct SimulationContext {
             return float3(important_direction * sample.x + perp * sample.y, sample.z);
         }
     }
+    
+    float4 ScatterMaterially(float2 origin, float2 origin_uv, float2 incoming)
+    {
+        const float eps = 1e-5f;
+        float4 normal_alignment = g_normalAlignment.SampleLevel(samplerg_normalAlignment, origin_uv, 0);
+        float3 normal = normal_alignment.xyz;
+        float alignment = normal_alignment.w; 
+        float3 incident = reflect(float3(incoming, 0), normal);
+        float2 dir = normalize(rand.NextDirection() + incident.xy / (1 - alignment + eps));
+        return float4(dir, 1, dot(normal.xy, normal.xy) > 0 ? 0 : 1);
+    }
 
+    float4 ScatterMaterially(float2 origin, float2 incoming)
+    {
+        return ScatterMaterially(origin, origin / g_target_size, incoming);
+    }
+    
     Ray EmitPointLight() {
         Ray emitted;
         
@@ -346,9 +363,9 @@ struct SimulationContext {
         float2 uvOrigin = photon.Origin / g_target_size;
         float2 uvDirection = photon.Direction / g_target_size;
         float4 uBoundaryBox = (float4(0,1,0,1) - uvOrigin.xxyy) / uvDirection.xxyy;
-        float uEnd = min(max(uBoundaryBox[0], uBoundaryBox[1]), max(uBoundaryBox[2], uBoundaryBox[3]));
+        float uEscape = min(max(uBoundaryBox[0], uBoundaryBox[1]), max(uBoundaryBox[2], uBoundaryBox[3]));
 
-        float uTarget = rand.Next() * uEnd;
+        float uTarget = rand.Next() * uEscape; // Find ways to bias this towards important areas
         float netTransmissibility = 1;
 
         uHit = 0;
@@ -373,7 +390,7 @@ struct SimulationContext {
                 //uHit += log2(substrateTransmitPotential / netTransmissibility) / log2(transmissibility);
                 uHit = uTarget;
                 probability *= netTransmissibility;
-                probability *= uEnd / 256.0; // Downscale to prevent blowout
+                probability *= uEscape / 256.0; // Downscale to prevent blowout
                 hitIntensity = probability * (1 - transmissibility);
                 return probability > 1e-9; 
             } else { // Keep propagating
@@ -391,6 +408,55 @@ struct SimulationContext {
         // Fail condition... traversal took too many steps
         WritePhoton(photon.Origin, uint3(1000000000, 1000000000, 0));
         WritePhoton(pSample * g_target_size, uint3(0, 1000000000, 0));
+        return false;
+    }
+
+    bool HitTest_Old(Ray photon, out float uHit, float substrateTransmitPotential) {
+        float2 pixelSize = 1.0 / g_target_size;
+
+        if(photon.Direction.x == 0) photon.Direction.x = 1e-8;
+        if(photon.Direction.y == 0) photon.Direction.y = 1e-8;
+
+        float4 uBoundaryBox = (float4(-0.1,1.1,-0.1,1.1) - photon.Origin.xxyy) / photon.Direction.xxyy;
+        float uEscape = min(max(uBoundaryBox[0], uBoundaryBox[1]), max(uBoundaryBox[2], uBoundaryBox[3]));
+
+        // Raycast to find collision or escape point
+        float netTransmissibility = 1;
+
+        uHit = 0;
+        float2 pSample;
+        for(int steps = 0;steps < 3000;steps++) {
+            pSample = photon.Origin + photon.Direction * uHit;
+            uint lod = g_quadTreeLeaves.SampleLevel(sampler_point_clamp, pSample, 0).x;
+        
+            float4 T = g_transmissibility.SampleLevel(samplerg_transmissibility, pSample, lod);
+            float minimumTransmissibility = T.y;
+            while(minimumTransmissibility * netTransmissibility < substrateTransmitPotential && lod > 0) {
+                lod--;
+                T = g_transmissibility.SampleLevel(samplerg_transmissibility, pSample, lod);
+                minimumTransmissibility = T.y;
+            }
+        
+            float transmissibility = T.x;
+            netTransmissibility *= transmissibility;
+
+            if(substrateTransmitPotential > netTransmissibility) { // Scatter occurs within this sample
+                // The following line finds the hit point at sub-pixel accuracy
+                uHit += pixelSize.x * (1 << lod) * log2(substrateTransmitPotential / netTransmissibility) / log2(transmissibility);
+                return true;
+            } else { // Keep propagating
+                uHit += pixelSize.x * (1 << lod);
+
+                if (uHit > uEscape)
+                {
+                    return false;
+                }
+            }
+        }
+
+        // Fail condition... traversal took too many steps
+        WritePhoton(photon.Origin, uint3(1000000000, 1000000000, 0));
+        WritePhoton(pSample, uint3(0, 1000000000, 0));
         return false;
     }
 
@@ -428,16 +494,19 @@ struct SimulationContext {
             photon.Energy *= albedo;
 #endif
 
+            //float3 important_direction = ScatterImportance(photon.Origin);
+            float4 important_direction = ScatterMaterially(photon.Origin, photon.Direction);
+            photon.Direction = important_direction.xy;
+            photon.FineScale *= important_direction.z;
+
 #if USE_ORIGINAL_HIT_TEST
             uint3 outScatter = photon.Energy * photon.FineScale * g_outscatterCoefficient;
 #else
             uint3 outScatter = photon.Energy * photon.FineScale * hitIntensity;
 #endif
+            outScatter *= important_direction.w;
 
             WritePhoton(photon.Origin, outScatter, false);//bounce == 0);
-            float3 important_direction = ScatterImportance(photon.Origin);
-            photon.Direction = important_direction.xy; //rand.NextDirection();
-            photon.FineScale *= important_direction.z;
             photon.Energy -= outScatter;
         }
     }

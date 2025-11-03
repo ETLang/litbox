@@ -60,7 +60,7 @@ public class SimulationTexturePicker : MonoBehaviour {
             value = simulation?.GBufferTransmissibility;
             break;
         case TextureType.NormalSlope:
-            value = simulation?.GBufferNormalSlope;
+            value = simulation?.GBufferNormalAlignment;
             break;
         case TextureType.QuadTree:
             value = simulation?.GBufferQuadTreeLeaves;

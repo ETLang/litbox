@@ -9,6 +9,9 @@ public class RTObject : MonoBehaviour
     [Range(-10,1)]
     [SerializeField] public float substrateLogDensity;
 
+    [Range(0, 1)]
+    [SerializeField] public float particleAlignment;
+
     [Range(0,1)]
     [SerializeField] public float objectHeight;
 
@@ -24,10 +27,12 @@ public class RTObject : MonoBehaviour
     private Texture2D _previousNormal;
     private Material _mat;
     private float _previousSubstrateLogDensity;
+    private float _previousParticleAlignment;
     private float _previousObjectHeight;
     private bool _externallyInvalidated;
 
     private static int _substrateDensityId = Shader.PropertyToID("_substrateDensity");
+    private static int _particleAlignmentId = Shader.PropertyToID("_particleAlignment");
 
     protected virtual void Awake()
     {
@@ -43,11 +48,13 @@ public class RTObject : MonoBehaviour
         _previousMatrix = WorldTransform;
         _previousNormal = normal;
         _previousSubstrateLogDensity = substrateLogDensity;
+        _previousParticleAlignment = particleAlignment;
         _previousObjectHeight = objectHeight;
 
         _mat?.SetFloat(_substrateDensityId, SubstrateDensity);
+        _mat?.SetFloat(_particleAlignmentId, particleAlignment);
     }
-    
+
     protected virtual void Update()
     {
         Changed =
@@ -55,11 +62,13 @@ public class RTObject : MonoBehaviour
             _previousMatrix != WorldTransform || 
             _previousNormal != normal ||
             _previousSubstrateLogDensity != substrateLogDensity || 
+            _previousParticleAlignment != particleAlignment ||
             _previousObjectHeight != objectHeight;
 
         _previousMatrix = WorldTransform;
         _previousNormal = normal;
         _previousSubstrateLogDensity = substrateLogDensity;
+        _previousParticleAlignment = particleAlignment;
         _previousObjectHeight = objectHeight;
 
         if(Changed) {
@@ -68,6 +77,7 @@ public class RTObject : MonoBehaviour
                 _mat = renderer.material;
             }
             _mat?.SetFloat(_substrateDensityId, SubstrateDensity);
+            _mat?.SetFloat(_particleAlignmentId, particleAlignment);
         }
 
         _externallyInvalidated = false;

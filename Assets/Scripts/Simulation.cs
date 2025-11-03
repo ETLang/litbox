@@ -130,7 +130,7 @@ public class Simulation : SimulationBaseBehavior
 
     public RenderTexture GBufferAlbedo { get; private set; }
     public RenderTexture GBufferTransmissibility { get; private set; }
-    public RenderTexture GBufferNormalSlope { get; private set; }
+    public RenderTexture GBufferNormalAlignment { get; private set; }
     public RenderTexture GBufferQuadTreeLeaves { get; private set; }
 
     public RenderTexture SimulationPhotonsForward { get; private set; }
@@ -354,7 +354,7 @@ public class Simulation : SimulationBaseBehavior
     {
         GBufferAlbedo = _gBufferAlbedo[_gBufferNextTarget];
         GBufferTransmissibility = _gBufferTransmissibility[_gBufferNextTarget];
-        GBufferNormalSlope = _gBufferNormalSlope[_gBufferNextTarget];
+        GBufferNormalAlignment = _gBufferNormalSlope[_gBufferNextTarget];
 
         //_gBufferNextTarget = 1 - _gBufferNextTarget;
 
@@ -585,7 +585,7 @@ public class Simulation : SimulationBaseBehavior
                     ("g_output_raw", SimulationOutputRaw),
                     ("g_albedo", GBufferAlbedo),
                     ("g_transmissibility", GBufferTransmissibility),
-                    ("g_normalSlope", GBufferNormalSlope),
+                    ("g_normalAlignment", GBufferNormalAlignment),
                     ("g_quadTreeLeaves", GBufferQuadTreeLeaves),
                     ("g_mieScatteringLUT", _mieScatteringLUT),
                     ("g_teardropScatteringLUT", _teardropScatteringLUT),
@@ -1012,7 +1012,7 @@ public class Simulation : SimulationBaseBehavior
             ("g_output_raw", outputTexture),
             ("g_albedo", GBufferAlbedo),
             ("g_transmissibility", GBufferTransmissibility),
-            ("g_normalSlope", GBufferNormalSlope),
+            ("g_normalAlignment", GBufferNormalAlignment),
             ("g_quadTreeLeaves", GBufferQuadTreeLeaves),
             ("g_mieScatteringLUT", _mieScatteringLUT),
             ("g_teardropScatteringLUT", _teardropScatteringLUT),

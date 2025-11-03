@@ -380,6 +380,7 @@ MonoBehaviour:
   m_EditorClassIdentifier: Assembly-CSharp::RTObject
   normal: {fileID: 0}
   substrateLogDensity: -0.12
+  particleAlignment: 0
   objectHeight: 0
 --- !u!43 &1371997848
 Mesh:
@@ -678,13 +679,13 @@ Transform:
   m_PrefabAsset: {fileID: 0}
   m_GameObject: {fileID: 1534483830}
   serializedVersion: 2
-  m_LocalRotation: {x: 0, y: 0, z: 0, w: 1}
-  m_LocalPosition: {x: -1.31187, y: -2.99, z: 0}
+  m_LocalRotation: {x: 0, y: 0, z: -0.13900028, w: 0.9902924}
+  m_LocalPosition: {x: 2.62, y: 0.3, z: 0}
   m_LocalScale: {x: 1, y: 1, z: 1}
   m_ConstrainProportionsScale: 0
   m_Children: []
   m_Father: {fileID: 0}
-  m_LocalEulerAnglesHint: {x: 0, y: 0, z: 0}
+  m_LocalEulerAnglesHint: {x: 0, y: 0, z: -15.98}
 --- !u!33 &1534483833
 MeshFilter:
   m_ObjectHideFlags: 0
@@ -754,8 +755,9 @@ MonoBehaviour:
   m_Name: 
   m_EditorClassIdentifier: Assembly-CSharp::RTRect
   normal: {fileID: 0}
-  substrateLogDensity: 0
-  objectHeight: 0
+  substrateLogDensity: 1
+  particleAlignment: 1
+  objectHeight: 1
 --- !u!1001 &1764564743
 PrefabInstance:
   m_ObjectHideFlags: 0

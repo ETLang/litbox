@@ -12,8 +12,9 @@ Shader "RT/Object"
 
         Pass
         {
-            Blend 0 SrcAlpha OneMinusSrcAlpha
+            Blend 0 One OneMinusSrcAlpha
             Blend 1 Zero SrcColor
+            Blend 2 One Zero
             // [OPTIMIZED] Blend 1 SrcAlpha SrcColor
 
             CGPROGRAM
@@ -48,6 +49,7 @@ Shader "RT/Object"
             float4 _MainTex_ST;
             float4 _Color;
             float _substrateDensity;
+            float _particleAlignment;
 
             sampler2D _NormalTex;
 
@@ -69,13 +71,13 @@ Shader "RT/Object"
                 float4 n = tex2D(_NormalTex, i.uv);
 
 
-                output.albedo = float4(c.rgb * _Color.rgb,c.a * _Color.a);
+                output.albedo = float4(c.rgb * _Color.rgb,1) * c.a * _Color.a;
                 float t = 1-_substrateDensity*c.a/sqrt(_ScreenParams.x*_ScreenParams.y)*100;
                 float rT = 1/t;
 
                 //output.transmissibility = float4(rT,rT,0,1-rT);
                 output.transmissibility = float4(t,t,0,1);
-                output.normal = float4(i.normal, 1);
+                output.normal = float4(i.normal, _particleAlignment);
 
                 // output.albedo = float4(t.rgb * _Color.rgb, t.a * _Color.a);
                 // output.transmissibility = float4(1 - (_substrateDensity * t.a * _Color.a),1,0,1);
