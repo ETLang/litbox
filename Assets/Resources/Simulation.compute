@@ -351,6 +351,72 @@ struct ImplicitIntegrator : BaseContext, IMonteCarloMethod
     }
 };
 
+struct ExplicitIntegrator : BaseContext, IMonteCarloMethod
+{
+    float transmissibility;
+    float transmitPotential;
+    float quantumScale;
+    float uEscape;
+    
+    float4 tested_transmissibility;
+    float tested_u;
+
+    void Init(BaseContext ctx)
+    {
+        rand = ctx.rand;
+
+        float u = rand.Next();
+        // transmitPotential = u * u * u;
+        // quantumScale = 3 * u * u;
+        transmitPotential = u;
+        quantumScale = 1;
+    }
+    
+    void BeginTraversal(float uEscape, Ray photon) 
+    {
+        this.uEscape = uEscape;
+        transmissibility = 1;
+    }
+
+    bool Test(float uTest, float4 testTransmissibility)
+    {
+        tested_u = uTest;
+        tested_transmissibility = testTransmissibility;
+
+        float minimumTransmissibility = testTransmissibility.y;
+        return minimumTransmissibility * transmissibility < transmitPotential;
+    }
+
+    bool Propagate()
+    {
+        transmissibility *= tested_transmissibility.x;
+        return tested_u < uEscape;
+    }
+
+    bool EndTraversal(inout Ray photon, out float uHit)
+    {
+        uHit = tested_u + log2(transmitPotential / transmissibility) / log2(tested_transmissibility.x);
+        return true;
+    }
+
+    void Bounce(inout Ray photon, float3 albedo)
+    {
+        photon.Energy *= albedo * quantumScale;
+
+        //float3 important_direction = ScatterImportance(photon.Origin);
+        float4 important_direction = ScatterMaterially(photon.Origin, photon.Direction);
+        photon.Direction = important_direction.xy;
+        photon.FineScale *= important_direction.z;
+
+        uint3 outScatter = photon.Energy * (1 - tested_transmissibility.x);
+
+        outScatter *= important_direction.w;
+
+        WritePhoton(photon.Origin, outScatter * photon.FineScale, false);//bounce == 0);
+        photon.Energy -= outScatter;
+    }
+};
+
 struct SimulationContext : BaseContext {
     Ray EmitPointLight() {
         Ray emitted;
@@ -490,6 +556,10 @@ struct SimulationContext : BaseContext {
 #include "Integrate.template.cginc"
 #undef MONTE_CARLO_MODEL
 
+#define MONTE_CARLO_MODEL ExplicitIntegrator
+#include "Integrate.template.cginc"
+#undef MONTE_CARLO_MODEL
+
     void SimulateLight(Ray photon) {
         if(g_lightEmissionOutscatter != 0) {
             uint3 emissionOutscatter = photon.Energy * g_lightEmissionOutscatter;
@@ -500,64 +570,6 @@ struct SimulationContext : BaseContext {
         integrator.Init(this);
         Integrate(photon, integrator);
         rand = integrator.rand;
-    }
-
-    bool HitTest_Old(Ray photon, out float uHit, float substrateTransmitPotential) {
-        float2 pixelSize = 1.0 / g_target_size;
-
-        if(photon.Direction.x == 0) photon.Direction.x = 1e-8;
-        if(photon.Direction.y == 0) photon.Direction.y = 1e-8;
-
-        float4 uBoundaryBox = (float4(-0.1,1.1,-0.1,1.1) - photon.Origin.xxyy) / photon.Direction.xxyy;
-        float uEscape = min(max(uBoundaryBox[0], uBoundaryBox[1]), max(uBoundaryBox[2], uBoundaryBox[3]));
-
-        // Raycast to find collision or escape point
-        float netTransmissibility = 1;
-
-        uHit = 0;
-        float2 pSample;
-        for(int steps = 0;steps < 3000;steps++) {
-            pSample = photon.Origin + photon.Direction * uHit;
-            uint lod = g_quadTreeLeaves.SampleLevel(sampler_point_clamp, pSample, 0).x;
-        
-            float4 T = g_transmissibility.SampleLevel(samplerg_transmissibility, pSample, lod);
-            float minimumTransmissibility = T.y;
-            while(minimumTransmissibility * netTransmissibility < substrateTransmitPotential && lod > 0) {
-                lod--;
-                T = g_transmissibility.SampleLevel(samplerg_transmissibility, pSample, lod);
-                minimumTransmissibility = T.y;
-            }
-        
-            float transmissibility = T.x;
-            netTransmissibility *= transmissibility;
-
-            if(substrateTransmitPotential > netTransmissibility) { // Scatter occurs within this sample
-                // The following line finds the hit point at sub-pixel accuracy
-                uHit += pixelSize.x * (1 << lod) * log2(substrateTransmitPotential / netTransmissibility) / log2(transmissibility);
-                return true;
-            } else { // Keep propagating
-                uHit += pixelSize.x * (1 << lod);
-
-                if (uHit > uEscape)
-                {
-                    return false;
-                }
-            }
-        }
-
-        // Fail condition... traversal took too many steps
-        WritePhoton(photon.Origin, uint3(1000000000, 1000000000, 0));
-        WritePhoton(pSample, uint3(0, 1000000000, 0));
-        return false;
-    }
-
-    void GetSubstrateTransmitPDF(out float substrateTransmitPotential, out float quantumScale) {
-        // substrateTransmitPotential = rand * rand;
-        // quantumScale = 2 * rand;
-
-        float u = rand.Next();
-        substrateTransmitPotential = u * u * u;
-        quantumScale = 3 * u * u;
     }
 };
 
