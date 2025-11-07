@@ -505,7 +505,6 @@ public class Simulation : SimulationBaseBehavior
         _computeShader.SetVector("g_importance_sampling_target", ImportanceSamplingTarget);
         _computeShader.SetVector("g_target_size", new Vector2(width, height));
         _computeShader.SetInt("g_time_ms", Time.frameCount);
-        _computeShader.SetInt("g_photons_per_thread", 1);
         _computeShader.SetInt("g_samples_per_pixel", pathSamples);
         _computeShader.SetMatrix("g_worldToTarget", Matrix4x4.identity);
         _computeShader.SetFloat("g_TransmissibilityVariationEpsilon", transmissibilityVariationEpsilon);

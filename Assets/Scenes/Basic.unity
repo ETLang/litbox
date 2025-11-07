@@ -200,6 +200,7 @@ MonoBehaviour:
   m_EditorClassIdentifier: 
   normal: {fileID: 0}
   substrateLogDensity: 0
+  particleAlignment: 0
   objectHeight: 0
 --- !u!212 &332352015
 SpriteRenderer:
@@ -656,6 +657,7 @@ MonoBehaviour:
   m_EditorClassIdentifier: 
   normal: {fileID: 0}
   substrateLogDensity: -0.51
+  particleAlignment: 0
   objectHeight: 0
 --- !u!4 &1057311104 stripped
 Transform:
@@ -1133,7 +1135,7 @@ SpriteRenderer:
   m_SortingLayer: 0
   m_SortingOrder: 0
   m_Sprite: {fileID: -2413806693520163455, guid: a86470a33a6bf42c4b3595704624658b, type: 3}
-  m_Color: {r: 0.3325103, g: 0.58500016, b: 1, a: 0}
+  m_Color: {r: 1, g: 0.9607843, b: 0.4509804, a: 0}
   m_FlipX: 0
   m_FlipY: 0
   m_DrawMode: 0

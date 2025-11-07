@@ -11,14 +11,6 @@
 #pragma kernel Simulate_AmbientLight
 #pragma kernel Simulate_FieldLight
 #pragma kernel Simulate_DirectionalLight
-#pragma kernel Simulate_DefaultLight_Forward
-#pragma kernel Simulate_PointLight_Forward
-#pragma kernel Simulate_SpotLight_Forward
-#pragma kernel Simulate_LaserLight_Forward
-#pragma kernel Simulate_AmbientLight_Forward
-#pragma kernel Simulate_FieldLight_Forward
-#pragma kernel Simulate_DirectionalLight_Forward
-#pragma kernel Simulate_View_Backward
 #pragma kernel AccumulatePhotons
 #pragma kernel ConvertToHDR
 #pragma kernel ToneMap
@@ -206,11 +198,39 @@ uint3 ReadPhoton(float2 location) {
 Texture2D<float4> g_lightFieldTexture;
 float2 g_directionalLightDirection;
 
-struct SimulationContext {
+interface IMonteCarloMethod
+{
+    // Called when a new raycast begins or after a bounce
+    void BeginTraversal(float uEscape, Ray photon);
+
+    // Called to test for hit condition (overshoot)
+    // When testing, the implementation is required to maintain any state necessary for propagation.
+    // When Propagate is called, the implementation should update its state to reflect propagation over the tested segment.
+    // Returns true upon hit/overshoot, false to continue propagation
+    bool Test(float uTest, float4 testTransmissibility);
+
+    // Called to propagate state forward when no hit occurs
+    // Returns true to continue propagation, false to abort
+    bool Propagate();
+
+    // Called when raycast ends
+    // Once completed, a traversal may alter the photon state in response to, for example, absorption.
+    // Returns true if processing should continue, false to abort
+    bool EndTraversal(inout Ray photon, out float uHit);
+
+    // Called after EndTraversal to adjust photon state for bounces
+    void Bounce(inout Ray photon, float3 albedo);
+};
+
+struct BaseContext {
     Random rand;
 
     void Init(uint4 seed) {
         rand.Init(seed);
+    }
+
+    void Init(Random r) {
+        rand = r;
     }
 
     float2 ScatterMie(float2 incomingDirection) {
@@ -250,7 +270,88 @@ struct SimulationContext {
     {
         return ScatterMaterially(origin, origin / g_target_size, incoming);
     }
+};
+
+struct ImplicitIntegrator : BaseContext, IMonteCarloMethod
+{
+    float probability;
+    float hitIntensity;
+    float uTarget;
+    float uEscape;
+    float transmissibility;
+
+    float tested_transmissibility;
+    float tested_u;
+        
+    void Init(BaseContext ctx)
+    {
+        rand = ctx.rand;
+
+        probability = 1;
+        hitIntensity = 0;
+        uTarget = 0;
+        transmissibility = 1;
+    }
+
+    void BeginTraversal( float uEscape, Ray photon)
+    {
+        this.uEscape = uEscape;
+        uTarget = rand.Next() * uEscape; // TODO: Find ways to bias this towards important areas
+        transmissibility = 1;
+    }
     
+    bool Test(float uTest, float4 testTransmissibility)
+    {
+        tested_u = uTest;
+        tested_transmissibility = testTransmissibility.x;
+
+        return uTest > uTarget;
+    }
+    
+    bool Propagate()
+    {
+        transmissibility *= tested_transmissibility;
+
+        // If the density of the substrate is too high, consider this the new endpoint.
+        //THIS CONDITION WILL BREAK REFLECTION WHEN DENSITY APPROACHES 1
+        return transmissibility > 1e-9;
+    }
+    
+    bool EndTraversal(inout Ray photon, out float uHit)
+    {
+        uHit = uTarget;
+        probability *= transmissibility * uEscape / 256.0; // Downscale to prevent blowout
+        hitIntensity = probability * (1 - tested_transmissibility);
+        //photon.FineScale *= hitIntensity;
+        return probability > 1e-9; 
+    }
+    
+    void Bounce(inout Ray photon, float3 albedo)
+    {
+#if USE_ORIGINAL_HIT_TEST
+        photon.Energy *= albedo * quantumScale;
+#else
+        photon.Energy *= albedo;
+#endif
+
+        //float3 important_direction = ScatterImportance(photon.Origin);
+        float4 important_direction = ScatterMaterially(photon.Origin, photon.Direction);
+        photon.Direction = important_direction.xy;
+        photon.FineScale *= important_direction.z;
+
+#if USE_ORIGINAL_HIT_TEST
+        uint3 outScatter = photon.Energy * g_outscatterCoefficient;
+#else
+        uint3 outScatter = photon.Energy * hitIntensity;
+#endif
+        outScatter *= important_direction.w;
+
+        WritePhoton(photon.Origin, outScatter * photon.FineScale, false);//bounce == 0);
+        photon.Energy -= outScatter;
+    }
+};
+
+struct SimulationContext : BaseContext {
     Ray EmitPointLight() {
         Ray emitted;
         
@@ -352,63 +453,53 @@ struct SimulationContext {
         float3 important_direction = ScatterImportance(emitted.Origin);
         emitted.Direction = important_direction.xy; // RAND_DIRECTION();
         emitted.FineScale = important_direction.z;
+        emitted.Energy = uint3(256,256,256);
 
         return emitted;
     }
-
-    bool HitTest(Ray photon, inout float probability, out float uHit, out float hitIntensity) { 
-        if(photon.Direction.x == 0) photon.Direction.x = 1e-8;
-        if(photon.Direction.y == 0) photon.Direction.y = 1e-8;
     
-        float2 uvOrigin = photon.Origin / g_target_size;
-        float2 uvDirection = photon.Direction / g_target_size;
-        float4 uBoundaryBox = (float4(0,1,0,1) - uvOrigin.xxyy) / uvDirection.xxyy;
-        float uEscape = min(max(uBoundaryBox[0], uBoundaryBox[1]), max(uBoundaryBox[2], uBoundaryBox[3]));
+    // Three flavors of HitTest:
+    // - Probabalistic Bounce (implicit)
+    // - Packet Intensity (explicit)
+    // - Both
+    
+    /*
+    
+    Simulation Loop:
+    - Hit Test
+    - Compute bounce
+    - Compute outscatter
+    - Write
+    
+    Hit Test Loop:
+    - Iterate over LODs
+      - Test (**Injectable)
+    - On overshoot (hit) Compute hit metrics (**Injectable) and return
+    - Propagate (**Injectable)
 
-        float uTarget = rand.Next() * uEscape; // Find ways to bias this towards important areas
-        float netTransmissibility = 1;
+    Monte Carlo Sampling Strategies:
+    - Implicit Probability Sampling
+      - Sample a random uTarget in [0, uEscape]
+      - Accumulate transmissibility until overshoot
+      - Return hit point, probability = accumulated transmissibility
+    - Explicit Probability Sampling
+      - Given a packet quantum probability, accumulate transmissibility until packet intensity < accumulated transmissibility
 
-        uHit = 0;
-        float2 pSample;
-        for(int steps = 0;steps < 3000;steps++) {
-            pSample = uvOrigin + uvDirection * uHit;
-            uint lod = g_quadTreeLeaves.SampleLevel(sampler_point_clamp, pSample, 0).x;
-        
-            float4 T = g_transmissibility.SampleLevel(samplerg_transmissibility, pSample, lod);
-            float uHitNext = uHit + (1 << lod);
-            while(uHitNext > uTarget && lod > 0) {
-                lod--;
-                T = g_transmissibility.SampleLevel(samplerg_transmissibility, pSample, lod);
-                uHitNext = uHit + (1 << lod);
-            }
-        
-            float transmissibility = T.x;
+    */
+#define MONTE_CARLO_MODEL ImplicitIntegrator
+#include "Integrate.template.cginc"
+#undef MONTE_CARLO_MODEL
 
-            if(uHitNext > uTarget) { // Scatter occurs within this sample
-                // The following line finds the hit point at sub-pixel accuracy
-                // netTransmissibility *=  TODO: figure this out
-                //uHit += log2(substrateTransmitPotential / netTransmissibility) / log2(transmissibility);
-                uHit = uTarget;
-                probability *= netTransmissibility;
-                probability *= uEscape / 256.0; // Downscale to prevent blowout
-                hitIntensity = probability * (1 - transmissibility);
-                return probability > 1e-9; 
-            } else { // Keep propagating
-                netTransmissibility *= transmissibility;
-                uHit = uHitNext;
-
-                // If the density of the substrate is too high, consider this the new endpoint. Restart propagation
-                // within this newfound range.
-                if(netTransmissibility < 1e-9) {
-                    return false;
-                }
-            }
+    void SimulateLight(Ray photon) {
+        if(g_lightEmissionOutscatter != 0) {
+            uint3 emissionOutscatter = photon.Energy * g_lightEmissionOutscatter;
+            WritePhoton(photon.Origin, emissionOutscatter, true);
         }
 
-        // Fail condition... traversal took too many steps
-        WritePhoton(photon.Origin, uint3(1000000000, 1000000000, 0));
-        WritePhoton(pSample * g_target_size, uint3(0, 1000000000, 0));
-        return false;
+        ImplicitIntegrator integrator;
+        integrator.Init(this);
+        Integrate(photon, integrator);
+        rand = integrator.rand;
     }
 
     bool HitTest_Old(Ray photon, out float uHit, float substrateTransmitPotential) {
@@ -468,73 +559,6 @@ struct SimulationContext {
         substrateTransmitPotential = u * u * u;
         quantumScale = 3 * u * u;
     }
-
-    void SimulateLight(Ray photon) {
-        if(g_lightEmissionOutscatter != 0) {
-            uint3 emissionOutscatter = photon.Energy * g_lightEmissionOutscatter;
-            WritePhoton(photon.Origin, emissionOutscatter, true);
-        }
-
-        float probability = 1;
-
-        for(uint bounce = 0;bounce < g_bounces;bounce++) {
-            float uScatter;
-            float hitIntensity;
-            bool hit = HitTest(photon, probability, uScatter, hitIntensity);
-
-            if(!hit) break;
-
-            photon.Origin += photon.Direction * uScatter;
-
-            float3 albedo = g_albedo.SampleLevel(sampler_point_clamp, photon.Origin / g_target_size, 0).rgb;
-
-#if USE_ORIGINAL_HIT_TEST
-            photon.Energy *= albedo * quantumScale;
-#else
-            photon.Energy *= albedo;
-#endif
-
-            //float3 important_direction = ScatterImportance(photon.Origin);
-            float4 important_direction = ScatterMaterially(photon.Origin, photon.Direction);
-            photon.Direction = important_direction.xy;
-            photon.FineScale *= important_direction.z;
-
-#if USE_ORIGINAL_HIT_TEST
-            uint3 outScatter = photon.Energy * photon.FineScale * g_outscatterCoefficient;
-#else
-            uint3 outScatter = photon.Energy * photon.FineScale * hitIntensity;
-#endif
-            outScatter *= important_direction.w;
-
-            WritePhoton(photon.Origin, outScatter, false);//bounce == 0);
-            photon.Energy -= outScatter;
-        }
-    }
-
-    void SimulateForward(Ray photon) {
-        float probability = 1;
-        float uScatter;
-        float hitIntensity;
-        bool hit = HitTest(photon, probability, uScatter, hitIntensity);
-
-        if(hit) {
-            photon.Energy *= g_albedo.SampleLevel(sampler_point_clamp, photon.Origin, 0).rgb;
-            WritePhoton((photon.Origin + photon.Direction * uScatter) * g_target_size, photon.Energy * photon.FineScale * hitIntensity * g_outscatterCoefficient);
-        }
-    }
-
-    uint3 SimulateBackward(Ray path) {
-        float probability = 1;
-        float uScatter;
-        float hitIntensity;
-        bool hit = HitTest(path, probability, uScatter, hitIntensity);
-        
-        if(hit) {
-            return ReadForwardPhoton(path.Origin + path.Direction * uScatter) * path.FineScale * hitIntensity;
-        } else {
-            return 0;
-        }
-    }
 };
 
 SimulationContext CreateSimulationContext(uint4 seed) {
@@ -547,23 +571,12 @@ SimulationContext CreateSimulationContext(uint4 seed) {
 [numthreads(64,1,1)]                                                \
 void Simulate_##lightType (uint3 id : SV_DispatchThreadID) {        \
     SimulationContext sim = CreateSimulationContext(g_rand[id.x]);  \
-    for(uint i = 0;i < g_photons_per_thread;i++) {                  \
-        sim.SimulateLight(sim.Emit##lightType()); }                 \
+    sim.SimulateLight(sim.Emit##lightType());                       \
     g_rand[id.x] = sim.rand.state;                                  \
 }
 
-#define SIMULATION_IMPLEMENTATION_FORWARD(lightType)                    \
-[numthreads(64,1,1)]                                                    \
-void Simulate_##lightType##_Forward (uint3 id : SV_DispatchThreadID) {  \
-    SimulationContext sim = CreateSimulationContext(g_rand[id.x]);      \
-    for(uint i = 0;i < g_photons_per_thread;i++) {                      \
-        sim.SimulateForward(sim.Emit##lightType()); }                   \
-    g_rand[id.x] = sim.rand.state;                                       \
-}
-
 #define SIMULATION_IMPLEMENTATION(lightType)        \
-    SIMULATION_IMPLEMENTATION_LIGHT(lightType)      \
-    SIMULATION_IMPLEMENTATION_FORWARD(lightType)
+    SIMULATION_IMPLEMENTATION_LIGHT(lightType)
 
 SIMULATION_IMPLEMENTATION(DefaultLight)
 SIMULATION_IMPLEMENTATION(PointLight)
@@ -572,35 +585,6 @@ SIMULATION_IMPLEMENTATION(LaserLight)
 SIMULATION_IMPLEMENTATION(AmbientLight)
 SIMULATION_IMPLEMENTATION(FieldLight)
 SIMULATION_IMPLEMENTATION(DirectionalLight)
-
-[numthreads(8,8,1)]
-void Simulate_View_Backward (uint3 id : SV_DispatchThreadID) {
-
-#if FILTER_INACTIVE_CELLS
-    if(!g_convergenceCellStateIn[GetGridCellIndex((int2)id.xy)].IsActive) {
-        return;
-    }
-#endif
-
-    uint randIndex = id.x + g_target_size.x * id.y; // need wigth * height rand contexts
-    SimulationContext sim = CreateSimulationContext(g_rand[randIndex]);
-    uint3 sum = 0;
-
-    if(g_path_balance != 1) {
-        for(uint i = 0;i < g_samples_per_pixel;i++) {
-            sum += sim.SimulateBackward(sim.EmitPath(id.xy)); 
-        }
-        sum *= g_albedo.Load(uint3(id.xy,0)).rgb / g_samples_per_pixel;
-        sum *= 1-g_transmissibility.Load(uint3(id.xy, 0)).x;
-        //sum = lerp(sum, ReadForwardPhoton_Indexed(id.xy), g_path_balance);
-        sum += ReadForwardPhoton_Indexed(id.xy);
-    } else {
-        sum = ReadForwardPhoton_Indexed(id.xy);
-    }
-
-    WritePhoton_Indexed((int2)id.xy, sum, true);
-    g_rand[randIndex] = sim.rand.state;
-}
 
 
 /////////////////////////
