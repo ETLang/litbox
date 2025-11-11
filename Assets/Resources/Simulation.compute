@@ -163,9 +163,9 @@ void WritePhoton_Bilinear(float2 location, uint3 energy, bool suppressPhoton=fal
     float2 pixelFrac = pixel - pixelFloor;
 
     WritePhoton_Indexed(pixelFloor, energy * (1 - pixelFrac.x) * (1 - pixelFrac.y), suppressPhoton);
-    WritePhoton_Indexed(pixelFloor + int2(1, 0), energy * pixelFrac.x * (1 - pixelFrac.y), suppressPhoton);
-    WritePhoton_Indexed(pixelFloor + int2(0, 1), energy * (1 - pixelFrac.x) * pixelFrac.y, suppressPhoton);
-    WritePhoton_Indexed(pixelFloor + int2(1, 1), energy * pixelFrac.x * pixelFrac.y, suppressPhoton);
+    WritePhoton_Indexed(pixelFloor + int2(1, 0), energy * pixelFrac.x * (1 - pixelFrac.y), true /*suppressPhoton*/);
+    WritePhoton_Indexed(pixelFloor + int2(0, 1), energy * (1 - pixelFrac.x) * pixelFrac.y, true /*suppressPhoton*/);
+    WritePhoton_Indexed(pixelFloor + int2(1, 1), energy * pixelFrac.x * pixelFrac.y, true /*suppressPhoton*/);
 }
 
 void WritePhoton(float2 location, uint3 energy, bool suppressPhoton=false) {
@@ -759,9 +759,9 @@ struct SimulationContext : BaseContext {
       - Given a packet quantum probability, accumulate transmissibility until packet intensity < accumulated transmissibility
 
     */
-// #define MONTE_CARLO_MODEL ImplicitIntegrator
-// #include "Integrate.template.cginc"
-// #undef MONTE_CARLO_MODEL
+#define MONTE_CARLO_MODEL ImplicitIntegrator
+#include "Integrate.template.cginc"
+#undef MONTE_CARLO_MODEL
 
 // #define MONTE_CARLO_MODEL ImplicitIntervalIntegrator
 // #include "Integrate.template.cginc"
@@ -771,9 +771,9 @@ struct SimulationContext : BaseContext {
 // #include "Integrate.template.cginc"
 // #undef MONTE_CARLO_MODEL
 
-#define MONTE_CARLO_MODEL ExplicitBounceImplicitInvervalIntegrator
-#include "Integrate.template.cginc"
-#undef MONTE_CARLO_MODEL
+// #define MONTE_CARLO_MODEL ExplicitBounceImplicitInvervalIntegrator
+// #include "Integrate.template.cginc"
+// #undef MONTE_CARLO_MODEL
 
 // #define MONTE_CARLO_MODEL HybridIntegrator
 // #include "Integrate.template.cginc"
@@ -785,10 +785,10 @@ struct SimulationContext : BaseContext {
             WritePhoton(photon.Origin, emissionOutscatter, true);
         }
 
-        //ImplicitIntegrator integrator;
+        ImplicitIntegrator integrator;
         //ImplicitIntervalIntegrator integrator;
         //ExplicitIntegrator integrator;
-        ExplicitBounceImplicitInvervalIntegrator integrator;
+        //ExplicitBounceImplicitInvervalIntegrator integrator;
         //HybridIntegrator integrator;
         integrator.Init(this);
         Integrate(photon, integrator);

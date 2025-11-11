@@ -119,6 +119,9 @@ public class Simulation : SimulationBaseBehavior
     private SortedDictionary<float, uint> performanceCounter = new SortedDictionary<float, uint>();
 
     public uint TraversalsPerSecond { get; private set; }
+    public uint PhotonWritesPerSecond { get; private set; }
+    private ulong _previousCumulativePhotons;
+    private float _previousConvergenceFeedbackTime;
 
     private RenderTexture[] _gBufferAlbedo = new RenderTexture[2];
     private RenderTexture[] _gBufferTransmissibility = new RenderTexture[2];
@@ -722,6 +725,7 @@ public class Simulation : SimulationBaseBehavior
         float[] efficiencies = new float[feedback.Length];
         float minEfficiency = float.MaxValue;
         int minEfficiencyIndex = -1;
+        ulong cumulativePhotons = 0;
         for (int i = 0; i < feedback.Length; i++)
         {
             var outputState = feedback[i];
@@ -731,6 +735,7 @@ public class Simulation : SimulationBaseBehavior
                 continue;
 
             _gridCellState[i].CumulativePhotonCount += outputState.PhotonCount;
+            cumulativePhotons += _gridCellState[i].CumulativePhotonCount;
 
             float averagePhotonCount = _gridCellState[i].CumulativePhotonCount / (float)_gridCellInput[i].FrameCount;
             float efficiency = averagePhotonCount / ((1 - outputState.Transmissibility) * cellArea * ConvergenceMeasurementInterval);
@@ -760,6 +765,20 @@ public class Simulation : SimulationBaseBehavior
                 minEfficiency = efficiency;
                 minEfficiencyIndex = i;
             }
+        }
+
+        { // Figure out photon writes per second
+            float currentTime = Time.time;
+
+            if (_previousConvergenceFeedbackTime != 0)
+            {
+                ulong photonDelta = cumulativePhotons - _previousCumulativePhotons;
+                double dt = (double)(currentTime - _previousConvergenceFeedbackTime);
+                PhotonWritesPerSecond = (uint)(photonDelta / dt);
+            }
+
+            _previousCumulativePhotons = cumulativePhotons;
+            _previousConvergenceFeedbackTime = currentTime;
         }
 
         { // target the lowest efficiency cell

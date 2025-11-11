@@ -9,7 +9,8 @@ public class SimulationPerfDisplay : MonoBehaviour
     public enum PerfDisplayType {
         TraversalsPerSecond,
         ConvergenceValue,
-        ConvergenceTime
+        ConvergenceTime,
+        PhotonWritesPerSecond
     }
 
     [SerializeField] private Simulation simulation;
@@ -49,6 +50,9 @@ public class SimulationPerfDisplay : MonoBehaviour
         case PerfDisplayType.ConvergenceTime:
             doUpdate = !simulation.hasConverged;
             value = (Time.time - simulation.ConvergenceStartTime).ToString("0.0") + "s";
+            break;
+        case PerfDisplayType.PhotonWritesPerSecond:
+                value = (simulation.PhotonWritesPerSecond / 1000000.0f).ToString("0.0") + " MWrites/s";
             break;
         }
 

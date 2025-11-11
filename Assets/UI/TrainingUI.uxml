@@ -2,4 +2,5 @@
     <engine:Label name="TPSDisplay" style="font-size: 16px; color: rgb(255, 255, 255); -unity-text-align: upper-right;" />
     <engine:Label name="ConvergenceClock" style="font-size: 16px; color: rgb(255, 255, 255); -unity-text-align: upper-right;" />
     <engine:Label name="ConvergenceDisplay" style="font-size: 16px; color: rgb(255, 255, 255); -unity-text-align: upper-right;" />
+    <engine:Label name="PhotonWritesDisplay" style="font-size: 16px; color: rgb(255, 255, 255); -unity-text-align: upper-right;" />
 </engine:UXML>

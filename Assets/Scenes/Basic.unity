@@ -382,6 +382,7 @@ GameObject:
   - component: {fileID: 687478588}
   - component: {fileID: 687478587}
   - component: {fileID: 687478586}
+  - component: {fileID: 687478589}
   m_Layer: 5
   m_Name: UIDocument
   m_TagString: Untagged
@@ -442,6 +443,21 @@ Transform:
   m_Children: []
   m_Father: {fileID: 0}
   m_LocalEulerAnglesHint: {x: 0, y: 0, z: 0}
+--- !u!114 &687478589
+MonoBehaviour:
+  m_ObjectHideFlags: 0
+  m_CorrespondingSourceObject: {fileID: 0}
+  m_PrefabInstance: {fileID: 0}
+  m_PrefabAsset: {fileID: 0}
+  m_GameObject: {fileID: 687478585}
+  m_Enabled: 1
+  m_EditorHideFlags: 0
+  m_Script: {fileID: 11500000, guid: c258376cbb1fbc2b8b99d7a2de14fef0, type: 3}
+  m_Name: 
+  m_EditorClassIdentifier: Assembly-CSharp::SimulationPerfDisplay
+  simulation: {fileID: 2408986526842077597}
+  displayData: 3
+  labelName: PhotonWritesDisplay
 --- !u!4 &773429006 stripped
 Transform:
   m_CorrespondingSourceObject: {fileID: 7876814041424374406, guid: 6a50d69d76eca14f99a3a4adbf059f94, type: 3}
