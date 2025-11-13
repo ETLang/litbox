@@ -343,28 +343,19 @@ struct ImplicitIntegrator : BaseContext, IMonteCarloMethod
         ctx.uHitCurrent = uTarget;
         probability *= transmissibility * uEscape / 256.0; // Downscale to prevent blowout
         hitIntensity = probability * (1 - tested_transmissibility);
-        //photon.FineScale *= hitIntensity;
         return probability > 1e-9; 
     }
     
     bool Bounce(inout IntegrationContext ctx, float3 albedo)
     {
-#if USE_ORIGINAL_HIT_TEST
-        ctx.photon.Energy *= albedo * quantumScale;
-#else
         ctx.photon.Energy *= albedo;
-#endif
 
         //float3 important_direction = ScatterImportance(ctx.photon.Origin);
         float4 important_direction = ScatterMaterially(ctx.photon.Origin, ctx.photon.Direction);
         ctx.photon.Direction = important_direction.xy;
         ctx.photon.FineScale *= important_direction.z;
 
-#if USE_ORIGINAL_HIT_TEST
-        uint3 outScatter = ctx.photon.Energy * g_outscatterCoefficient;
-#else
         uint3 outScatter = ctx.photon.Energy * hitIntensity;
-#endif
         outScatter *= important_direction.w;
 
         WritePhoton(ctx.photon.Origin, outScatter * ctx.photon.FineScale, false);//bounce == 0);
@@ -439,8 +430,6 @@ struct ImplicitIntervalIntegrator : BaseContext, IMonteCarloMethod
     {
         ctx.uHitCurrent = uBounceTarget;
         probability *= transmissibility * ctx.uEscape / 256.0; // Downscale to prevent blowout
-        //hitIntensity = probability * (1 - tested_transmissibility);
-        //photon.FineScale *= hitIntensity;
         return probability > 1e-7;
     }
 
@@ -453,10 +442,10 @@ struct ImplicitIntervalIntegrator : BaseContext, IMonteCarloMethod
         ctx.photon.Direction = important_direction.xy;
         ctx.photon.FineScale *= important_direction.z;
 
-        uint3 outScatter = ctx.photon.Energy * probability * (1 - tested_transmissibility);
-        outScatter *= important_direction.w;
+        // uint3 outScatter = ctx.photon.Energy * probability * (1 - tested_transmissibility);
+        // outScatter *= important_direction.w;
         //WritePhoton(photon.Origin, outScatter * photon.FineScale, false);//bounce == 0);
-        ctx.photon.Energy -= outScatter;
+        //ctx.photon.Energy -= outScatter;
         return true;
     }
 };
@@ -575,7 +564,6 @@ struct ExplicitBoundedIntegrator : BaseContext, IMonteCarloMethod
         } else {
             ctx.uHitCurrent = 0;
         }
-       // WritePhoton(ctx.photon.Origin, uint3(100000, 0, 0) * ctx.photon.FineScale, false);//bounce == 0);
         return true;
     }
 
@@ -613,10 +601,8 @@ struct ExplicitBounceImplicitInvervalIntegrator : BaseContext, IMonteCarloMethod
     float transmitPotential;
     float quantumScale;
     float currentSample;
-    //float probability;
     float hitIntensity;
     float uSampleTarget;
-   // float uBounceTarget;
     float transmissibility;
 
     float tested_transmissibility;
@@ -625,7 +611,7 @@ struct ExplicitBounceImplicitInvervalIntegrator : BaseContext, IMonteCarloMethod
     {
         float2 pSample = photon.Origin + photon.Direction * u;
         float3 albedo = g_albedo.SampleLevel(sampler_point_clamp, pSample / g_target_size, 0).rgb;
-        uint3 outScatter = photon.Energy * albedo * /*probability */ transmissibility * (1 - pow(tested_transmissibility, 1.0/(1 << lod)));
+        uint3 outScatter = photon.Energy * albedo * transmissibility * (1 - pow(tested_transmissibility, 1.0/(1 << lod)));
         WritePhoton(pSample, outScatter * photon.FineScale, false);//bounce == 0);
         photon.Energy -= outScatter;
     }
@@ -634,14 +620,10 @@ struct ExplicitBounceImplicitInvervalIntegrator : BaseContext, IMonteCarloMethod
     {
         rand = ctx.rand;
 
-       // probability = 1;
         hitIntensity = 0;
-       // uBounceTarget = 0;
         transmissibility = 1;
 
         float u = rand.Next();
-        // transmitPotential = 1;
-        // quantumScale = 1;
         transmitPotential = u * u * u;
         quantumScale = 3 * u * u;
     }
@@ -650,7 +632,6 @@ struct ExplicitBounceImplicitInvervalIntegrator : BaseContext, IMonteCarloMethod
     {
         currentSample = 0;
         uSampleTarget = rand.Next() * SAMPLE_INTERVAL;
-       // uBounceTarget = rand.Next() * ctx.uEscape; // TODO: Find ways to bias this towards important areas
         transmissibility = 1;
     }
     
@@ -673,7 +654,6 @@ struct ExplicitBounceImplicitInvervalIntegrator : BaseContext, IMonteCarloMethod
             uSampleTarget = (currentSample + rand.Next()) * SAMPLE_INTERVAL;
         }
         transmissibility *= tested_transmissibility.x;
-       // return true; //ctx.transmissibilityNext.x < ctx.uEscape;
 
         // If the density of the substrate is too high, consider this the new endpoint.
         //THIS CONDITION WILL BREAK REFLECTION WHEN DENSITY APPROACHES 1
@@ -682,10 +662,7 @@ struct ExplicitBounceImplicitInvervalIntegrator : BaseContext, IMonteCarloMethod
     
     bool EndTraversal(inout IntegrationContext ctx)
     {
-       // probability *= transmissibility * ctx.uEscape / 256.0; // Downscale to prevent blowout
-        ctx.uHitCurrent = tested_u + log2(transmitPotential / transmissibility) / log2(tested_transmissibility.x);
-        //hitIntensity = probability * (1 - tested_transmissibility);
-        //photon.FineScale *= hitIntensity;
+        ctx.uHitCurrent = tested_u + log2(transmitPotential / transmissibility) / (log2(tested_transmissibility.x) - 1e-5);
         return true;//probability > 1e-7;
     }
 
@@ -693,15 +670,11 @@ struct ExplicitBounceImplicitInvervalIntegrator : BaseContext, IMonteCarloMethod
     {
         ctx.photon.Energy *= albedo * quantumScale;
 
-        float3 important_direction = ScatterImportance(ctx.photon.Origin);
-        // float4 important_direction = ScatterMaterially(ctx.photon.Origin, ctx.photon.Direction);
+        //float3 important_direction = ScatterImportance(ctx.photon.Origin);
+        float4 important_direction = ScatterMaterially(ctx.photon.Origin, ctx.photon.Direction);
         ctx.photon.Direction = important_direction.xy;
         ctx.photon.FineScale *= important_direction.z;
 
-       // uint3 outScatter = ctx.photon.Energy * probability * (1 - tested_transmissibility);
-       // outScatter *= important_direction.w;
-        //WritePhoton(photon.Origin, outScatter * photon.FineScale, false);//bounce == 0);
-       // ctx.photon.Energy -= outScatter;
         return true;
     }
 };
