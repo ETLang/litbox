@@ -474,16 +474,16 @@ struct ExplicitIntegrator : BaseContext, IMonteCarloMethod
     void Init(BaseContext ctx)
     {
         rand = ctx.rand;
-
-        float u = rand.Next();
-        transmitPotential = u * u * u;
-        quantumScale = 3 * u * u;
     }
     
     void BeginTraversal(inout IntegrationContext ctx) 
     {
         this.uEscape = ctx.uEscape;
         transmissibility = 1;
+
+        float u = rand.Next();
+        transmitPotential = u * u * u;
+        quantumScale = 3 * u * u;
     }
 
     bool Test(inout IntegrationContext ctx)
@@ -523,6 +523,88 @@ struct ExplicitIntegrator : BaseContext, IMonteCarloMethod
         WritePhoton(ctx.photon.Origin, outScatter * ctx.photon.FineScale, false);//bounce == 0);
         ctx.photon.Energy -= outScatter;
         return true;
+    }
+};
+
+struct ExplicitBoundedIntegrator : BaseContext, IMonteCarloMethod
+{
+    bool searchingPhase;
+    float transmissibility;
+    float transmitPotential;
+    float quantumScale;
+    float uEscape;
+    
+    float4 tested_transmissibility;
+    float tested_u;
+
+    void Init(BaseContext ctx)
+    {
+        rand = ctx.rand;
+        searchingPhase = true;
+    }
+    
+    void BeginTraversal(inout IntegrationContext ctx) 
+    {
+        this.uEscape = ctx.uEscape;
+        transmissibility = 1;
+    }
+
+    bool Test(inout IntegrationContext ctx)
+    {
+        tested_u = ctx.uHitNext;
+        tested_transmissibility = ctx.transmissibilityNext;
+
+        if(searchingPhase) {
+            return tested_u > ctx.uEscape; 
+        } else {
+            float minimumTransmissibility = ctx.transmissibilityNext.y;
+            return minimumTransmissibility * transmissibility < transmitPotential;
+        }
+    }
+
+    bool Propagate(inout IntegrationContext ctx)
+    {
+        transmissibility *= tested_transmissibility.x;
+        return true; //ctx.transmissibilityNext.x < ctx.uEscape;
+    }
+
+    bool EndTraversal(inout IntegrationContext ctx)
+    {
+        if(!searchingPhase) {
+            ctx.uHitCurrent = tested_u + log2(transmitPotential / transmissibility) / log2(tested_transmissibility.x);
+        } else {
+            ctx.uHitCurrent = 0;
+        }
+       // WritePhoton(ctx.photon.Origin, uint3(100000, 0, 0) * ctx.photon.FineScale, false);//bounce == 0);
+        return true;
+    }
+
+    bool Bounce(inout IntegrationContext ctx, float3 albedo)
+    {
+        if(!searchingPhase) {
+            ctx.photon.Energy *= albedo * quantumScale;
+
+            //float3 important_direction = ScatterImportance(photon.Origin);
+            float4 important_direction = ScatterMaterially(ctx.photon.Origin, ctx.photon.Direction);
+            ctx.photon.Direction = important_direction.xy;
+            ctx.photon.FineScale *= important_direction.z;
+
+            uint3 outScatter = ctx.photon.Energy * (1 - tested_transmissibility.x);
+
+            outScatter *= important_direction.w;
+
+            WritePhoton(ctx.photon.Origin, outScatter * ctx.photon.FineScale, false);//bounce == 0);
+            ctx.photon.Energy -= outScatter;
+        } else {
+            float u = rand.Next(transmissibility, 1);
+            transmitPotential = u;
+            quantumScale = 1;
+            ctx.photon.FineScale *= (1 - transmissibility);
+            // transmitPotential = u * u * u;
+            // quantumScale = 3 * u * u;
+        }
+        searchingPhase = !searchingPhase;
+        return searchingPhase;
     }
 };
 
@@ -759,25 +841,13 @@ struct SimulationContext : BaseContext {
       - Given a packet quantum probability, accumulate transmissibility until packet intensity < accumulated transmissibility
 
     */
-#define MONTE_CARLO_MODEL ImplicitIntegrator
-#include "Integrate.template.cginc"
-#undef MONTE_CARLO_MODEL
-
+// #define MONTE_CARLO_MODEL ImplicitIntegrator
 // #define MONTE_CARLO_MODEL ImplicitIntervalIntegrator
-// #include "Integrate.template.cginc"
-// #undef MONTE_CARLO_MODEL
-
 // #define MONTE_CARLO_MODEL ExplicitIntegrator
-// #include "Integrate.template.cginc"
-// #undef MONTE_CARLO_MODEL
-
+#define MONTE_CARLO_MODEL ExplicitBoundedIntegrator
 // #define MONTE_CARLO_MODEL ExplicitBounceImplicitInvervalIntegrator
-// #include "Integrate.template.cginc"
-// #undef MONTE_CARLO_MODEL
-
 // #define MONTE_CARLO_MODEL HybridIntegrator
-// #include "Integrate.template.cginc"
-// #undef MONTE_CARLO_MODEL
+#include "Integrate.template.cginc"
 
     void SimulateLight(Ray photon) {
         if(g_lightEmissionOutscatter != 0) {
@@ -785,11 +855,7 @@ struct SimulationContext : BaseContext {
             WritePhoton(photon.Origin, emissionOutscatter, true);
         }
 
-        ImplicitIntegrator integrator;
-        //ImplicitIntervalIntegrator integrator;
-        //ExplicitIntegrator integrator;
-        //ExplicitBounceImplicitInvervalIntegrator integrator;
-        //HybridIntegrator integrator;
+        MONTE_CARLO_MODEL integrator;
         integrator.Init(this);
         Integrate(photon, integrator);
         rand = integrator.rand;

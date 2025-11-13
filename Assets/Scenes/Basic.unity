@@ -1308,7 +1308,7 @@ MonoBehaviour:
   gridCells:
     x: 16
     y: 16
-  raysPerFrame: 128000
+  raysPerFrame: 512000
   energyPrecision: 100
   photonBounces: -1
   bilinearPhotonWrites: 1
