@@ -706,6 +706,109 @@ struct ExplicitBounceImplicitInvervalIntegrator : BaseContext, IMonteCarloMethod
     }
 };
 
+struct ExplicitBoundedBounceImplicitInvervalIntegrator : BaseContext, IMonteCarloMethod
+{
+    bool searchingPhase;
+    float transmitPotential;
+    float quantumScale;
+    float currentSample;
+    float hitIntensity;
+    float uSampleTarget;
+    float transmissibility;
+
+    float tested_transmissibility;
+    float tested_u;
+    void WriteSample(inout Ray photon, float u, int lod)
+    {
+        float2 pSample = photon.Origin + photon.Direction * u;
+        float3 albedo = g_albedo.SampleLevel(sampler_point_clamp, pSample / g_target_size, 0).rgb;
+        uint3 outScatter = photon.Energy * albedo * transmissibility * (1 - pow(tested_transmissibility, 1.0/(1 << lod)));
+        WritePhoton(pSample, outScatter * photon.FineScale, false);//bounce == 0);
+        photon.Energy -= outScatter;
+    }
+
+    void Init(BaseContext ctx)
+    {
+        searchingPhase = true;
+        rand = ctx.rand;
+
+        hitIntensity = 0;
+        transmissibility = 1;
+
+        transmitPotential = 1;
+        quantumScale = 1;
+        currentSample = 0;
+        uSampleTarget = 0;
+    }
+
+    void BeginTraversal(inout IntegrationContext ctx)
+    {
+        currentSample = 0;
+        uSampleTarget = rand.Next() * SAMPLE_INTERVAL;
+        transmissibility = 1;
+    }
+    
+    bool Test(inout IntegrationContext ctx)
+    {
+        tested_u = ctx.uHitNext;
+        tested_transmissibility = ctx.transmissibilityNext.x;
+
+        if(searchingPhase) {
+            return tested_u > ctx.uEscape; 
+        } else {
+            float minimumTransmissibility = ctx.transmissibilityNext.y;
+            return ctx.uHitNext > ctx.uEscape || minimumTransmissibility * transmissibility < transmitPotential;
+        }
+    }
+    
+    bool Propagate(inout IntegrationContext ctx)
+    {
+        transmissibility *= tested_transmissibility;
+
+        if(tested_u > uSampleTarget) {
+            currentSample += 1;
+            WriteSample(ctx.photon, uSampleTarget, ctx.lod);
+            uSampleTarget = (currentSample + rand.Next()) * SAMPLE_INTERVAL;
+        }
+        transmissibility *= tested_transmissibility.x;
+
+        // If the density of the substrate is too high, consider this the new endpoint.
+        //THIS CONDITION WILL BREAK REFLECTION WHEN DENSITY APPROACHES 1
+        return true; //ctx.uHitNext < ctx.uEscape && transmissibility > 1e-9;
+    }
+    
+    bool EndTraversal(inout IntegrationContext ctx)
+    {
+        if(!searchingPhase) {
+            ctx.uHitCurrent = tested_u + log2(transmitPotential / transmissibility) / (log2(tested_transmissibility.x) - 1e-5);
+        } else {
+            ctx.uHitCurrent = 0;
+        }
+        return true;//probability > 1e-7;
+    }
+
+    bool Bounce(inout IntegrationContext ctx, float3 albedo)
+    {
+        if(!searchingPhase) {
+            ctx.photon.Energy *= albedo * quantumScale;
+
+            //float3 important_direction = ScatterImportance(ctx.photon.Origin);
+            float4 important_direction = ScatterMaterially(ctx.photon.Origin, ctx.photon.Direction);
+            ctx.photon.Direction = important_direction.xy;
+            ctx.photon.FineScale *= important_direction.z;
+            return true;
+        } else {
+            float u = rand.Next(transmissibility, 1);
+            transmitPotential = u;
+            quantumScale = 1;
+            //transmitPotential = u * u * u;
+            //quantumScale = 3 * u * u;
+        }
+        searchingPhase = !searchingPhase;
+        return searchingPhase;
+    }
+};
+
 struct SimulationContext : BaseContext {
     Ray EmitPointLight() {
         Ray emitted;
@@ -844,8 +947,9 @@ struct SimulationContext : BaseContext {
 // #define MONTE_CARLO_MODEL ImplicitIntegrator
 // #define MONTE_CARLO_MODEL ImplicitIntervalIntegrator
 // #define MONTE_CARLO_MODEL ExplicitIntegrator
-#define MONTE_CARLO_MODEL ExplicitBoundedIntegrator
+//#define MONTE_CARLO_MODEL ExplicitBoundedIntegrator
 // #define MONTE_CARLO_MODEL ExplicitBounceImplicitInvervalIntegrator
+#define MONTE_CARLO_MODEL ExplicitBoundedBounceImplicitInvervalIntegrator
 // #define MONTE_CARLO_MODEL HybridIntegrator
 #include "Integrate.template.cginc"
 
