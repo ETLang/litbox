@@ -132,6 +132,11 @@ void ClearPhoton_Indexed(int2 pixel) {
     g_output_raw[pixel] = 0;
 }
 
+#define DEBUG_DISABLE_SAFE_WRITES 0
+#if DEBUG_DISABLE_SAFE_WRITES
+#define InterlockedAdd(dst, value) (dst += value)
+#endif
+
 void WritePhoton_Indexed(int2 pixel, uint3 energy, bool suppressPhoton=false) {
     const uint EnergyMax = (1 << 31);
 
@@ -158,6 +163,10 @@ void WritePhoton_Indexed(int2 pixel, uint3 energy, bool suppressPhoton=false) {
     if(g_output_raw[pixel] < EnergyMax)
         InterlockedAdd(g_output_raw[pixel], energy.b);
 }
+
+#if DEBUG_DISABLE_SAFE_WRITES
+#undef InterlockedAdd
+#endif
 
 void WritePhoton_Bilinear(float2 location, uint3 energy, bool suppressPhoton=false) {
     if(any(location < 0)) return;
@@ -288,7 +297,7 @@ struct BaseContext {
         float alignment = normal_alignment.w;
         float normalScale = dot(normal.xy, normal.xy);
         float3 reflected = reflect(float3(incoming, 0), normal) * normalScale;
-        float2 dir = normalize(rand.NextDirection());// + reflected.xy / (1 - alignment + eps));
+        float2 dir = normalize(rand.NextDirection() + reflected.xy / (1 - alignment + eps));
         return float4(dir, 1, normalScale > 0 ? 0 : 1);
     }
 
@@ -771,10 +780,11 @@ struct ExplicitBoundedBounceImplicitInvervalIntegrator : BaseContext, IMonteCarl
             float4 important_direction = ScatterMaterially(ctx.photon.Origin, ctx.photon.Direction);
             ctx.photon.Direction = important_direction.xy;
             ctx.photon.FineScale *= important_direction.z;
+            ctx.photon.Origin += ctx.photon.Direction;
         } else {
             float u = rand.Next(transmissibility, 1);
             transmitPotential = u;
-            quantumScale = 1;
+            quantumScale = 1-transmissibility;
             //transmitPotential = u * u * u;
             //quantumScale = 3 * u * u;
         }

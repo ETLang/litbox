@@ -58,6 +58,6 @@
             float3 albedo = g_albedo.SampleLevel(sampler_point_clamp, ctx.photon.Origin / g_target_size, 0).rgb;
             if(state.Bounce(ctx, albedo)) {
                 bounce++;
-            }        
+            }
         }
     }

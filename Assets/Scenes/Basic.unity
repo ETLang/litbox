@@ -566,7 +566,7 @@ MonoBehaviour:
   m_Script: {fileID: 11500000, guid: 58f9e6f458e034bb4a5fe51c97b6d54a, type: 3}
   m_Name: 
   m_EditorClassIdentifier: 
-  intensity: 434
+  intensity: 92
   bounces: 4
 --- !u!1 &1038391232
 GameObject:
@@ -781,7 +781,7 @@ PrefabInstance:
       objectReference: {fileID: 0}
     - target: {fileID: 4144802659418139628, guid: b63b3d7d4511479f2ab4cda3eb2b379d, type: 3}
       propertyPath: substrateLogDensity
-      value: -2.12
+      value: -1.2
       objectReference: {fileID: 0}
     - target: {fileID: 6040170968263120660, guid: b63b3d7d4511479f2ab4cda3eb2b379d, type: 3}
       propertyPath: seed
@@ -1087,7 +1087,7 @@ MonoBehaviour:
   m_Script: {fileID: 11500000, guid: 14a0e5c7ca6748d2da91c7d70db73a3a, type: 3}
   m_Name: 
   m_EditorClassIdentifier: 
-  intensity: 317
+  intensity: 49
   bounces: 3
 --- !u!1 &2123204530
 GameObject:
@@ -1192,7 +1192,7 @@ MonoBehaviour:
   m_Script: {fileID: 11500000, guid: aa5e73cb1f064d7c0b0e423c01724af7, type: 3}
   m_Name: 
   m_EditorClassIdentifier: 
-  intensity: 394
+  intensity: 78
   bounces: 4
   emissionOutscatter: 0
 --- !u!1 &26504925558930495
@@ -1451,7 +1451,7 @@ PrefabInstance:
       objectReference: {fileID: 0}
     - target: {fileID: 7211980385114862445, guid: 6a50d69d76eca14f99a3a4adbf059f94, type: 3}
       propertyPath: substrateLogDensity
-      value: -3.6
+      value: -2.81
       objectReference: {fileID: 0}
     - target: {fileID: 7876814041424374406, guid: 6a50d69d76eca14f99a3a4adbf059f94, type: 3}
       propertyPath: m_LocalPosition.x
