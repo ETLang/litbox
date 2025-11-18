@@ -1302,18 +1302,20 @@ MonoBehaviour:
     serializedVersion: 2
     m_Bits: 768
   frameLimit: -1
-  width: 256
-  height: 256
+  width: 512
+  height: 512
+  integrationMethod: 5
   strategy: 0
   gridCells:
     x: 16
     y: 16
-  raysPerFrame: 512000
-  energyPrecision: 100
+  raysPerFrame: 256000
+  energyPrecision: 1000
   photonBounces: -1
   bilinearPhotonWrites: 1
   pathSamples: 10
   pathBalance: 0.5
+  integrationInterval: 0.2
   transmissibilityVariationEpsilon: 0.001
   outscatterCoefficient: 0.05
   _convergenceThreshold: 0.1
@@ -1355,7 +1357,6 @@ MonoBehaviour:
   m_Name: 
   m_EditorClassIdentifier: 
   simulation: {fileID: 2408986526842077597}
-  aiAccelerator: {fileID: 0}
   type: 10
 --- !u!4 &4185717351858822417
 Transform:
@@ -1648,7 +1649,7 @@ Transform:
   m_GameObject: {fileID: 2218171819048626328}
   serializedVersion: 2
   m_LocalRotation: {x: 0, y: 0, z: 0, w: 1}
-  m_LocalPosition: {x: -3.54, y: 0, z: 0}
+  m_LocalPosition: {x: -3.54, y: 0, z: -1}
   m_LocalScale: {x: 10, y: 10, z: 1}
   m_ConstrainProportionsScale: 0
   m_Children:
@@ -1684,7 +1685,6 @@ MonoBehaviour:
   m_Name: 
   m_EditorClassIdentifier: 
   simulation: {fileID: 2408986526842077597}
-  aiAccelerator: {fileID: 0}
   type: 2
 --- !u!114 &8043991272733889010
 MonoBehaviour:
@@ -1699,7 +1699,6 @@ MonoBehaviour:
   m_Name: 
   m_EditorClassIdentifier: 
   simulation: {fileID: 2408986526842077597}
-  aiAccelerator: {fileID: 0}
   type: 9
 --- !u!1660057539 &9223372036854775807
 SceneRoots:

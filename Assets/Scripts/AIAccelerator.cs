@@ -1,7 +1,7 @@
 using System;
 using UnityEngine;
 
-
+#if TEMPORARILY_DISABLED
 public class AIAccelerator : MonoBehaviour {
     [SerializeField] private Simulation simulation;
     [SerializeField] private Unity.InferenceEngine.ModelAsset accelerationModel;
@@ -83,3 +83,4 @@ public class AIAccelerator : MonoBehaviour {
         outputTensor.Dispose();
     }
 }
+#endif

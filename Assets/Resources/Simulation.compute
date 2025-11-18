@@ -3,6 +3,7 @@
 
 #pragma multi_compile __ FILTER_INACTIVE_CELLS
 #pragma multi_compile __ BILINEAR_PHOTON_DISTRIBUTION
+#pragma multi_compile __ INTEGRATE_EXPLICIT INTEGRATE_IMPLICIT INTEGRATE_IMPLICIT_INTERVAL INTEGRATE_EXPLICIT_BOUNDED INTEGRATE_EXPLICIT_BOUNCE_IMPLICIT_INTERVAL INTEGRATE_EXPLICIT_BOUNDED_BOUNCE_IMPLICIT_INTERVAL
 
 #pragma kernel Simulate_DefaultLight
 #pragma kernel Simulate_PointLight
@@ -30,6 +31,7 @@ struct Ray {
 RWStructuredBuffer<uint4> g_rand;
 RWTexture2D<uint> g_photons_forward;
 RWTexture2D<uint> g_output_raw;
+RWTexture2D<uint> g_photon_count;
 Texture2D<float4> g_albedo;
 Texture2D<float4> g_transmissibility;
 SamplerState samplerg_transmissibility;
@@ -76,6 +78,7 @@ uint g_lowest_lod;
 uint g_4x4_lod;
 float g_path_balance;
 float2 g_importance_sampling_target;
+float g_integration_interval;
 
 float g_outscatterCoefficient;
 uint3 g_lightEnergy;
@@ -142,6 +145,7 @@ void WritePhoton_Indexed(int2 pixel, uint3 energy, bool suppressPhoton=false) {
 
     if(!suppressPhoton) {
         InterlockedAdd(g_convergenceCellStateOut[cellIndex].PhotonCount, 1);
+        InterlockedAdd(g_photon_count[pixel], 1);
     }
 
     pixel.x *= 3;
@@ -281,10 +285,11 @@ struct BaseContext {
         const float eps = 1e-5f;
         float4 normal_alignment = g_normalAlignment.SampleLevel(samplerg_normalAlignment, origin_uv, 0);
         float3 normal = normal_alignment.xyz;
-        float alignment = normal_alignment.w; 
-        float3 incident = reflect(float3(incoming, 0), normal);
-        float2 dir = normalize(rand.NextDirection() + incident.xy / (1 - alignment + eps));
-        return float4(dir, 1, dot(normal.xy, normal.xy) > 0 ? 0 : 1);
+        float alignment = normal_alignment.w;
+        float normalScale = dot(normal.xy, normal.xy);
+        float3 reflected = reflect(float3(incoming, 0), normal) * normalScale;
+        float2 dir = normalize(rand.NextDirection());// + reflected.xy / (1 - alignment + eps));
+        return float4(dir, 1, normalScale > 0 ? 0 : 1);
     }
 
     float4 ScatterMaterially(float2 origin, float2 incoming)
@@ -364,15 +369,14 @@ struct ImplicitIntegrator : BaseContext, IMonteCarloMethod
     }
 };
 
-#define SAMPLE_INTERVAL 50.0f
 struct ImplicitIntervalIntegrator : BaseContext, IMonteCarloMethod
 {
     float currentSample;
     float probability;
-    float hitIntensity;
     float uSampleTarget;
     float uBounceTarget;
     float transmissibility;
+    float bounceTransmissibility;
 
     float tested_transmissibility;
     float tested_u;
@@ -382,7 +386,6 @@ struct ImplicitIntervalIntegrator : BaseContext, IMonteCarloMethod
         float3 albedo = g_albedo.SampleLevel(sampler_point_clamp, pSample / g_target_size, 0).rgb;
         uint3 outScatter = photon.Energy * albedo * probability * transmissibility * (1 - pow(tested_transmissibility, 1.0/(1 << lod)));
         WritePhoton(pSample, outScatter * photon.FineScale, false);//bounce == 0);
-        photon.Energy -= outScatter;
     }
 
     void Init(BaseContext ctx)
@@ -390,7 +393,6 @@ struct ImplicitIntervalIntegrator : BaseContext, IMonteCarloMethod
         rand = ctx.rand;
 
         probability = 1;
-        hitIntensity = 0;
         uBounceTarget = 0;
         transmissibility = 1;
     }
@@ -398,7 +400,7 @@ struct ImplicitIntervalIntegrator : BaseContext, IMonteCarloMethod
     void BeginTraversal(inout IntegrationContext ctx)
     {
         currentSample = 0;
-        uSampleTarget = rand.Next() * SAMPLE_INTERVAL;
+        uSampleTarget = rand.Next() * g_integration_interval;
         uBounceTarget = rand.Next() * ctx.uEscape; // TODO: Find ways to bias this towards important areas
         transmissibility = 1;
     }
@@ -408,7 +410,7 @@ struct ImplicitIntervalIntegrator : BaseContext, IMonteCarloMethod
         tested_u = ctx.uHitNext;
         tested_transmissibility = ctx.transmissibilityNext.x;
 
-        return tested_u > uBounceTarget;
+        return tested_u > ctx.uEscape;
     }
     
     bool Propagate(inout IntegrationContext ctx)
@@ -418,8 +420,12 @@ struct ImplicitIntervalIntegrator : BaseContext, IMonteCarloMethod
         if(tested_u > uSampleTarget) {
             currentSample += 1;
             WriteSample(ctx.photon, uSampleTarget, ctx.lod);
-            uSampleTarget = (currentSample + rand.Next()) * SAMPLE_INTERVAL;
+            uSampleTarget = (currentSample + rand.Next()) * g_integration_interval;
         }
+
+        if(ctx.uHitCurrent < uBounceTarget) {
+            bounceTransmissibility = transmissibility;
+        } 
 
         // If the density of the substrate is too high, consider this the new endpoint.
         //THIS CONDITION WILL BREAK REFLECTION WHEN DENSITY APPROACHES 1
@@ -429,7 +435,8 @@ struct ImplicitIntervalIntegrator : BaseContext, IMonteCarloMethod
     bool EndTraversal(inout IntegrationContext ctx)
     {
         ctx.uHitCurrent = uBounceTarget;
-        probability *= transmissibility * ctx.uEscape / 256.0; // Downscale to prevent blowout
+        transmissibility = bounceTransmissibility;
+        probability *= transmissibility;// * ctx.uEscape / 256.0; // Downscale to prevent blowout
         return probability > 1e-7;
     }
 
@@ -440,12 +447,7 @@ struct ImplicitIntervalIntegrator : BaseContext, IMonteCarloMethod
         //float3 important_direction = ScatterImportance(photon.Origin);
         float4 important_direction = ScatterMaterially(ctx.photon.Origin, ctx.photon.Direction);
         ctx.photon.Direction = important_direction.xy;
-        ctx.photon.FineScale *= important_direction.z;
-
-        // uint3 outScatter = ctx.photon.Energy * probability * (1 - tested_transmissibility);
-        // outScatter *= important_direction.w;
-        //WritePhoton(photon.Origin, outScatter * photon.FineScale, false);//bounce == 0);
-        //ctx.photon.Energy -= outScatter;
+        ctx.photon.FineScale *= important_direction.z * ctx.uEscape / 256.0;
         return true;
     }
 };
@@ -631,7 +633,7 @@ struct ExplicitBounceImplicitInvervalIntegrator : BaseContext, IMonteCarloMethod
     void BeginTraversal(inout IntegrationContext ctx)
     {
         currentSample = 0;
-        uSampleTarget = rand.Next() * SAMPLE_INTERVAL;
+        uSampleTarget = rand.Next() * g_integration_interval;
         transmissibility = 1;
     }
     
@@ -651,7 +653,7 @@ struct ExplicitBounceImplicitInvervalIntegrator : BaseContext, IMonteCarloMethod
         if(tested_u > uSampleTarget) {
             currentSample += 1;
             WriteSample(ctx.photon, uSampleTarget, ctx.lod);
-            uSampleTarget = (currentSample + rand.Next()) * SAMPLE_INTERVAL;
+            uSampleTarget = (currentSample + rand.Next()) * g_integration_interval;
         }
         transmissibility *= tested_transmissibility.x;
 
@@ -717,7 +719,7 @@ struct ExplicitBoundedBounceImplicitInvervalIntegrator : BaseContext, IMonteCarl
     void BeginTraversal(inout IntegrationContext ctx)
     {
         currentSample = 0;
-        uSampleTarget = rand.Next() * SAMPLE_INTERVAL;
+        uSampleTarget = rand.Next() * g_integration_interval;
         transmissibility = 1;
     }
     
@@ -738,10 +740,10 @@ struct ExplicitBoundedBounceImplicitInvervalIntegrator : BaseContext, IMonteCarl
     {
         transmissibility *= tested_transmissibility;
 
-        if(tested_u > uSampleTarget) {
+        if(searchingPhase && tested_u > uSampleTarget) {
             currentSample += 1;
             WriteSample(ctx.photon, uSampleTarget, ctx.lod);
-            uSampleTarget = (currentSample + rand.Next()) * SAMPLE_INTERVAL;
+            uSampleTarget = (currentSample + rand.Next()) * g_integration_interval;
         }
         transmissibility *= tested_transmissibility.x;
 
@@ -769,7 +771,6 @@ struct ExplicitBoundedBounceImplicitInvervalIntegrator : BaseContext, IMonteCarl
             float4 important_direction = ScatterMaterially(ctx.photon.Origin, ctx.photon.Direction);
             ctx.photon.Direction = important_direction.xy;
             ctx.photon.FineScale *= important_direction.z;
-            return true;
         } else {
             float u = rand.Next(transmissibility, 1);
             transmitPotential = u;
@@ -917,13 +918,23 @@ struct SimulationContext : BaseContext {
       - Given a packet quantum probability, accumulate transmissibility until packet intensity < accumulated transmissibility
 
     */
-// #define MONTE_CARLO_MODEL ImplicitIntegrator
-// #define MONTE_CARLO_MODEL ImplicitIntervalIntegrator
-// #define MONTE_CARLO_MODEL ExplicitIntegrator
-//#define MONTE_CARLO_MODEL ExplicitBoundedIntegrator
-// #define MONTE_CARLO_MODEL ExplicitBounceImplicitInvervalIntegrator
+
+#if INTEGRATE_EXPLICIT
+#define MONTE_CARLO_MODEL ExplicitIntegrator
+#elif INTEGRATE_IMPLICIT
+#define MONTE_CARLO_MODEL ImplicitIntegrator
+#elif INTEGRATE_IMPLICIT_INTERVAL
+#define MONTE_CARLO_MODEL ImplicitIntervalIntegrator
+#elif INTEGRATE_EXPLICIT_BOUNDED
+#define MONTE_CARLO_MODEL ExplicitBoundedIntegrator
+#elif INTEGRATE_EXPLICIT_BOUNCE_IMPLICIT_INTERVAL
+#define MONTE_CARLO_MODEL ExplicitBounceImplicitInvervalIntegrator
+#elif INTEGRATE_EXPLICIT_BOUNDED_BOUNCE_IMPLICIT_INTERVAL
 #define MONTE_CARLO_MODEL ExplicitBoundedBounceImplicitInvervalIntegrator
-// #define MONTE_CARLO_MODEL HybridIntegrator
+#else
+#define MONTE_CARLO_MODEL ExplicitBoundedBounceImplicitInvervalIntegrator
+#endif
+
 #include "Integrate.template.cginc"
 
     void SimulateLight(Ray photon) {

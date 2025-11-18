@@ -19,7 +19,7 @@ public class SimulationTexturePicker : MonoBehaviour {
     }
 
     [SerializeField] public Simulation simulation;
-    [SerializeField] private AIAccelerator aiAccelerator;
+    //[SerializeField] private AIAccelerator aiAccelerator;
     [SerializeField] public TextureType type = TextureType.ToneMapped;
 
     void OnDisable()
@@ -48,10 +48,10 @@ public class SimulationTexturePicker : MonoBehaviour {
             value = simulation?.SimulationOutputHDR;
             break;
         case TextureType.AI_ToneMapped:
-            value = aiAccelerator?.ToneMappedOutputTexture;
+            //value = aiAccelerator?.ToneMappedOutputTexture;
             break;
         case TextureType.AI_HDR:
-            value = aiAccelerator?.HDROutputTexture;
+            //value = aiAccelerator?.HDROutputTexture;
             break;
         case TextureType.Albedo:
             value = simulation?.GBufferAlbedo;

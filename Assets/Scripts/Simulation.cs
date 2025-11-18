@@ -25,6 +25,16 @@ public struct SimulationProfile {
 [ExecuteAlways]
 public class Simulation : SimulationBaseBehavior
 {
+    public enum IntegrationMethod
+    {
+        Explicit,
+        Implicit,
+        ImplicitInterval,
+        ExplicitBounded,
+        ExplicitBounceImplicitInterval,
+        ExplicitBoundedBounceImplicitInterval
+    }
+
     public enum Strategy
     {
         LightTransport,
@@ -72,6 +82,7 @@ public class Simulation : SimulationBaseBehavior
     [SerializeField] public int width = 256;
     [SerializeField] public int height = 256;
 
+    [SerializeField] private IntegrationMethod integrationMethod = IntegrationMethod.ExplicitBoundedBounceImplicitInterval;
     [SerializeField] private Strategy strategy = Strategy.LightTransport;
     [SerializeField] private uint2 gridCells = new uint2(8, 8);
     [SerializeField] private int raysPerFrame = 512000;
@@ -80,6 +91,7 @@ public class Simulation : SimulationBaseBehavior
     [SerializeField] private bool bilinearPhotonWrites = true;
     [SerializeField] private int pathSamples = 10;
     [SerializeField, Range(0, 1)] private float pathBalance = 0.5f;
+    [SerializeField] private float integrationInterval = 0.1f;
 
     [SerializeField] private float transmissibilityVariationEpsilon = 1e-3f;
     [SerializeField, Range(0, 0.5f)] private float outscatterCoefficient = 0.01f;
@@ -141,6 +153,7 @@ public class Simulation : SimulationBaseBehavior
     public RenderTexture SimulationOutputAccumulated { get; private set; }
     public RenderTexture SimulationOutputHDR { get; private set; }
     public RenderTexture SimulationOutputToneMapped { get; private set; }
+    public RenderTexture PhotonCountBuffer { get; private set; }
     public Texture2D EfficiencyDiagnostic { get; private set; }
     public Texture2D CumulativePhotonsDiagnostic { get; private set; }
     public Texture2D PhotonsDiagnostic { get; private set; }
@@ -340,6 +353,7 @@ public class Simulation : SimulationBaseBehavior
         SimulationOutputRaw = CreateRWTexture(width * 3, height, RenderTextureFormat.RInt);
         SimulationOutputAccumulated = CreateRWTexture(width, height, RenderTextureFormat.ARGBFloat);
         SimulationOutputHDR = CreateRWTexture(width, height, RenderTextureFormat.ARGBFloat);
+        PhotonCountBuffer = CreateRWTextureWithMips(width, height, RenderTextureFormat.RInt);
 
         for (int i = 0; i < 2; i++)
         {
@@ -385,6 +399,8 @@ public class Simulation : SimulationBaseBehavior
     float _previousOutscatterCoefficient;
     float _previousPathBalance;
     int _sceneId;
+    IntegrationMethod _previousIntegrationMethod;
+
     bool CheckChanged(RTLightSource[] allLights, RTObject[] allObjects, Matrix4x4 worldToPresentation)
     {
         var changed =
@@ -396,8 +412,10 @@ public class Simulation : SimulationBaseBehavior
             allObjects.Any(o => o.Changed) ||
             _previousSimulationMatrix != worldToPresentation ||
             _previousOutscatterCoefficient != outscatterCoefficient ||
-            _previousPathBalance != pathBalance;
+            _previousPathBalance != pathBalance ||
+            _previousIntegrationMethod != integrationMethod;
 
+        _previousIntegrationMethod = integrationMethod;
         _previousPathBalance = pathBalance;
         _previousOutscatterCoefficient = outscatterCoefficient;
         _previousSimulationMatrix = worldToPresentation;
@@ -489,6 +507,7 @@ public class Simulation : SimulationBaseBehavior
 
             SimulationOutputRaw.Clear(Color.clear);
             SimulationOutputAccumulated.Clear(Color.clear);
+            PhotonCountBuffer.Clear(Color.clear);
 
             for (int i = 0; i < _gridCellState.Length; i++)
             {
@@ -516,6 +535,36 @@ public class Simulation : SimulationBaseBehavior
         _computeShader.SetFloat("g_lightEmissionOutscatter", 0);
         _computeShader.SetFloat("g_outscatterCoefficient", outscatterCoefficient);
         SetShaderFlag(_computeShader, "BILINEAR_PHOTON_DISTRIBUTION", bilinearPhotonWrites);
+
+        SetShaderFlag(_computeShader, "INTEGRATE_EXPLICIT", false);
+        SetShaderFlag(_computeShader, "INTEGRATE_IMPLICIT", false);
+        SetShaderFlag(_computeShader, "INTEGRATE_IMPLICIT_INTERVAL", false);
+        SetShaderFlag(_computeShader, "INTEGRATE_EXPLICIT_BOUNDED", false);
+        SetShaderFlag(_computeShader, "INTEGRATE_EXPLICIT_BOUNCE_IMPLICIT_INTERVAL", false);
+        SetShaderFlag(_computeShader, "INTEGRATE_EXPLICIT_BOUNDED_BOUNCE_IMPLICIT_INTERVAL", false);
+
+        switch (integrationMethod)
+        {
+            case IntegrationMethod.Explicit:
+                SetShaderFlag(_computeShader, "INTEGRATE_EXPLICIT", true);
+                break;
+            case IntegrationMethod.Implicit:
+                SetShaderFlag(_computeShader, "INTEGRATE_IMPLICIT", true);
+                break;
+            case IntegrationMethod.ImplicitInterval:
+                SetShaderFlag(_computeShader, "INTEGRATE_IMPLICIT_INTERVAL", true);
+                break;
+            case IntegrationMethod.ExplicitBounded:
+                SetShaderFlag(_computeShader, "INTEGRATE_EXPLICIT_BOUNDED", true);
+                break;
+            case IntegrationMethod.ExplicitBounceImplicitInterval:
+                SetShaderFlag(_computeShader, "INTEGRATE_EXPLICIT_BOUNCE_IMPLICIT_INTERVAL", true);
+                break;
+            case IntegrationMethod.ExplicitBoundedBounceImplicitInterval:
+                SetShaderFlag(_computeShader, "INTEGRATE_EXPLICIT_BOUNDED_BOUNCE_IMPLICIT_INTERVAL", true);
+                break;
+        }
+        
 
         float energyNormPerFrame = 1;
         float pixelCount = width * height;
@@ -1024,10 +1073,12 @@ public class Simulation : SimulationBaseBehavior
         _computeShader.SetVector("g_lightEnergy", light.Energy * (float)photonEnergy);
         _computeShader.SetInt("g_bounces", bounces);
         _computeShader.SetMatrix("g_lightToTarget", lightToTargetSpace.transpose);
+        _computeShader.SetFloat("g_integration_interval", integrationInterval * height);
 
         RunKernel(_computeShader, simulateKernel, raysPerFrame,
             ("g_rand", _randomBuffer),
             ("g_output_raw", outputTexture),
+            ("g_photon_count", PhotonCountBuffer),
             ("g_albedo", GBufferAlbedo),
             ("g_transmissibility", GBufferTransmissibility),
             ("g_normalAlignment", GBufferNormalAlignment),

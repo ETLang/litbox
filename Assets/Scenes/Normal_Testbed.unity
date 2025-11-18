@@ -169,18 +169,20 @@ MonoBehaviour:
     serializedVersion: 2
     m_Bits: 768
   frameLimit: -1
-  width: 256
-  height: 256
+  width: 512
+  height: 512
+  integrationMethod: 5
   strategy: 0
   gridCells:
     x: 8
     y: 8
-  raysPerFrame: 512000
-  energyPrecision: 100
+  raysPerFrame: 256000
+  energyPrecision: 1000
   photonBounces: -1
   bilinearPhotonWrites: 1
   pathSamples: 10
   pathBalance: 0.5
+  integrationInterval: 0.1
   transmissibilityVariationEpsilon: 0.001
   outscatterCoefficient: 0.01
   _convergenceThreshold: -1
