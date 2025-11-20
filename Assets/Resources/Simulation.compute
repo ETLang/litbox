@@ -708,7 +708,7 @@ struct ExplicitBoundedBounceImplicitInvervalIntegrator : BaseContext, IMonteCarl
         float3 albedo = g_albedo.SampleLevel(sampler_point_clamp, pSample / g_target_size, 0).rgb;
         uint3 outScatter = photon.Energy * albedo * transmissibility * (1 - pow(tested_transmissibility, 1.0/(1 << lod)));
         WritePhoton(pSample, outScatter * photon.FineScale, false);//bounce == 0);
-        photon.Energy -= outScatter;
+       // photon.Energy -= outScatter;
     }
 
     void Init(BaseContext ctx)
@@ -754,7 +754,6 @@ struct ExplicitBoundedBounceImplicitInvervalIntegrator : BaseContext, IMonteCarl
             WriteSample(ctx.photon, uSampleTarget, ctx.lod);
             uSampleTarget = (currentSample + rand.Next()) * g_integration_interval;
         }
-        transmissibility *= tested_transmissibility.x;
 
         // If the density of the substrate is too high, consider this the new endpoint.
         //THIS CONDITION WILL BREAK REFLECTION WHEN DENSITY APPROACHES 1
