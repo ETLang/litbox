@@ -1241,12 +1241,13 @@ MonoBehaviour:
   gridCells:
     x: 8
     y: 8
-  raysPerFrame: 512000
+  raysPerFrame: 128000
   energyPrecision: 1000
   photonBounces: -1
   bilinearPhotonWrites: 1
   pathSamples: 10
   pathBalance: 0.5
+  integrationInterval: 0.1
   transmissibilityVariationEpsilon: 0.01
   outscatterCoefficient: 0.01
   _convergenceThreshold: 0.5
@@ -1365,7 +1366,6 @@ MonoBehaviour:
   m_Name: 
   m_EditorClassIdentifier: 
   simulation: {fileID: 923172386}
-  aiAccelerator: {fileID: 0}
   type: 2
 --- !u!114 &933397738 stripped
 MonoBehaviour:

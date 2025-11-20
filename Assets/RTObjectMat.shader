@@ -66,24 +66,17 @@ Shader "RT/Object"
             {
                 gbuffer_output output;
 
-                // sample the texture
                 float4 c = tex2D(_MainTex, i.uv);
                 float4 n = tex2D(_NormalTex, i.uv);
 
+                float imageDensity = _substrateDensity * c.a;
+                float imageTransmissibility = 1 - imageDensity;
+
+                float t = pow(imageTransmissibility, 100.0/_ScreenParams.y);
 
                 output.albedo = float4(c.rgb * _Color.rgb,1) * c.a * _Color.a;
-                float t = 1-_substrateDensity*c.a/sqrt(_ScreenParams.x*_ScreenParams.y)*100;
-                float rT = 1/t;
-
-                //output.transmissibility = float4(rT,rT,0,1-rT);
                 output.transmissibility = float4(t,t,0,1);
                 output.normal = float4(i.normal, _particleAlignment);
-
-                // output.albedo = float4(t.rgb * _Color.rgb, t.a * _Color.a);
-                // output.transmissibility = float4(1 - (_substrateDensity * t.a * _Color.a),1,0,1);
-                // output.transmissibility.y = output.transmissibility.x;
-                // output.normal = float4(n.xy,0,0);
-
                 return output;
             }
             ENDCG
