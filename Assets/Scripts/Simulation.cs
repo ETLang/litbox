@@ -137,7 +137,7 @@ public class Simulation : SimulationBaseBehavior
 
     private RenderTexture[] _gBufferAlbedo = new RenderTexture[2];
     private RenderTexture[] _gBufferTransmissibility = new RenderTexture[2];
-    private RenderTexture[] _gBufferNormalSlope = new RenderTexture[2];
+    private RenderTexture[] _gBufferNormalAlignment = new RenderTexture[2];
     private int _gBufferNextTarget = 0;
     private bool _validationFailed = false;
     private MeshFilter _meshFilter;
@@ -359,7 +359,8 @@ public class Simulation : SimulationBaseBehavior
         {
             _gBufferAlbedo[i] = CreateRWTextureWithMips(width, height, RenderTextureFormat.ARGBFloat, 32);
             _gBufferTransmissibility[i] = CreateRWTextureWithMips(width, height, RenderTextureFormat.ARGBFloat);
-            _gBufferNormalSlope[i] = CreateRWTextureWithMips(width, height, RenderTextureFormat.ARGBFloat);
+            _gBufferNormalAlignment[i] = CreateRWTextureWithMips(width, height, RenderTextureFormat.ARGBFloat);
+            _gBufferNormalAlignment[i].filterMode = FilterMode.Point;
         }
 
         GBufferQuadTreeLeaves = CreateRWTexture(width, height, RenderTextureFormat.ARGBHalf);
@@ -371,13 +372,13 @@ public class Simulation : SimulationBaseBehavior
     {
         GBufferAlbedo = _gBufferAlbedo[_gBufferNextTarget];
         GBufferTransmissibility = _gBufferTransmissibility[_gBufferNextTarget];
-        GBufferNormalAlignment = _gBufferNormalSlope[_gBufferNextTarget];
+        GBufferNormalAlignment = _gBufferNormalAlignment[_gBufferNextTarget];
 
         //_gBufferNextTarget = 1 - _gBufferNextTarget;
 
         _realContentCamera.GBufferAlbedo = _gBufferAlbedo[_gBufferNextTarget];
         _realContentCamera.GBufferTransmissibility = _gBufferTransmissibility[_gBufferNextTarget];
-        _realContentCamera.GBufferNormalSlope = _gBufferNormalSlope[_gBufferNextTarget];
+        _realContentCamera.GBufferNormalSlope = _gBufferNormalAlignment[_gBufferNextTarget];
         _realContentCamera.GBufferQuadTreeLeaves = GBufferQuadTreeLeaves;
         _realContentCamera.VarianceEpsilon = transmissibilityVariationEpsilon;
     }
