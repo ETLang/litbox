@@ -70,6 +70,10 @@ float cross2D(float2 a, float2 b)
     return dot(a, float2(-b.y, b.x));
 }
 
+float ExponentialInterpolation(float u, float d_left, float d_right) {
+    return (1-u) - pow(1-u, d_left+1) + pow(u, d_right+1);
+}
+
 // Utilities
 
 #define DECLARE_LUT(type, name) \
