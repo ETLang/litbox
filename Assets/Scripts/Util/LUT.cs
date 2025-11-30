@@ -262,7 +262,7 @@ static class LUT
         // y - (cross2D(normal, reflected) + 1.0) / 2.0
         // z - roughness
 
-        float4[,,] output = new float4[64,256,16]; // TODO: Adjust sizes as needed.
+        float4[,,] output = new float4[63,64,16];
 
         for(int j = 0;j < output.GetLength(1);j++) {
             float v = (float)j / (output.GetLength(1) - 1);
@@ -278,22 +278,17 @@ static class LUT
                     }
                 } else {
                     float3[] linePDF = CreateVectorizedAnglePDFLUT((float theta) => {
-                        const float clampThreshold = 0.0000f;
-
-                        // Use the Beckmann NDF (Cook-Torrance model) as  a basis for the BDRF.
+                        // Use Trowbridge-Reitz (GGX) NDF as the basis for our BDRF. It looks nice.
                         var halfAngle = (theta + incidentAngle) / 2;
                         var R = roughness * roughness;
 
-                        var tanHalf = Mathf.Tan(halfAngle);
                         var cosHalf = Mathf.Cos(halfAngle);
-                        var d = Mathf.Exp(-tanHalf * tanHalf / (R*R)) / Mathf.Pow(cosHalf,3);
-
-                        return Mathf.Clamp01(d * (1 + 2 * clampThreshold) - clampThreshold);
+                        return 1.0f/Mathf.Pow(cosHalf*cosHalf*(R*R-1) + 1,2);
                     }, output.GetLength(0), -Mathf.PI/2+0.0001f, Mathf.PI/2-0.0001f);
 
                     // BDRFs with narrow scattering lobes can have zero probability at the edges.
                     // Detect these and adjust to avoid artifacts.
-                    if(linePDF[0].z > 100)
+                    if(linePDF[0].z > 10)
                     {
                         var angle1 = Mathf.Acos(linePDF[1].y);
                         var angle2 = Mathf.Acos(linePDF[2].y);
@@ -303,7 +298,7 @@ static class LUT
                     }
 
                     var last = linePDF.Length - 1;
-                    if(linePDF[last].z > 100)
+                    if(linePDF[last].z > 10)
                     {
                         var angle1 = Mathf.Acos(linePDF[last-1].y);
                         var angle2 = Mathf.Acos(linePDF[last-2].y);
@@ -313,7 +308,12 @@ static class LUT
                     }
                    
                     for(int i = 0;i < linePDF.GetLength(0);i++) {
-                        output[i,j,k] = new float4(linePDF[i].x, linePDF[i].y, linePDF[i].z, (i == 0 || i == linePDF.Length-1) ? 0 : 1);
+                        if(i == 0 || i == linePDF.Length-1) {
+                            output[i,j,k] = new float4(linePDF[i].x, linePDF[i].y, linePDF[i].z, 0);
+                            //output[i,j,k] = new float4(0, 0, linePDF[i].z, 0);
+                        } else {
+                            output[i,j,k] = new float4(linePDF[i].x, linePDF[i].y, linePDF[i].z, 1);
+                        }
                     }
                 }
             }
