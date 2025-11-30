@@ -121,6 +121,7 @@ public class Simulation : SimulationBaseBehavior
     private Texture _mieScatteringLUT;
     private Texture _teardropScatteringLUT;
     private Texture _quantumTunnelingLUT;
+    private Texture _bdrfLUT;
     private int[] _kernelsHandles;
 
     private bool hasValidGridTransmissibility = false;
@@ -307,6 +308,8 @@ public class Simulation : SimulationBaseBehavior
         DisposeOnDisable(() => DestroyImmediate(_teardropScatteringLUT));
         _quantumTunnelingLUT = LUT.CreateQuantumTunnelingLUT().AsTexture();
         DisposeOnDisable(() => DestroyImmediate(_quantumTunnelingLUT));
+        _bdrfLUT = LUT.CreateBDRFLUT().AsTexture();
+        DisposeOnDisable(() => DestroyImmediate(_bdrfLUT));
 
         EfficiencyDiagnostic = new Texture2D((int)gridCells.x, (int)gridCells.y, TextureFormat.RGBAFloat, false) {
             filterMode = FilterMode.Point
@@ -359,6 +362,7 @@ public class Simulation : SimulationBaseBehavior
         {
             _gBufferAlbedo[i] = CreateRWTextureWithMips(width, height, RenderTextureFormat.ARGBFloat, 32);
             _gBufferTransmissibility[i] = CreateRWTextureWithMips(width, height, RenderTextureFormat.ARGBFloat);
+            _gBufferTransmissibility[i].filterMode = FilterMode.Point;
             _gBufferNormalAlignment[i] = CreateRWTextureWithMips(width, height, RenderTextureFormat.ARGBFloat);
             _gBufferNormalAlignment[i].filterMode = FilterMode.Point;
         }
@@ -642,6 +646,7 @@ public class Simulation : SimulationBaseBehavior
                     ("g_mieScatteringLUT", _mieScatteringLUT),
                     ("g_teardropScatteringLUT", _teardropScatteringLUT),
                     ("g_quantumTunnelingLUT", _quantumTunnelingLUT),
+                    ("g_bdrfLUT", _bdrfLUT),
                     ("g_convergenceCellStateIn", _gridCellInputBuffer),
                     ("g_convergenceCellStateOut", _gridCellOutputBuffer));
                 break;
@@ -766,6 +771,10 @@ public class Simulation : SimulationBaseBehavior
         if (recentSceneId != _sceneId) return;
         awaitingConvergenceResult = false;
         if (!r.done || r.hasError) return;
+
+#if UNITY_EDITOR
+        if (!UnityEditor.EditorApplication.isPlaying) return;
+#endif
 
         var feedback = r.GetData<ConvergenceCellOutput>(0);
 
@@ -1087,6 +1096,7 @@ public class Simulation : SimulationBaseBehavior
             ("g_mieScatteringLUT", _mieScatteringLUT),
             ("g_teardropScatteringLUT", _teardropScatteringLUT),
             ("g_quantumTunnelingLUT", _quantumTunnelingLUT),
+            ("g_bdrfLUT", _bdrfLUT),
             ("g_convergenceCellStateIn", _gridCellInputBuffer),
             ("g_convergenceCellStateOut", _gridCellOutputBuffer));
     }

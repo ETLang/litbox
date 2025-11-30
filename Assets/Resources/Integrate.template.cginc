@@ -16,15 +16,14 @@
             state.BeginTraversal(ctx);
 
             ctx.uHitCurrent = 0;
-            float2 pSample;
             bool continueRunning = true;
             for(int steps = 0;steps < 3000;steps++) {
-                pSample = uvOrigin + uvDirection * ctx.uHitCurrent;
+                ctx.testUV = uvOrigin + uvDirection * ctx.uHitCurrent;
                 bool overshoot = false;
-                ctx.lod = g_quadTreeLeaves.SampleLevel(sampler_point_clamp, pSample, 0).x;
+                ctx.lod = g_quadTreeLeaves.SampleLevel(sampler_point_clamp, ctx.testUV, 0).x;
 
                 do {
-                    ctx.transmissibilityNext = g_transmissibility.SampleLevel(samplerg_transmissibility, pSample, ctx.lod);
+                    ctx.transmissibilityNext = g_transmissibility.SampleLevel(samplerg_transmissibility, ctx.testUV, ctx.lod);
                     ctx.uHitNext = ctx.uHitCurrent + (1 << ctx.lod);
                     overshoot = state.Test(ctx);
                     
@@ -48,14 +47,14 @@
             // if(failure) {
             //     // Fail condition... traversal took too many steps
             //     WritePhoton(ctx.photon.Origin, uint3(1000000000, 1000000000, 0));
-            //     WritePhoton(pSample * g_target_size, uint3(0, 1000000000, 0));
+            //     WritePhoton(ctx.testUV * g_target_size, uint3(0, 1000000000, 0));
             //     return false;,
             // }
 
             if(!continueRunning) break;
 
             ctx.photon.Origin += ctx.photon.Direction * ctx.uHitCurrent;
-            float3 albedo = g_albedo.SampleLevel(sampler_point_clamp, ctx.photon.Origin / g_target_size, 0).rgb;
+            float3 albedo = g_albedo.SampleLevel(sampler_point_clamp, ctx.testUV, 0).rgb;
             if(state.Bounce(ctx, albedo)) {
                 bounce++;
             }

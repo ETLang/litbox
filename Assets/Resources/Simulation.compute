@@ -42,6 +42,7 @@ Texture2D<float4> g_quadTreeLeaves;
 DECLARE_LUT(float2, g_mieScatteringLUT)
 DECLARE_LUT(float3, g_teardropScatteringLUT)
 DECLARE_LUT_3D(float2, g_quantumTunnelingLUT)
+DECLARE_LUT_3D(float4, g_bdrfLUT)
 
 RWTexture2D<float4> g_output_tonemapped;
 RWTexture2D<float4> g_previousResult;
@@ -217,6 +218,7 @@ struct IntegrationContext
     float uHitCurrent;
     float uHitNext;
     float uEscape;
+    float2 testUV;
     float4 transmissibilityCurrent;
     float4 transmissibilityNext;
     int lod;
@@ -226,6 +228,7 @@ struct IntegrationContext
         uHitCurrent = 0;
         uHitNext = 0;
         uEscape = 0;
+        testUV = float2(0,0);
         transmissibilityCurrent = float4(1,1,0,0);
         transmissibilityNext = float4(1,1,0,0);
         lod = 0;
@@ -288,20 +291,111 @@ struct BaseContext {
             return float3(important_direction * sample.x + perp * sample.y, sample.z);
         }
     }
+
+    float4 CubicWeights(float u) {
+        float4x4 basis = {
+            {-0.5,  1.5, -1.5,  0.5},
+            {   1, -2.5,    2, -0.5},
+            {-0.5,    0,  0.5,    0},
+            {   0,    1,    0,    0}
+        };
+
+        float uu = u*u;
+        float4 series = {uu*u, uu, u, 1};
+
+        return mul(series, basis);
+    }
+
+    float3 BilinearAsCubic(float u) {
+        float4 weights = CubicWeights(u);
+        float w = weights.x + weights.y;
+
+        return float3(
+            /*s = */ weights.x / w - 1 - u,
+            /*t = */ weights.z / (1-w) + 1 - u,
+            w
+        );
+    }
+
+    float3 StandardBDRF(float2 normal, float2 reflected, float roughness) {
+        float3 uvw = float3(
+            rand.Next(),
+            (cross2D(normal, reflected) + 1.0) / 2.0,
+            roughness);
+        float2 tangent = float2(-normal.y, normal.x);
+
+        uint width, height, depth;
+        g_bdrfLUT.GetDimensions(width, height, depth);
+
+        float3 rescaled_uvw = {
+            dot(float2(1,uvw.x),lut_window_g_bdrfLUT.xy),
+            dot(float2(1,uvw.y),lut_window_g_bdrfLUT.zw),
+            dot(float2(1,uvw.z),lut_slice_window_g_bdrfLUT)
+        };
+
+        float u_in_pixel_space = rescaled_uvw.x * width - 0.5;
+        float bilinearParam = frac(u_in_pixel_space);
+        float4 weights = CubicWeights(bilinearParam);
+        float u_p1 = u_in_pixel_space - bilinearParam;
+        float u_p0 = u_p1 - 1;
+        float u_p2 = u_p1 + 1;
+        float u_p3 = u_p1 + 2;
+
+        float3 uvw_0 = rescaled_uvw;
+        uvw_0.x = (u_p0 + 0.5) / width;
+        float3 uvw_1 = rescaled_uvw;
+        uvw_1.x = (u_p1 + 0.5) / width;
+        float3 uvw_2 = rescaled_uvw;
+        uvw_2.x = (u_p2 + 0.5) / width;
+        float3 uvw_3 = rescaled_uvw;
+        uvw_3.x = (u_p3 + 0.5) / width;
+
+        float4 scattered_0 = g_bdrfLUT.SampleLevel(samplerg_bdrfLUT, uvw_0, 0);
+        float4 scattered_1 = g_bdrfLUT.SampleLevel(samplerg_bdrfLUT, uvw_1, 0);
+        float4 scattered_2 = g_bdrfLUT.SampleLevel(samplerg_bdrfLUT, uvw_2, 0);
+        float4 scattered_3 = g_bdrfLUT.SampleLevel(samplerg_bdrfLUT, uvw_3, 0);
+
+        float4 scattered;
+
+        scattered = 
+            scattered_0 * weights.x +
+            scattered_1 * weights.y +
+            scattered_2 * weights.z +
+            scattered_3 * weights.w;
+
+        //scattered = SampleLUT3D(g_bdrfLUT, uvw);
+
+        return float3(normalize(scattered.x * normal + scattered.y * tangent), scattered.w*scattered.w);
+    }
     
-    float4 ScatterMaterially(float2 origin, float2 origin_uv, float2 incoming)
+    float4 ScatterMaterially(inout float2 origin, float2 origin_uv, float2 incoming)
     {
         const float eps = 1e-5f;
         float4 normal_alignment = g_normalAlignment.SampleLevel(samplerg_normalAlignment, origin_uv, 0);
         float3 normal = normal_alignment.xyz;
         float alignment = normal_alignment.w;
-        float normalScale = dot(normal.xy, normal.xy);
-        float3 reflected = reflect(float3(incoming, 0), normal) * normalScale;
-        float2 dir = normalize(rand.NextDirection() + reflected.xy / (1 - alignment + eps));
-        return float4(dir, 1, normalScale > 0 ? 0 : 1);
+
+        if(dot(normal.xy, normal.xy) < eps) {
+            // No normal information, scatter uniformly
+            float2 dir = rand.NextDirection();
+            return float4(dir, 1, 0);
+        } else if(dot(normal.xy, incoming) > 0) {
+            // Normal is the same general direction as incoming - transmit
+            // TODO: Allow the transmission to not count against bounce count.
+            // BUG: Setting transmit to 1 causes an infinite loop when photons
+            // are emitted within the normal field
+            return float4(incoming, 1, /*transmit*/ 1-1);
+        } else {
+            // TODO: Allow BDRF to operate on not-fully-horizontal normals
+            float2 normal2D = normalize(normal.xy);
+            float2 reflected = reflect(incoming, normal2D);
+            float3 scattered = StandardBDRF(normal.xy, reflected, 1 - alignment);
+            origin -= incoming * 2.5;
+            return float4(scattered, 0);
+        }
     }
 
-    float4 ScatterMaterially(float2 origin, float2 incoming)
+    float4 ScatterMaterially(inout float2 origin, float2 incoming)
     {
         return ScatterMaterially(origin, origin / g_target_size, incoming);
     }
@@ -772,21 +866,23 @@ struct ExplicitBoundedBounceImplicitInvervalIntegrator : BaseContext, IMonteCarl
     bool Bounce(inout IntegrationContext ctx, float3 albedo)
     {
         if(!searchingPhase) {
-            ctx.photon.Energy *= albedo * quantumScale;
-
             //float3 important_direction = ScatterImportance(ctx.photon.Origin);
-            float4 important_direction = ScatterMaterially(ctx.photon.Origin, ctx.photon.Direction);
+            float4 important_direction = ScatterMaterially(ctx.photon.Origin, ctx.testUV, ctx.photon.Direction);
+
+            ctx.photon.Energy *= albedo * quantumScale;
             ctx.photon.Direction = important_direction.xy;
             ctx.photon.FineScale *= important_direction.z;
-            ctx.photon.Origin += ctx.photon.Direction;
+            ctx.photon.Origin += 1.5*ctx.photon.Direction;
+
+            if(important_direction.w < 0.5) {
+                searchingPhase = true;
+            } // otherwise it's a false bounce. Return to propagating.
         } else {
             float u = rand.Next(transmissibility, 1);
             transmitPotential = u;
             quantumScale = 1-transmissibility;
-            //transmitPotential = u * u * u;
-            //quantumScale = 3 * u * u;
+            searchingPhase = false;
         }
-        searchingPhase = !searchingPhase;
         return searchingPhase;
     }
 };

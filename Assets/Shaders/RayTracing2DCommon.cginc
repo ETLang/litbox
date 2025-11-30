@@ -65,6 +65,11 @@ float3 ToGrayscale(float3 color)
     return Intensity(color).xxx;
 }
 
+float cross2D(float2 a, float2 b)
+{
+    return dot(a, float2(-b.y, b.x));
+}
+
 // Utilities
 
 #define DECLARE_LUT(type, name) \
