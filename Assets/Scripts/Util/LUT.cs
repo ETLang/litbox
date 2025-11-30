@@ -272,7 +272,7 @@ static class LUT
                 float roughness = (float)k / (output.GetLength(2) - 1);
 
                 if(roughness == 0) {
-                    float4 reflected = new float4(Mathf.Cos(-incidentAngle), Mathf.Sin(-incidentAngle), 1, 1);
+                    float4 reflected = new float4(Mathf.Cos(-incidentAngle), Mathf.Sin(-incidentAngle), 0, 1);
                     for(int i = 0;i < output.GetLength(0);i++) {
                         output[i,j,k] = reflected;
                     }
@@ -308,12 +308,25 @@ static class LUT
                     }
                    
                     for(int i = 0;i < linePDF.GetLength(0);i++) {
-                        if(i == 0 || i == linePDF.Length-1) {
-                            output[i,j,k] = new float4(linePDF[i].x, linePDF[i].y, linePDF[i].z, 0);
-                            //output[i,j,k] = new float4(0, 0, linePDF[i].z, 0);
+                        float2 tangent = new float2(-linePDF[i].y, linePDF[i].x);
+                        float3 slope_all;
+                        float weight;
+
+                        if(i == 0)
+                        {
+                            slope_all = linePDF[i+1] - linePDF[i];
+                            weight = 0;
+                        } else if(i == linePDF.Length-1) {
+                            slope_all = linePDF[i] - linePDF[i-1];
+                            weight = 0;
                         } else {
-                            output[i,j,k] = new float4(linePDF[i].x, linePDF[i].y, linePDF[i].z, 1);
+                            slope_all = (linePDF[i+1] - linePDF[i-1]) / 2;
+                            weight = 1;
                         }
+
+                        float2 slope = new float2(slope_all.x, slope_all.y);
+                        float slopeMag = ((Vector2)slope).magnitude;
+                        output[i,j,k] = new float4(linePDF[i].x, linePDF[i].y, slopeMag, weight);
                     }
                 }
             }

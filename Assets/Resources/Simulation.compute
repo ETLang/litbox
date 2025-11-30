@@ -302,7 +302,19 @@ struct BaseContext {
 
         float uu = u*u;
         float4 series = {uu*u, uu, u, 1};
+        return mul(series, basis);
+    }
 
+    float4 HermiteWeights(float u) {
+        float4x4 basis = {
+            { 2,  1, -2,  1},
+            {-3, -2,  3, -1},
+            { 0,  1,  0,  0},
+            { 1,  0,  0,  0}
+        };
+
+        float uu = u*u;
+        float4 series = {uu*u, uu, u, 1};
         return mul(series, basis);
     }
 
@@ -337,31 +349,27 @@ struct BaseContext {
         float bilinearParam = frac(u_in_pixel_space);
         float4 weights = CubicWeights(bilinearParam);
         float u_p1 = u_in_pixel_space - bilinearParam;
-        float u_p0 = u_p1 - 1;
         float u_p2 = u_p1 + 1;
-        float u_p3 = u_p1 + 2;
 
-        float3 uvw_0 = rescaled_uvw;
-        uvw_0.x = (u_p0 + 0.5) / width;
         float3 uvw_1 = rescaled_uvw;
         uvw_1.x = (u_p1 + 0.5) / width;
         float3 uvw_2 = rescaled_uvw;
         uvw_2.x = (u_p2 + 0.5) / width;
-        float3 uvw_3 = rescaled_uvw;
-        uvw_3.x = (u_p3 + 0.5) / width;
 
-        float4 scattered_0 = g_bdrfLUT.SampleLevel(samplerg_bdrfLUT, uvw_0, 0);
         float4 scattered_1 = g_bdrfLUT.SampleLevel(samplerg_bdrfLUT, uvw_1, 0);
         float4 scattered_2 = g_bdrfLUT.SampleLevel(samplerg_bdrfLUT, uvw_2, 0);
-        float4 scattered_3 = g_bdrfLUT.SampleLevel(samplerg_bdrfLUT, uvw_3, 0);
 
         float4 scattered;
 
+        float4 tangent_1 = float4(-scattered_1.y, scattered_1.x, 0, 0) * scattered_1.z;
+        float4 tangent_2 = float4(-scattered_2.y, scattered_2.x, 0, 0) * scattered_2.z;
+
+        float4 hermiteWeights = HermiteWeights(bilinearParam);
         scattered = 
-            scattered_0 * weights.x +
-            scattered_1 * weights.y +
-            scattered_2 * weights.z +
-            scattered_3 * weights.w;
+            scattered_1 * hermiteWeights.x +
+            tangent_1 * hermiteWeights.y +
+            scattered_2 * hermiteWeights.z +
+            tangent_2 * hermiteWeights.w;
 
         //scattered = SampleLUT3D(g_bdrfLUT, uvw);
 
