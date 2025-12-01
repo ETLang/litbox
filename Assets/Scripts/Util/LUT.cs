@@ -227,35 +227,6 @@ static class LUT
             return 1 + spikeStrength * Mathf.Pow(x,6);
         });
 
-    // TODO: Probably remove this. We have better solutions now.
-    public static float2[,,] CreateQuantumTunnelingLUT() {
-        // Quantum tunneling LUT is 3 dimensional.
-        // The 3 dimensions are:
-        // x - scatter potential (PDF dependent)
-        // y - focal distance (in terms of scatter potential)
-        // z - sample spread [0.00001,0.99]. Equivalent to net transmissibility over the standard deviation:  T^d
-
-        Func<float,float,float,float> tunnelingPDF = (float x, float focalDistance, float spread) =>
-            Mathf.Exp(-Mathf.Pow(Mathf.Log(focalDistance/x) / Mathf.Log(spread),2));
-
-        //float2[,,] output = new float2[2048,256,16];
-        float2[,,] output = new float2[512,16,16];
-
-        for(int k = 0;k < output.GetLength(2);k++) {
-            float spread = 0.00001f + (0.99f - 0.00001f) * k / output.GetLength(2);
-            for(int j = 0;j < output.GetLength(1);j++) {
-                float focalDistance = (float)j / output.GetLength(1);
-                float2[] linePDF = CreatePDFLUT(x => tunnelingPDF(x, focalDistance, spread), 1e-4f, 1, output.GetLength(0));
-
-                for(int i = 0;i < linePDF.GetLength(0);i++) {
-                    output[i,j,k] = linePDF[i];
-                }
-            }
-        }
-
-        return output;
-    }
-
     public static float4[,,] CreateBDRFLUT() {
         // BDRF LUT is 3 dimensional.
         // x - random scatter (PDF)

@@ -120,7 +120,6 @@ public class Simulation : SimulationBaseBehavior
     private RenderBuffer[][] _gBuffer;
     private Texture _mieScatteringLUT;
     private Texture _teardropScatteringLUT;
-    private Texture _quantumTunnelingLUT;
     private Texture _bdrfLUT;
     private int[] _kernelsHandles;
 
@@ -306,8 +305,6 @@ public class Simulation : SimulationBaseBehavior
         DisposeOnDisable(() => DestroyImmediate(_mieScatteringLUT));
         _teardropScatteringLUT = LUT.CreateTeardropScatteringLUT(10).AsTexture();
         DisposeOnDisable(() => DestroyImmediate(_teardropScatteringLUT));
-        _quantumTunnelingLUT = LUT.CreateQuantumTunnelingLUT().AsTexture();
-        DisposeOnDisable(() => DestroyImmediate(_quantumTunnelingLUT));
         _bdrfLUT = LUT.CreateBDRFLUT().AsTexture();
         DisposeOnDisable(() => DestroyImmediate(_bdrfLUT));
 
@@ -645,7 +642,6 @@ public class Simulation : SimulationBaseBehavior
                     ("g_quadTreeLeaves", GBufferQuadTreeLeaves),
                     ("g_mieScatteringLUT", _mieScatteringLUT),
                     ("g_teardropScatteringLUT", _teardropScatteringLUT),
-                    ("g_quantumTunnelingLUT", _quantumTunnelingLUT),
                     ("g_bdrfLUT", _bdrfLUT),
                     ("g_convergenceCellStateIn", _gridCellInputBuffer),
                     ("g_convergenceCellStateOut", _gridCellOutputBuffer));
@@ -1095,7 +1091,6 @@ public class Simulation : SimulationBaseBehavior
             ("g_quadTreeLeaves", GBufferQuadTreeLeaves),
             ("g_mieScatteringLUT", _mieScatteringLUT),
             ("g_teardropScatteringLUT", _teardropScatteringLUT),
-            ("g_quantumTunnelingLUT", _quantumTunnelingLUT),
             ("g_bdrfLUT", _bdrfLUT),
             ("g_convergenceCellStateIn", _gridCellInputBuffer),
             ("g_convergenceCellStateOut", _gridCellOutputBuffer));

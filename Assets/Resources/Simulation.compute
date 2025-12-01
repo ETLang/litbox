@@ -41,7 +41,6 @@ Texture2D<float4> g_quadTreeLeaves;
 
 DECLARE_LUT(float2, g_mieScatteringLUT)
 DECLARE_LUT(float3, g_teardropScatteringLUT)
-DECLARE_LUT_3D(float2, g_quantumTunnelingLUT)
 DECLARE_LUT_3D(float4, g_bdrfLUT)
 
 RWTexture2D<float4> g_output_tonemapped;
