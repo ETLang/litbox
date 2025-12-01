@@ -800,6 +800,7 @@ struct ExplicitBoundedBounceImplicitInvervalIntegrator : BaseContext, IMonteCarl
     float hitIntensity;
     float uSampleTarget;
     float transmissibility;
+    float uSampleRandomOffset;
 
     float tested_transmissibility;
     float tested_u;
@@ -823,6 +824,7 @@ struct ExplicitBoundedBounceImplicitInvervalIntegrator : BaseContext, IMonteCarl
         quantumScale = 1;
         currentSample = 0;
         uSampleTarget = 0;
+        uSampleRandomOffset = rand.Next();
     }
 
     void BeginTraversal(inout IntegrationContext ctx)
@@ -849,10 +851,10 @@ struct ExplicitBoundedBounceImplicitInvervalIntegrator : BaseContext, IMonteCarl
     {
         transmissibility *= tested_transmissibility;
 
-        if(searchingPhase && tested_u > uSampleTarget) {
+        while(searchingPhase && tested_u > uSampleTarget) {
             currentSample += 1;
             WriteSample(ctx.photon, uSampleTarget, ctx.lod);
-            uSampleTarget = (currentSample + rand.Next()) * g_integration_interval;
+            uSampleTarget = (currentSample + uSampleRandomOffset) * g_integration_interval; 
         }
 
         // If the density of the substrate is too high, consider this the new endpoint.
