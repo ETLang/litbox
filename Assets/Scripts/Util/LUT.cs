@@ -262,7 +262,7 @@ static class LUT
         // y - (cross2D(normal, reflected) + 1.0) / 2.0
         // z - roughness
 
-        float4[,,] output = new float4[63,64,16];
+        float4[,,] output = new float4[128,64,16];
 
         for(int j = 0;j < output.GetLength(1);j++) {
             float v = (float)j / (output.GetLength(1) - 1);
@@ -271,62 +271,45 @@ static class LUT
             for(int k = 0;k < output.GetLength(2);k++) {
                 float roughness = (float)k / (output.GetLength(2) - 1);
 
+                float3[] linePDF = CreateVectorizedAnglePDFLUT((float theta) => {
+                    // Use Trowbridge-Reitz (GGX) NDF as the basis for our BDRF. It looks nice.
+                    var halfAngle = (theta + incidentAngle) / 2;
+                    var R = roughness * roughness;
+
+                    var cosHalf = Mathf.Cos(halfAngle);
+                    return 1.0f/Mathf.Pow(cosHalf*cosHalf*(R*R-1) + 1,2);
+                }, output.GetLength(0), -Mathf.PI/2+0.0001f, Mathf.PI/2-0.0001f);
+
+                for(int i = 0;i < linePDF.GetLength(0);i++) {
+                    float2 tangent = new float2(-linePDF[i].y, linePDF[i].x);
+                    float3 slope_all;
+                    float weight;
+                    float maxMag = float.MaxValue;
+
+                    if(i == 0)
+                    {
+                        slope_all = linePDF[i+1] - linePDF[i];
+                        weight = 0;
+                    } else if(i == linePDF.Length-1) {
+                        slope_all = linePDF[i] - linePDF[i-1];
+                        weight = 0;
+                    } else {
+                        var angle1 = Mathf.Acos(Vector2.Dot((Vector2)(Vector3)linePDF[i+1], (Vector2)(Vector3)linePDF[i]));
+                        var angle2 = Mathf.Acos(Vector2.Dot((Vector2)(Vector3)linePDF[i], (Vector2)(Vector3)linePDF[i-1]));
+                        slope_all = (linePDF[i+1] - linePDF[i-1]) / 2;
+                        weight = 1;
+                        maxMag = Mathf.Min(angle1, angle2) * 1.5f;
+                    }
+
+                    float2 slope = new float2(slope_all.x, slope_all.y);
+                    float slopeMag = Mathf.Min(maxMag, ((Vector2)slope).magnitude);
+                    output[i,j,k] = new float4(linePDF[i].x, linePDF[i].y, slopeMag, weight);
+                }
+
                 if(roughness == 0) {
                     float4 reflected = new float4(Mathf.Cos(-incidentAngle), Mathf.Sin(-incidentAngle), 0, 1);
-                    for(int i = 0;i < output.GetLength(0);i++) {
+                    for(int i = 1;i < output.GetLength(0) - 1;i++) {
                         output[i,j,k] = reflected;
-                    }
-                } else {
-                    float3[] linePDF = CreateVectorizedAnglePDFLUT((float theta) => {
-                        // Use Trowbridge-Reitz (GGX) NDF as the basis for our BDRF. It looks nice.
-                        var halfAngle = (theta + incidentAngle) / 2;
-                        var R = roughness * roughness;
-
-                        var cosHalf = Mathf.Cos(halfAngle);
-                        return 1.0f/Mathf.Pow(cosHalf*cosHalf*(R*R-1) + 1,2);
-                    }, output.GetLength(0), -Mathf.PI/2+0.0001f, Mathf.PI/2-0.0001f);
-
-                    // BDRFs with narrow scattering lobes can have zero probability at the edges.
-                    // Detect these and adjust to avoid artifacts.
-                    if(linePDF[0].z > 10)
-                    {
-                        var angle1 = Mathf.Acos(linePDF[1].y);
-                        var angle2 = Mathf.Acos(linePDF[2].y);
-                        var angle0 = angle1 - (angle2 - angle1);
-                        var vector0 = new float2(Mathf.Sin(angle0), Mathf.Cos(angle0));
-                        linePDF[0] = new float3(vector0, linePDF[1].z);
-                    }
-
-                    var last = linePDF.Length - 1;
-                    if(linePDF[last].z > 10)
-                    {
-                        var angle1 = Mathf.Acos(linePDF[last-1].y);
-                        var angle2 = Mathf.Acos(linePDF[last-2].y);
-                        var angle0 = angle1 + (angle1 - angle2);
-                        var vector0 = new float2(Mathf.Sin(angle0), Mathf.Cos(angle0));
-                        linePDF[last] = new float3(vector0, linePDF[last-1].z);
-                    }
-                   
-                    for(int i = 0;i < linePDF.GetLength(0);i++) {
-                        float2 tangent = new float2(-linePDF[i].y, linePDF[i].x);
-                        float3 slope_all;
-                        float weight;
-
-                        if(i == 0)
-                        {
-                            slope_all = linePDF[i+1] - linePDF[i];
-                            weight = 0;
-                        } else if(i == linePDF.Length-1) {
-                            slope_all = linePDF[i] - linePDF[i-1];
-                            weight = 0;
-                        } else {
-                            slope_all = (linePDF[i+1] - linePDF[i-1]) / 2;
-                            weight = 1;
-                        }
-
-                        float2 slope = new float2(slope_all.x, slope_all.y);
-                        float slopeMag = ((Vector2)slope).magnitude;
-                        output[i,j,k] = new float4(linePDF[i].x, linePDF[i].y, slopeMag, weight);
                     }
                 }
             }
