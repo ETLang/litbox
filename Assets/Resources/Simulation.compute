@@ -396,17 +396,19 @@ struct BaseContext {
             return float4(incoming, 1, /*transmit*/ 1-1);
         } else {
             // TODO: Allow BDRF to operate on not-fully-horizontal normals
-            float2 normal2D = normalize(normal.xy);
+            float len = length(normal.xy);
+            float2 normal2D = normal.xy / len;
             float2 reflected = reflect(incoming, normal2D);
-
+            
+            alignment = saturate(alignment / len);
             origin -= incoming * 2.5;
-            if(alignment == 1) {
+            if(alignment > 0.999) {
                 return float4(reflected, 1, 0);
             } else if(alignment == 0) {
                 float2 dir = rand.NextDirection();
                 return float4(dot(dir, normal2D) > 0 ? dir : -dir, 1, 0);
             } else {
-                float3 scattered = StandardBDRF(normal.xy, reflected, 1 - alignment);
+                float3 scattered = StandardBDRF(normal2D, reflected, 1 - alignment);
                 return float4(scattered, 0);
             }
         }
@@ -818,7 +820,16 @@ struct ExplicitBoundedBounceImplicitInvervalIntegrator : BaseContext, IMonteCarl
     void WriteSample(inout Ray photon, float u, int lod)
     {
         float2 pSample = photon.Origin + photon.Direction * u;
-        float3 albedo = g_albedo.SampleLevel(sampler_point_clamp, pSample / g_target_size, 0).rgb;
+        float2 uv = pSample / g_target_size;
+        float4 normal_alignment = g_normalAlignment.SampleLevel(samplerg_normalAlignment, uv, 0);
+
+        if(dot(normal_alignment.xy, normal_alignment.xy) > 0) {
+            // Presence of normal implies that transmissibility at this pixel is artificially high.
+            // TODO: Make allowances for interior scattering.
+            return;
+        }
+
+        float3 albedo = g_albedo.SampleLevel(sampler_point_clamp, uv, 0).rgb;
         float3 outScatter = photon.Energy * albedo * transmissibility * (1 - pow(tested_transmissibility, 1.0/(1 << lod)));
         WritePhoton(pSample, outScatter, false);//bounce == 0);
     }
@@ -894,9 +905,10 @@ struct ExplicitBoundedBounceImplicitInvervalIntegrator : BaseContext, IMonteCarl
             ctx.photon.Origin += ctx.photon.Direction;
 
             if(important_direction.w < 0.5) {
-                transmissibility /= tested_transmissibility;
                 searchingPhase = true;
-            } // otherwise it's a false bounce. Return to propagating.
+            } else { // otherwise it's a false bounce. Return to propagating.
+                transmissibility /= tested_transmissibility;
+            }
         } else {
             float u = rand.Next(transmissibility, 1);
             transmitPotential = u;
