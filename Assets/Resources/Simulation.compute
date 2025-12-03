@@ -24,8 +24,7 @@
 struct Ray {
     float2 Origin;
     float2 Direction;
-    uint3 Energy;
-    float FineScale;
+    float3 Energy;
 };
 
 RWStructuredBuffer<uint4> g_rand;
@@ -386,6 +385,9 @@ struct BaseContext {
             // No normal information, scatter uniformly
             float2 dir = rand.NextDirection();
             return float4(dir, 1, 0);
+        // } else if(dot(normal.xy, normal.xy) < 0.25) {
+        //     // Small normal implies we're near a flat surface - continue propagating
+        //     return (1).xxxx;
         } else if(dot(normal.xy, incoming) > 0) {
             // Normal is the same general direction as incoming - transmit
             // TODO: Allow the transmission to not count against bounce count.
@@ -396,9 +398,17 @@ struct BaseContext {
             // TODO: Allow BDRF to operate on not-fully-horizontal normals
             float2 normal2D = normalize(normal.xy);
             float2 reflected = reflect(incoming, normal2D);
-            float3 scattered = StandardBDRF(normal.xy, reflected, 1 - alignment);
+
             origin -= incoming * 2.5;
-            return float4(scattered, 0);
+            if(alignment == 1) {
+                return float4(reflected, 1, 0);
+            } else if(alignment == 0) {
+                float2 dir = rand.NextDirection();
+                return float4(dot(dir, normal2D) > 0 ? dir : -dir, 1, 0);
+            } else {
+                float3 scattered = StandardBDRF(normal.xy, reflected, 1 - alignment);
+                return float4(scattered, 0);
+            }
         }
     }
 
@@ -468,12 +478,12 @@ struct ImplicitIntegrator : BaseContext, IMonteCarloMethod
         //float3 important_direction = ScatterImportance(ctx.photon.Origin);
         float4 important_direction = ScatterMaterially(ctx.photon.Origin, ctx.photon.Direction);
         ctx.photon.Direction = important_direction.xy;
-        ctx.photon.FineScale *= important_direction.z;
+        ctx.photon.Energy *= important_direction.z;
 
-        uint3 outScatter = ctx.photon.Energy * hitIntensity;
+        float3 outScatter = ctx.photon.Energy * hitIntensity;
         outScatter *= important_direction.w;
 
-        WritePhoton(ctx.photon.Origin, outScatter * ctx.photon.FineScale, false);//bounce == 0);
+        WritePhoton(ctx.photon.Origin, outScatter, false);//bounce == 0);
         ctx.photon.Energy -= outScatter;
         return true;
     }
@@ -494,8 +504,8 @@ struct ImplicitIntervalIntegrator : BaseContext, IMonteCarloMethod
     {
         float2 pSample = photon.Origin + photon.Direction * u;
         float3 albedo = g_albedo.SampleLevel(sampler_point_clamp, pSample / g_target_size, 0).rgb;
-        uint3 outScatter = photon.Energy * albedo * probability * transmissibility * (1 - pow(tested_transmissibility, 1.0/(1 << lod)));
-        WritePhoton(pSample, outScatter * photon.FineScale, false);//bounce == 0);
+        float3 outScatter = photon.Energy * albedo * probability * transmissibility * (1 - pow(tested_transmissibility, 1.0/(1 << lod)));
+        WritePhoton(pSample, outScatter, false);//bounce == 0);
     }
 
     void Init(BaseContext ctx)
@@ -557,7 +567,7 @@ struct ImplicitIntervalIntegrator : BaseContext, IMonteCarloMethod
         //float3 important_direction = ScatterImportance(photon.Origin);
         float4 important_direction = ScatterMaterially(ctx.photon.Origin, ctx.photon.Direction);
         ctx.photon.Direction = important_direction.xy;
-        ctx.photon.FineScale *= important_direction.z * ctx.uEscape / 256.0;
+        ctx.photon.Energy *= important_direction.z * ctx.uEscape / 256.0;
         return true;
     }
 };
@@ -615,13 +625,13 @@ struct ExplicitIntegrator : BaseContext, IMonteCarloMethod
         //float3 important_direction = ScatterImportance(photon.Origin);
         float4 important_direction = ScatterMaterially(ctx.photon.Origin, ctx.photon.Direction);
         ctx.photon.Direction = important_direction.xy;
-        ctx.photon.FineScale *= important_direction.z;
+        ctx.photon.Energy *= important_direction.z;
 
-        uint3 outScatter = ctx.photon.Energy * (1 - tested_transmissibility.x);
+        float3 outScatter = ctx.photon.Energy * (1 - tested_transmissibility.x);
 
         outScatter *= important_direction.w;
 
-        WritePhoton(ctx.photon.Origin, outScatter * ctx.photon.FineScale, false);//bounce == 0);
+        WritePhoton(ctx.photon.Origin, outScatter, false);//bounce == 0);
         ctx.photon.Energy -= outScatter;
         return true;
     }
@@ -687,19 +697,19 @@ struct ExplicitBoundedIntegrator : BaseContext, IMonteCarloMethod
             //float3 important_direction = ScatterImportance(photon.Origin);
             float4 important_direction = ScatterMaterially(ctx.photon.Origin, ctx.photon.Direction);
             ctx.photon.Direction = important_direction.xy;
-            ctx.photon.FineScale *= important_direction.z;
+            ctx.photon.Energy *= important_direction.z;
 
-            uint3 outScatter = ctx.photon.Energy * (1 - tested_transmissibility.x);
+            float3 outScatter = ctx.photon.Energy * (1 - tested_transmissibility.x);
 
             outScatter *= important_direction.w;
 
-            WritePhoton(ctx.photon.Origin, outScatter * ctx.photon.FineScale, false);//bounce == 0);
+            WritePhoton(ctx.photon.Origin, outScatter, false);//bounce == 0);
             ctx.photon.Energy -= outScatter;
         } else {
             float u = rand.Next(transmissibility, 1);
             transmitPotential = u;
             quantumScale = 1;
-            ctx.photon.FineScale *= (1 - transmissibility);
+            ctx.photon.Energy *= (1 - transmissibility);
             // transmitPotential = u * u * u;
             // quantumScale = 3 * u * u;
         }
@@ -723,8 +733,8 @@ struct ExplicitBounceImplicitInvervalIntegrator : BaseContext, IMonteCarloMethod
     {
         float2 pSample = photon.Origin + photon.Direction * u;
         float3 albedo = g_albedo.SampleLevel(sampler_point_clamp, pSample / g_target_size, 0).rgb;
-        uint3 outScatter = photon.Energy * albedo * transmissibility * (1 - pow(tested_transmissibility, 1.0/(1 << lod)));
-        WritePhoton(pSample, outScatter * photon.FineScale, false);//bounce == 0);
+        float3 outScatter = photon.Energy * albedo * transmissibility * (1 - pow(tested_transmissibility, 1.0/(1 << lod)));
+        WritePhoton(pSample, outScatter, false);//bounce == 0);
         photon.Energy -= outScatter;
     }
 
@@ -785,7 +795,7 @@ struct ExplicitBounceImplicitInvervalIntegrator : BaseContext, IMonteCarloMethod
         //float3 important_direction = ScatterImportance(ctx.photon.Origin);
         float4 important_direction = ScatterMaterially(ctx.photon.Origin, ctx.photon.Direction);
         ctx.photon.Direction = important_direction.xy;
-        ctx.photon.FineScale *= important_direction.z;
+        ctx.photon.Energy *= important_direction.z;
 
         return true;
     }
@@ -804,12 +814,13 @@ struct ExplicitBoundedBounceImplicitInvervalIntegrator : BaseContext, IMonteCarl
 
     float tested_transmissibility;
     float tested_u;
+
     void WriteSample(inout Ray photon, float u, int lod)
     {
         float2 pSample = photon.Origin + photon.Direction * u;
         float3 albedo = g_albedo.SampleLevel(sampler_point_clamp, pSample / g_target_size, 0).rgb;
-        uint3 outScatter = photon.Energy * albedo * transmissibility * (1 - pow(tested_transmissibility, 1.0/(1 << lod)));
-        WritePhoton(pSample, outScatter * photon.FineScale, false);//bounce == 0);
+        float3 outScatter = photon.Energy * albedo * transmissibility * (1 - pow(tested_transmissibility, 1.0/(1 << lod)));
+        WritePhoton(pSample, outScatter, false);//bounce == 0);
     }
 
     void Init(BaseContext ctx)
@@ -878,12 +889,12 @@ struct ExplicitBoundedBounceImplicitInvervalIntegrator : BaseContext, IMonteCarl
             //float3 important_direction = ScatterImportance(ctx.photon.Origin);
             float4 important_direction = ScatterMaterially(ctx.photon.Origin, ctx.testUV, ctx.photon.Direction);
 
-            ctx.photon.Energy *= albedo * quantumScale;
+            ctx.photon.Energy *= albedo * quantumScale * important_direction.z;
             ctx.photon.Direction = important_direction.xy;
-            ctx.photon.FineScale *= important_direction.z;
-            ctx.photon.Origin += 1.5*ctx.photon.Direction;
+            ctx.photon.Origin += ctx.photon.Direction;
 
             if(important_direction.w < 0.5) {
+                transmissibility /= tested_transmissibility;
                 searchingPhase = true;
             } // otherwise it's a false bounce. Return to propagating.
         } else {
@@ -906,8 +917,7 @@ struct SimulationContext : BaseContext {
         
         float3 important_direction = ScatterImportance(emitted.Origin);
         emitted.Direction = important_direction.xy;
-        emitted.Energy = g_lightEnergy;
-        emitted.FineScale = important_direction.z;
+        emitted.Energy = g_lightEnergy * important_direction.z;
 
         return emitted;
     } 
@@ -918,7 +928,6 @@ struct SimulationContext : BaseContext {
         emitted.Origin = mul(float4(rand.Next()-0.5, rand.Next()-0.5, 0, 1), g_lightToTarget).xy;
         emitted.Direction = normalize(mul(float4(2*rand.Next()-1, -1, 0, 0), g_lightToTarget).xy);
         emitted.Energy = g_lightEnergy;
-        emitted.FineScale = 1;
 
         return emitted;
     }
@@ -929,7 +938,6 @@ struct SimulationContext : BaseContext {
         emitted.Origin = mul(float4(rand.Next()-0.5, rand.Next(), 0, 1), g_lightToTarget).xy;
         emitted.Direction = normalize(mul(float4(0,-1,0,0), g_lightToTarget).xy);
         emitted.Energy = g_lightEnergy;
-        emitted.FineScale = 1;
 
         return emitted;
     }
@@ -941,7 +949,6 @@ struct SimulationContext : BaseContext {
         emitted.Origin = nOrigin * g_target_size;
         emitted.Direction = normalize(rand.NextDirection() - (nOrigin * 2 - 1) / 1.44);
         emitted.Energy = g_lightEnergy;
-        emitted.FineScale = 1;
 
         return emitted;
     }
@@ -960,7 +967,6 @@ struct SimulationContext : BaseContext {
         float4 texValue = g_lightFieldTexture.SampleGrad(sampler_linear_clamp, uv, _ddx, _ddy);
         texValue.rgb *= (texValue.a - 0.08);
         emitted.Energy = g_lightEnergy * texValue.rgb;
-        emitted.FineScale = 1;
 
         return emitted;
     }
@@ -975,7 +981,6 @@ struct SimulationContext : BaseContext {
         emitted.Origin = 0.5 - g_directionalLightDirection + perp * (rand.Next() * 1.415 - 0.7075);
         emitted.Origin *= g_target_size;
         emitted.Energy = g_lightEnergy;
-        emitted.FineScale = 1;
 
         return emitted;
     }
@@ -986,7 +991,6 @@ struct SimulationContext : BaseContext {
         emitted.Origin = float2(rand.Next(), 0) * g_target_size;
         emitted.Direction = float2(0,1);
         emitted.Energy = float3(0,1000,0);
-        emitted.FineScale = 1;
 
         return emitted;
     }
@@ -997,8 +1001,7 @@ struct SimulationContext : BaseContext {
         emitted.Origin = ((float2)pixel + rand.Next2()) / (g_target_size - 1);
         float3 important_direction = ScatterImportance(emitted.Origin);
         emitted.Direction = important_direction.xy; // RAND_DIRECTION();
-        emitted.FineScale = important_direction.z;
-        emitted.Energy = uint3(256,256,256);
+        emitted.Energy = 256.0f * important_direction.zzz;
 
         return emitted;
     }
