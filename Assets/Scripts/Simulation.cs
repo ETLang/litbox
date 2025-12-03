@@ -250,7 +250,14 @@ public class Simulation : SimulationBaseBehavior
         }
 
 #if UNITY_EDITOR
-            UnityEditor.EditorApplication.playModeStateChanged += EditorApplication_playModeStateChanged;
+        UnityEditor.EditorApplication.playModeStateChanged += EditorApplication_playModeStateChanged;
+#endif
+    }
+
+    void OnDestroy()
+    {
+#if UNITY_EDITOR
+        UnityEditor.EditorApplication.playModeStateChanged -= EditorApplication_playModeStateChanged;
 #endif
     }
 
@@ -359,9 +366,9 @@ public class Simulation : SimulationBaseBehavior
         {
             _gBufferAlbedo[i] = CreateRWTextureWithMips(width, height, RenderTextureFormat.ARGBFloat, 32);
             _gBufferTransmissibility[i] = CreateRWTextureWithMips(width, height, RenderTextureFormat.ARGBFloat);
-            _gBufferTransmissibility[i].filterMode = FilterMode.Point;
+            //_gBufferTransmissibility[i].filterMode = FilterMode.Point;
             _gBufferNormalAlignment[i] = CreateRWTextureWithMips(width, height, RenderTextureFormat.ARGBFloat);
-            _gBufferNormalAlignment[i].filterMode = FilterMode.Point;
+            //_gBufferNormalAlignment[i].filterMode = FilterMode.Point;
         }
 
         GBufferQuadTreeLeaves = CreateRWTexture(width, height, RenderTextureFormat.ARGBHalf);
