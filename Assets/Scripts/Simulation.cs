@@ -92,6 +92,7 @@ public class Simulation : SimulationBaseBehavior
     [SerializeField] private int pathSamples = 10;
     [SerializeField, Range(0, 1)] private float pathBalance = 0.5f;
     [SerializeField] private float integrationInterval = 0.1f;
+    [SerializeField] private int densityGranularity = 10000;
 
     [SerializeField] private float transmissibilityVariationEpsilon = 1e-3f;
     [SerializeField, Range(0, 0.5f)] private float outscatterCoefficient = 0.01f;
@@ -153,7 +154,7 @@ public class Simulation : SimulationBaseBehavior
     public RenderTexture SimulationOutputAccumulated { get; private set; }
     public RenderTexture SimulationOutputHDR { get; private set; }
     public RenderTexture SimulationOutputToneMapped { get; private set; }
-    public RenderTexture PhotonCountBuffer { get; private set; }
+    public RenderTexture PhotonDensityBuffer { get; private set; }
     public Texture2D EfficiencyDiagnostic { get; private set; }
     public Texture2D CumulativePhotonsDiagnostic { get; private set; }
     public Texture2D PhotonsDiagnostic { get; private set; }
@@ -359,16 +360,14 @@ public class Simulation : SimulationBaseBehavior
         SimulationPhotonsForward = CreateRWTexture(width * 3, height, RenderTextureFormat.RInt);
         SimulationOutputRaw = CreateRWTexture(width * 3, height, RenderTextureFormat.RInt);
         SimulationOutputAccumulated = CreateRWTexture(width, height, RenderTextureFormat.ARGBFloat);
-        SimulationOutputHDR = CreateRWTexture(width, height, RenderTextureFormat.ARGBFloat);
-        PhotonCountBuffer = CreateRWTextureWithMips(width, height, RenderTextureFormat.RInt);
+        SimulationOutputHDR = CreateRWTextureWithMips(width, height, RenderTextureFormat.ARGBFloat);
+        PhotonDensityBuffer = CreateRWTextureWithMips(width, height, RenderTextureFormat.RInt);
 
         for (int i = 0; i < 2; i++)
         {
             _gBufferAlbedo[i] = CreateRWTextureWithMips(width, height, RenderTextureFormat.ARGBFloat, 32);
             _gBufferTransmissibility[i] = CreateRWTextureWithMips(width, height, RenderTextureFormat.ARGBFloat);
-            //_gBufferTransmissibility[i].filterMode = FilterMode.Point;
             _gBufferNormalAlignment[i] = CreateRWTextureWithMips(width, height, RenderTextureFormat.ARGBFloat);
-            //_gBufferNormalAlignment[i].filterMode = FilterMode.Point;
         }
 
         GBufferQuadTreeLeaves = CreateRWTexture(width, height, RenderTextureFormat.ARGBHalf);
@@ -516,7 +515,7 @@ public class Simulation : SimulationBaseBehavior
 
             SimulationOutputRaw.Clear(Color.clear);
             SimulationOutputAccumulated.Clear(Color.clear);
-            PhotonCountBuffer.Clear(Color.clear);
+            PhotonDensityBuffer.Clear(Color.clear);
 
             for (int i = 0; i < _gridCellState.Length; i++)
             {
@@ -542,6 +541,7 @@ public class Simulation : SimulationBaseBehavior
         _computeShader.SetInt("g_lowest_lod", (int)(GBufferTransmissibility.mipmapCount - 4));
         _computeShader.SetInt("g_4x4_lod", (int)(GBufferTransmissibility.mipmapCount - 3));
         _computeShader.SetFloat("g_lightEmissionOutscatter", 0);
+        _computeShader.SetInt("g_density_granularity", densityGranularity);
         _computeShader.SetFloat("g_outscatterCoefficient", outscatterCoefficient);
         SetShaderFlag(_computeShader, "BILINEAR_PHOTON_DISTRIBUTION", bilinearPhotonWrites);
 
@@ -671,9 +671,24 @@ public class Simulation : SimulationBaseBehavior
             ("g_output_hdr", SimulationOutputHDR),
             ("g_convergenceCellStateIn", _gridCellInputBuffer));
 
+        // Generate photon count and HDR mip levels
+        int mipW = PhotonDensityBuffer.width;
+        int mipH = PhotonDensityBuffer.height;
+        for(int i = 1;i < PhotonDensityBuffer.mipmapCount;i++) {
+            mipW /= 2;
+            mipH /= 2;
+            RunKernel(_computeShader, "GenerateOutputMips", mipW, mipH,
+                ("g_sourceMipLevelPhotonCount", SelectMip(PhotonDensityBuffer, i - 1)),
+                ("g_sourceMipLevelHDR", SelectMip(SimulationOutputHDR, i - 1)),
+                ("g_destMipLevelPhotonCount", SelectMip(PhotonDensityBuffer, i)),
+                ("g_destMipLevelHDR", SelectMip(SimulationOutputHDR, i)));
+        }
+
         // TONE MAPPING
+        // TODO: Leverage adaptive sampling from photon count buffer
         RunKernel(_computeShader, "ToneMap", width, height,
-            ("g_output_hdr", SimulationOutputHDR),
+            ("g_hdr", SimulationOutputHDR),
+            ("g_photon_density", PhotonDensityBuffer),
             ("g_output_tonemapped", _renderTexture[_currentRenderTextureIndex]),
             ("g_convergenceCellStateIn", _gridCellInputBuffer));
 
@@ -1091,7 +1106,7 @@ public class Simulation : SimulationBaseBehavior
         RunKernel(_computeShader, simulateKernel, raysPerFrame,
             ("g_rand", _randomBuffer),
             ("g_output_raw", outputTexture),
-            ("g_photon_count", PhotonCountBuffer),
+            ("g_photon_density_raw", PhotonDensityBuffer),
             ("g_albedo", GBufferAlbedo),
             ("g_transmissibility", GBufferTransmissibility),
             ("g_normalAlignment", GBufferNormalAlignment),

@@ -1316,6 +1316,7 @@ MonoBehaviour:
   pathSamples: 10
   pathBalance: 0.5
   integrationInterval: 0.2
+  probabilityGranularity: 10000
   transmissibilityVariationEpsilon: 0.001
   outscatterCoefficient: 0.05
   _convergenceThreshold: 0.1
@@ -1699,7 +1700,7 @@ MonoBehaviour:
   m_Name: 
   m_EditorClassIdentifier: 
   simulation: {fileID: 2408986526842077597}
-  type: 9
+  type: 11
 --- !u!1660057539 &9223372036854775807
 SceneRoots:
   m_ObjectHideFlags: 0

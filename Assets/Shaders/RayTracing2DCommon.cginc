@@ -48,7 +48,30 @@ float4 frag_blit_and_modulate(v2f_common i) : SV_Target
     return SAMPLE_MAIN(i.uv) *_ColorMod;
 }
 
-float2 TextureSize(Texture2D tex, uint mipLevel = 0)
+#define TEXTURE_SIZE_TEMPLATE(type) \
+float2 TextureSize(type tex) { \
+    float w, h; \
+    tex.GetDimensions(w, h); \
+    return float2(w, h); }
+
+TEXTURE_SIZE_TEMPLATE(Texture2D<uint>)
+TEXTURE_SIZE_TEMPLATE(Texture2D<uint2>)
+TEXTURE_SIZE_TEMPLATE(Texture2D<uint3>)
+TEXTURE_SIZE_TEMPLATE(Texture2D<uint4>)
+TEXTURE_SIZE_TEMPLATE(Texture2D<float>)
+TEXTURE_SIZE_TEMPLATE(Texture2D<float2>)
+TEXTURE_SIZE_TEMPLATE(Texture2D<float3>)
+TEXTURE_SIZE_TEMPLATE(Texture2D<float4>)
+TEXTURE_SIZE_TEMPLATE(RWTexture2D<uint>)
+TEXTURE_SIZE_TEMPLATE(RWTexture2D<uint2>)
+TEXTURE_SIZE_TEMPLATE(RWTexture2D<uint3>)
+TEXTURE_SIZE_TEMPLATE(RWTexture2D<uint4>)
+TEXTURE_SIZE_TEMPLATE(RWTexture2D<float>)
+TEXTURE_SIZE_TEMPLATE(RWTexture2D<float2>)
+TEXTURE_SIZE_TEMPLATE(RWTexture2D<float3>)
+TEXTURE_SIZE_TEMPLATE(RWTexture2D<float4>)
+
+float2 TextureSize(Texture2D tex, uint mipLevel)
 {
     float w, h, _;
     tex.GetDimensions(mipLevel, w, h, _);

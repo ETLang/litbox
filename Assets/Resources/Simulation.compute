@@ -14,6 +14,7 @@
 #pragma kernel Simulate_DirectionalLight
 #pragma kernel AccumulatePhotons
 #pragma kernel ConvertToHDR
+#pragma kernel GenerateOutputMips
 #pragma kernel ToneMap
 #pragma kernel GetCellTransmissibility
 #pragma kernel MeasureConvergence
@@ -30,7 +31,7 @@ struct Ray {
 RWStructuredBuffer<uint4> g_rand;
 RWTexture2D<uint> g_photons_forward;
 RWTexture2D<uint> g_output_raw;
-RWTexture2D<uint> g_photon_count;
+RWTexture2D<uint> g_photon_density_raw;
 Texture2D<float4> g_albedo;
 Texture2D<float4> g_transmissibility;
 SamplerState samplerg_transmissibility;
@@ -69,6 +70,7 @@ RWStructuredBuffer<ConvergenceCellOutput> g_convergenceCellStateOut;
 uint g_time_ms;
 uint g_photons_per_thread;
 uint g_samples_per_pixel;
+uint g_density_granularity;
 uint2 g_target_size;
 float g_energy_norm;
 uint g_bounces;
@@ -136,7 +138,7 @@ void ClearPhoton_Indexed(int2 pixel) {
 #define InterlockedAdd(dst, value) (dst += value)
 #endif
 
-void WritePhoton_Indexed(int2 pixel, uint3 energy, bool suppressPhoton=false) {
+void WritePhoton_Indexed(int2 pixel, uint3 energy, float density, bool suppressPhoton=false) {
     const uint EnergyMax = (1 << 31);
 
     uint cellIndex = GetGridCellIndex(pixel);
@@ -149,8 +151,11 @@ void WritePhoton_Indexed(int2 pixel, uint3 energy, bool suppressPhoton=false) {
 
     if(!suppressPhoton) {
         InterlockedAdd(g_convergenceCellStateOut[cellIndex].PhotonCount, 1);
-        InterlockedAdd(g_photon_count[pixel], 1);
+        if(g_photon_density_raw[pixel] < EnergyMax)
+            InterlockedAdd(g_photon_density_raw[pixel], density * g_density_granularity);
     }
+
+    energy *= density;
 
     pixel.x *= 3;
     if(g_output_raw[pixel] < EnergyMax)
@@ -167,24 +172,24 @@ void WritePhoton_Indexed(int2 pixel, uint3 energy, bool suppressPhoton=false) {
 #undef InterlockedAdd
 #endif
 
-void WritePhoton_Bilinear(float2 location, uint3 energy, bool suppressPhoton=false) {
+void WritePhoton_Bilinear(float2 location, uint3 energy, float density, bool suppressPhoton=false) {
     if(any(location < 0)) return;
 
     float2 pixel = location - 0.5f;
     int2 pixelFloor = (int2)floor(pixel);
     float2 pixelFrac = pixel - pixelFloor;
 
-    WritePhoton_Indexed(pixelFloor, energy * (1 - pixelFrac.x) * (1 - pixelFrac.y), suppressPhoton);
-    WritePhoton_Indexed(pixelFloor + int2(1, 0), energy * pixelFrac.x * (1 - pixelFrac.y), true /*suppressPhoton*/);
-    WritePhoton_Indexed(pixelFloor + int2(0, 1), energy * (1 - pixelFrac.x) * pixelFrac.y, true /*suppressPhoton*/);
-    WritePhoton_Indexed(pixelFloor + int2(1, 1), energy * pixelFrac.x * pixelFrac.y, true /*suppressPhoton*/);
+    WritePhoton_Indexed(pixelFloor, energy, density * (1 - pixelFrac.x) * (1 - pixelFrac.y), suppressPhoton);
+    WritePhoton_Indexed(pixelFloor + int2(1, 0), energy, density * pixelFrac.x * (1 - pixelFrac.y), true /*suppressPhoton*/);
+    WritePhoton_Indexed(pixelFloor + int2(0, 1), energy, density * (1 - pixelFrac.x) * pixelFrac.y, true /*suppressPhoton*/);
+    WritePhoton_Indexed(pixelFloor + int2(1, 1), energy, density * pixelFrac.x * pixelFrac.y, true /*suppressPhoton*/);
 }
 
-void WritePhoton(float2 location, uint3 energy, bool suppressPhoton=false) {
+void WritePhoton(float2 location, uint3 energy, float density, bool suppressPhoton=false) {
 #if BILINEAR_PHOTON_DISTRIBUTION
-    WritePhoton_Bilinear(location, energy, suppressPhoton);
+    WritePhoton_Bilinear(location, energy, density, suppressPhoton);
 #else
-    WritePhoton_Indexed(location, energy, suppressPhoton);
+    WritePhoton_Indexed(location, energy, density, suppressPhoton);
 #endif
 }
 
@@ -385,9 +390,9 @@ struct BaseContext {
             // No normal information, scatter uniformly
             float2 dir = rand.NextDirection();
             return float4(dir, 1, 0);
-        // } else if(dot(normal.xy, normal.xy) < 0.25) {
-        //     // Small normal implies we're near a flat surface - continue propagating
-        //     return (1).xxxx;
+        // } else if(dot(normal.xy, normal.xy) < 0.99) {
+        //      // Small normal implies we're near a flat surface - continue propagating
+        //      return (1).xxxx;
         } else if(dot(normal.xy, incoming) > 0) {
             // Normal is the same general direction as incoming - transmit
             // TODO: Allow the transmission to not count against bounce count.
@@ -482,11 +487,10 @@ struct ImplicitIntegrator : BaseContext, IMonteCarloMethod
         ctx.photon.Direction = important_direction.xy;
         ctx.photon.Energy *= important_direction.z;
 
-        float3 outScatter = ctx.photon.Energy * hitIntensity;
-        outScatter *= important_direction.w;
+        float outScatterDensity  = hitIntensity * important_direction.w;
 
-        WritePhoton(ctx.photon.Origin, outScatter, false);//bounce == 0);
-        ctx.photon.Energy -= outScatter;
+        WritePhoton(ctx.photon.Origin, ctx.photon.Energy, outScatterDensity, false);//bounce == 0);
+       // ctx.photon.Energy -= outScatter;
         return true;
     }
 };
@@ -506,8 +510,8 @@ struct ImplicitIntervalIntegrator : BaseContext, IMonteCarloMethod
     {
         float2 pSample = photon.Origin + photon.Direction * u;
         float3 albedo = g_albedo.SampleLevel(sampler_point_clamp, pSample / g_target_size, 0).rgb;
-        float3 outScatter = photon.Energy * albedo * probability * transmissibility * (1 - pow(tested_transmissibility, 1.0/(1 << lod)));
-        WritePhoton(pSample, outScatter, false);//bounce == 0);
+        float3 outScatterDensity = probability * transmissibility * (1 - pow(tested_transmissibility, 1.0/(1 << lod)));
+        WritePhoton(pSample, photon.Energy * albedo, outScatterDensity, false);//bounce == 0);
     }
 
     void Init(BaseContext ctx)
@@ -629,12 +633,10 @@ struct ExplicitIntegrator : BaseContext, IMonteCarloMethod
         ctx.photon.Direction = important_direction.xy;
         ctx.photon.Energy *= important_direction.z;
 
-        float3 outScatter = ctx.photon.Energy * (1 - tested_transmissibility.x);
+        float outScatterDensity = (1 - tested_transmissibility.x) * important_direction.w;
 
-        outScatter *= important_direction.w;
-
-        WritePhoton(ctx.photon.Origin, outScatter, false);//bounce == 0);
-        ctx.photon.Energy -= outScatter;
+        WritePhoton(ctx.photon.Origin, ctx.photon.Energy, outScatterDensity, false);//bounce == 0);
+        //ctx.photon.Energy -= outScatter;
         return true;
     }
 };
@@ -701,12 +703,9 @@ struct ExplicitBoundedIntegrator : BaseContext, IMonteCarloMethod
             ctx.photon.Direction = important_direction.xy;
             ctx.photon.Energy *= important_direction.z;
 
-            float3 outScatter = ctx.photon.Energy * (1 - tested_transmissibility.x);
+            float outScatterDensity = (1 - tested_transmissibility.x) * important_direction.w;
 
-            outScatter *= important_direction.w;
-
-            WritePhoton(ctx.photon.Origin, outScatter, false);//bounce == 0);
-            ctx.photon.Energy -= outScatter;
+            WritePhoton(ctx.photon.Origin, ctx.photon.Energy, outScatterDensity, false);//bounce == 0);
         } else {
             float u = rand.Next(transmissibility, 1);
             transmitPotential = u;
@@ -735,9 +734,9 @@ struct ExplicitBounceImplicitInvervalIntegrator : BaseContext, IMonteCarloMethod
     {
         float2 pSample = photon.Origin + photon.Direction * u;
         float3 albedo = g_albedo.SampleLevel(sampler_point_clamp, pSample / g_target_size, 0).rgb;
-        float3 outScatter = photon.Energy * albedo * transmissibility * (1 - pow(tested_transmissibility, 1.0/(1 << lod)));
-        WritePhoton(pSample, outScatter, false);//bounce == 0);
-        photon.Energy -= outScatter;
+        float outScatterDensity = transmissibility * (1 - pow(tested_transmissibility, 1.0/(1 << lod)));
+        WritePhoton(pSample, photon.Energy * albedo, outScatterDensity, false);//bounce == 0);
+        photon.Energy -= photon.Energy * albedo * outScatterDensity;
     }
 
     void Init(BaseContext ctx)
@@ -830,8 +829,8 @@ struct ExplicitBoundedBounceImplicitInvervalIntegrator : BaseContext, IMonteCarl
         }
 
         float3 albedo = g_albedo.SampleLevel(sampler_point_clamp, uv, 0).rgb;
-        float3 outScatter = photon.Energy * albedo * transmissibility * (1 - pow(tested_transmissibility, 1.0/(1 << lod)));
-        WritePhoton(pSample, outScatter, false);//bounce == 0);
+        float outScatterDensity = transmissibility * (1 - pow(tested_transmissibility, 1.0/(1 << lod)));
+        WritePhoton(pSample, photon.Energy * albedo, outScatterDensity, false);//bounce == 0);
     }
 
     void Init(BaseContext ctx)
@@ -1067,8 +1066,7 @@ struct SimulationContext : BaseContext {
 
     void SimulateLight(Ray photon) {
         if(g_lightEmissionOutscatter != 0) {
-            uint3 emissionOutscatter = photon.Energy * g_lightEmissionOutscatter;
-            WritePhoton(photon.Origin, emissionOutscatter, true);
+            WritePhoton(photon.Origin, photon.Energy, g_lightEmissionOutscatter, true);
         }
 
         MONTE_CARLO_MODEL integrator;
@@ -1127,21 +1125,82 @@ void ConvertToHDR (uint3 id : SV_DispatchThreadID) {
     g_output_hdr[id.xy] = float4((ReadPhoton_Indexed(id.xy) / g_energy_norm + g_output_accumulated[id.xy].rgb) / frames, 1);
 }
 
+RWTexture2D<uint> g_sourceMipLevelPhotonCount;
+RWTexture2D<float4> g_sourceMipLevelHDR;
+RWTexture2D<uint> g_destMipLevelPhotonCount;
+RWTexture2D<float4> g_destMipLevelHDR;
+[numthreads(8,8,1)]
+void GenerateOutputMips(uint3 id : SV_DispatchThreadID) {
+    uint2 sourceSize = (uint2)TextureSize(g_sourceMipLevelPhotonCount);
+    uint2 destSize = (uint2)TextureSize(g_destMipLevelPhotonCount);
+
+    if (id.x >= destSize.x || id.y >= destSize.y) {
+        return;
+    }
+
+    uint span_x = 2;
+    uint span_y = 2;
+
+    if(id.x == destSize.x - 1 && sourceSize.x % 2 == 1) {
+        span_x = 3;
+    }
+
+    if(id.y == destSize.y - 1 && sourceSize.y % 2 == 1) {
+        span_y = 3;
+    }
+
+    uint photons = 0;
+    float4 hdr = 0;
+    for(uint i = 0; i < span_x; i++) {
+        for(uint j = 0; j < span_y; j++) {
+            photons += g_sourceMipLevelPhotonCount[id.xy * 2 + uint2(i,j)];
+            hdr += g_sourceMipLevelHDR[id.xy * 2 + uint2(i,j)];
+        }
+    }
+
+    g_destMipLevelPhotonCount[id.xy] = photons;
+    g_destMipLevelHDR[id.xy] = hdr / (span_x * span_y);
+}
+
 float3 ToneMap_ApproximationA(float3 x) {
     x = max(0, x - 0.004);
     return (x*(6.2*x+0.5))/(x*(6.2*x+1.7)+0.06);
 }
 
+float3 ToneMap_ApproximationB(float3 x) {
+    return smoothstep(-4, 2, log10(x)); // Analogous to UE5's standard tone mapping
+}
+
+Texture2D<uint> g_photon_density;
+SamplerState samplerg_photon_density;
+Texture2D<float4> g_hdr;
+SamplerState samplerg_hdr;
 [numthreads(8,8,1)]
 void ToneMap (uint3 id : SV_DispatchThreadID) {
-    ConvergenceCellInput cellData = g_convergenceCellStateIn[GetGridCellIndex((int2) id.xy)];
-    
-    //g_output_tonemapped[id.xy] = float4(ToneMap_ApproximationA(output.rgb), 1);
-    g_output_tonemapped[id.xy] = float4(smoothstep(-4, 2, log10(g_output_hdr[id.xy].rgb)), 1); // bit silly but... works?
+    float2 uv = (id.xy + 0.5) / TextureSize(g_output_tonemapped);
+    uint2 photonDensityIndex = id.xy;
+    uint mipLevel = 0;
+    uint2 mipCoord = id.xy;
+    float4 hdrValue = g_hdr.SampleLevel(samplerg_hdr, uv, mipLevel);
+    uint photonDensity = g_photon_density.Load(uint3(photonDensityIndex, mipLevel)).x;
+        
+    // Early attempt at adaptive tone mapping based on photon count
+    // Results were not good. Recommend using DNN.
 
-    if(!cellData.IsActive) {
-        g_output_tonemapped[id.xy] *= float4(1,0.6,0.6,1);
-    }
+    // while(mipLevel < 5) {
+    //     hdrValue = g_hdr.SampleLevel(samplerg_hdr, uv, mipLevel);
+    //     photonDensity = g_photon_density.Load(uint3(photonDensityIndex, mipLevel)).x;
+    //     if(photonDensity > 100) {
+    //         break;
+    //     }
+
+    //     mipLevel++;
+    //     mipCoord /= 2;
+    //     photonDensityIndex /= 2;
+    // }
+
+    //g_output_tonemapped[id.xy] = float4(ToneMap_ApproximationB(hdrValue.rgb), 1);
+    g_output_tonemapped[id.xy] = float4(ToneMap_ApproximationB(g_hdr[id.xy]), 1);
 }
 
 float g_getCellTransmissibility_lod;

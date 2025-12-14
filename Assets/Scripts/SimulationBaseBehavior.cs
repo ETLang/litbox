@@ -116,6 +116,9 @@ public class SimulationBaseBehavior : MonoBehaviour {
             case ComputeBuffer buffer:
                 shader.SetBuffer(kernelID, tuple.Item1, buffer);
                 break;
+            case MipSpec mipSpec:
+                shader.SetTexture(kernelID, tuple.Item1, mipSpec.texture, mipSpec.mipLevel);
+                break;
             default:
                 throw new Exception("What is " + tuple.Item1.GetType().Name + "?");
             }
@@ -128,5 +131,18 @@ public class SimulationBaseBehavior : MonoBehaviour {
     protected void SetShaderFlag(ComputeShader shader, string keyword, bool value) {
         var id = shader.keywordSpace.FindKeyword(keyword);
         shader.SetKeyword(id, value);
+    }
+
+    protected class MipSpec {
+        public Texture texture;
+        public int mipLevel;
+    }
+
+    protected MipSpec SelectMip(Texture texture, int mip)
+    {
+        return new MipSpec {
+            texture = texture,
+            mipLevel = mip,
+        };
     }
 }
