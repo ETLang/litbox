@@ -154,6 +154,6 @@ gbuffer_output hill_frag(v2f i)
     output.albedo = float4(final_color, 1) * farmland_color.a;
 
     output.transmissibility = float4(t, t, 0, 1);
-    output.normal = float4(i.sim_normal, 0.2);
+    output.normal = float4(i.sim_normal, 0.1);
     return output;
 }

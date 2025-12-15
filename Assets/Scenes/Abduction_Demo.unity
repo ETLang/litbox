@@ -4924,13 +4924,13 @@ MonoBehaviour:
   gridCells:
     x: 8
     y: 8
-  raysPerFrame: 128000
+  raysPerFrame: 256000
   energyPrecision: 1000
   photonBounces: -1
   bilinearPhotonWrites: 1
   pathSamples: 10
   pathBalance: 0.5
-  integrationInterval: 0.1
+  integrationInterval: 0.2
   densityGranularity: 10000
   transmissibilityVariationEpsilon: 0.001
   outscatterCoefficient: 0.01
@@ -5841,7 +5841,7 @@ PrefabInstance:
       objectReference: {fileID: 0}
     - target: {fileID: 2669810852864359309, guid: c3d56f37c3f415ece864f182721d4c20, type: 3}
       propertyPath: intensity
-      value: 2.6
+      value: 4.4
       objectReference: {fileID: 0}
     - target: {fileID: 2688266819991656106, guid: c3d56f37c3f415ece864f182721d4c20, type: 3}
       propertyPath: m_Name

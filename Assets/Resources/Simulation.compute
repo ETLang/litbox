@@ -874,6 +874,7 @@ struct ExplicitBoundedBounceImplicitInvervalIntegrator : BaseContext, IMonteCarl
 
         while(searchingPhase && tested_u > uSampleTarget) {
             currentSample += 1;
+            uSampleRandomOffset = rand.Next();
             WriteSample(ctx.photon, uSampleTarget, ctx.lod);
             uSampleTarget = (currentSample + uSampleRandomOffset) * g_integration_interval; 
         }
