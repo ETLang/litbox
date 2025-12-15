@@ -1162,6 +1162,7 @@ MonoBehaviour:
   rightAmbience: {r: 0.07738519, g: 0.11463347, b: 0.3490566, a: 0}
   haze: {r: 0, g: 0.13948797, b: 0.4339623, a: 0.02745098}
   specularFilter: {r: 0.6509434, g: 0.6509434, b: 0.6509434, a: 0}
+  rayTracingVerticalOffset: 0.04
 --- !u!1001 &316888376
 PrefabInstance:
   m_ObjectHideFlags: 0
@@ -2877,7 +2878,6 @@ MonoBehaviour:
   m_Name: 
   m_EditorClassIdentifier: Assembly-CSharp::SimulationTexturePicker
   simulation: {fileID: 0}
-  aiAccelerator: {fileID: 0}
   type: 2
 --- !u!1001 &797366941
 PrefabInstance:
@@ -3176,11 +3176,11 @@ PrefabInstance:
       objectReference: {fileID: 0}
     - target: {fileID: 6866047197773403249, guid: e352ba77fe7468bb8988f3d07aa3a902, type: 3}
       propertyPath: bounces
-      value: 2
+      value: 4
       objectReference: {fileID: 0}
     - target: {fileID: 6866047197773403249, guid: e352ba77fe7468bb8988f3d07aa3a902, type: 3}
       propertyPath: intensity
-      value: 150
+      value: 80
       objectReference: {fileID: 0}
     - target: {fileID: 7257319343551683511, guid: e352ba77fe7468bb8988f3d07aa3a902, type: 3}
       propertyPath: m_LocalScale.x
@@ -4919,16 +4919,19 @@ MonoBehaviour:
   frameLimit: -1
   width: 256
   height: 256
+  integrationMethod: 5
   strategy: 0
   gridCells:
     x: 8
     y: 8
-  raysPerFrame: 512000
-  energyPrecision: 100
+  raysPerFrame: 128000
+  energyPrecision: 1000
   photonBounces: -1
   bilinearPhotonWrites: 1
   pathSamples: 10
   pathBalance: 0.5
+  integrationInterval: 0.1
+  densityGranularity: 10000
   transmissibilityVariationEpsilon: 0.001
   outscatterCoefficient: 0.01
   _convergenceThreshold: -1
@@ -5838,7 +5841,7 @@ PrefabInstance:
       objectReference: {fileID: 0}
     - target: {fileID: 2669810852864359309, guid: c3d56f37c3f415ece864f182721d4c20, type: 3}
       propertyPath: intensity
-      value: 30
+      value: 2.6
       objectReference: {fileID: 0}
     - target: {fileID: 2688266819991656106, guid: c3d56f37c3f415ece864f182721d4c20, type: 3}
       propertyPath: m_Name

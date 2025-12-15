@@ -47,6 +47,7 @@ public class ProceduralHill : PhotonerDemoComponent
     [SerializeField] public Color rightAmbience;
     [SerializeField] public Color specularFilter = Color.white;
     [SerializeField] public Color haze;
+    [SerializeField] public float rayTracingVerticalOffset = -0.1f;
 
     CommandBuffer cb;
     MaterialPropertyBlock[] layerPropertyBlocks = new MaterialPropertyBlock[0];
@@ -67,6 +68,7 @@ public class ProceduralHill : PhotonerDemoComponent
         DetectChanges(() => rightAmbience);
         DetectChanges(() => specularFilter);
         DetectChanges(() => haze);
+        DetectChanges(() => rayTracingVerticalOffset);
     }
 
     private void ValidateArrayListeners()
@@ -117,6 +119,7 @@ public class ProceduralHill : PhotonerDemoComponent
             layerPropertyBlocks[i].SetColor("_LeftAmbience", leftAmbience);
             layerPropertyBlocks[i].SetColor("_RightAmbience", rightAmbience);
             layerPropertyBlocks[i].SetColor("_Haze", haze);
+            layerPropertyBlocks[i].SetFloat("_RayTracingVerticalOffset", rayTracingVerticalOffset);
         }
     }
 

@@ -12,6 +12,7 @@ struct v2f
     float2 farm_uv : TEXCOORD1;
     float4 vertex : SV_POSITION;
     float3 normal : NORMAL;
+    float3 sim_normal : TEXCOORD2;
 };
 
 sampler2D _MainTex;
@@ -32,9 +33,11 @@ float _ViewXShift;
 float4 _FuzzColor;
 float _FuzzLength;
 float _ZOffset;
+float _RayTracingVerticalOffset;
 float _substrateDensity;
+bool _isRayTracing;
 
-v2f hill_vert(appdata v)
+float2 hill_shape(float2 raw, out float dy)
 {
     const float perspective = 2;
     const float pi = 3.141592564f;
@@ -44,14 +47,14 @@ v2f hill_vert(appdata v)
     const float gaussianLimit = 2;
     const float gaussianLowerbound = exp(-pow(gaussianLimit, 2));
 
-    float x = lerp(xLeft, xRight, v.uv.x) * lerp(perspective, 1, 1 - pow(1 - v.uv.y, 2));;
-    float wx = lerp(-gaussianLimit, gaussianLimit, v.uv.x);
+    float x = lerp(xLeft, xRight, raw.x) * lerp(perspective, 1, 1 - pow(1 - raw.y, 2));;
+    float wx = lerp(-gaussianLimit, gaussianLimit, raw.x);
     float w = exp(-pow(wx, 2));
-    float dy = -2 * wx * w;
+    dy = -2 * wx * w;
     w = (w - gaussianLowerbound) / (1 - gaussianLowerbound);
     float top;
 
-    if (v.uv.x < 0.5)
+    if (raw.x < 0.5)
     {
         top = lerp(_LeftHeight, _PeakHeight, w);
         dy *= (_PeakHeight - _LeftHeight);
@@ -61,24 +64,48 @@ v2f hill_vert(appdata v)
         top = lerp(_RightHeight, _PeakHeight, w);
         dy *= (_PeakHeight - _RightHeight);
     }
-    float y = top * (exp(-pow(1 - v.uv.y, 2)) - exp(-1)) / (1 - exp(-1)); // v.uv.y;
+    float y = top * (exp(-pow(1 - raw.y, 2)) - exp(-1)) / (1 - exp(-1));
 
-                // Compute normal from dy
-    float3 n;
+    return float2(x, y);
+}
+
+v2f hill_vert(appdata v)
+{
+    float dy;
+    float2 pos = hill_shape(v.uv, dy);
+    
+    const float xLeft = -5;
+    const float xRight = 5;
+
+    const float gaussianLimit = 2;
+
+    // Compute cartoon normal from dy
+    float3 cn;
     if (abs(dy) < 1e-6)
-        n = float3(0, 1, 0);
+        cn = float3(0, 1, 0);
     else
-        n = normalize(float3((2 * gaussianLimit) / (xRight - xLeft), -1 / dy, 0)) * sign(-dy);
-    n = lerp(normalize(float3(0, 1, -2)), n, pow(v.uv.y, 2));
+        cn = normalize(float3((2 * gaussianLimit) / (xRight - xLeft), -1 / dy, 0)) * sign(-dy);
+    cn = lerp(normalize(float3(0, 1, -2)), cn, pow(v.uv.y, 2));
 
-                // Send to frag
+    // Compute simulation normal from smooth derivative
+    float ignore;
+    float2 tangent = hill_shape(v.uv + float2(1e-3, 0), ignore) - pos;
+    float2 n = float2(-tangent.y, tangent.x);
+
+    // Send to frag
     v2f o;
-    o.vertex = UnityObjectToClipPos(float4(x, y, 0, 1));
+    o.vertex = UnityObjectToClipPos(float4(pos, 0, 1));
     o.vertex /= o.vertex.w;
     o.vertex.z += _ZOffset;
     o.uv.xy = v.uv;
     o.farm_uv = mul(_FarmlandTransform, float4(v.uv, 0, 1)).xy;
-    o.normal = n;
+    o.normal = cn;
+    o.sim_normal = UnityObjectToWorldNormal(normalize(float3(n, 0)));
+
+    if(_isRayTracing) {
+        o.vertex.y += _RayTracingVerticalOffset; // Push down slightly to avoid annoying boundary artifacts
+    }
+
     return o;
 }
 
@@ -123,8 +150,10 @@ gbuffer_output hill_frag(v2f i)
 
     float t = 1 - _substrateDensity * farmland_color.a / sqrt(_ScreenParams.x * _ScreenParams.y) * 100;
     gbuffer_output output;
+
     output.albedo = float4(final_color, 1) * farmland_color.a;
+
     output.transmissibility = float4(t, t, 0, 1);
-    output.normal = float4(0, 1, 0, 0);
+    output.normal = float4(i.sim_normal, 0.2);
     return output;
 }

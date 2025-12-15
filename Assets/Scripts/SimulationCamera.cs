@@ -28,10 +28,15 @@ public class SimulationCamera : MonoBehaviour {
 
     public Texture2D TestTexture;
 
+    private CommandBuffer _preRenderCommands;
     private CommandBuffer _postRenderCommands;
     private Camera _cam;
 
     public void Initialize(Transform parent, int layers) {
+        _preRenderCommands = new CommandBuffer();
+        _preRenderCommands.name = "Simulation Global Properties";
+        _preRenderCommands.SetGlobalInt(Shader.PropertyToID("_isRayTracing"), 1);
+
         _cam = GetComponent<Camera>();
         _cam.transform.parent = parent;
         _cam.transform.localScale = new Vector3(1,1,1);
@@ -46,6 +51,8 @@ public class SimulationCamera : MonoBehaviour {
         _cam.allowHDR = false;
         _cam.allowMSAA = false;
         _cam.useOcclusionCulling = false;
+
+        _cam.AddCommandBuffer(CameraEvent.BeforeForwardOpaque, _preRenderCommands);
         
         gameObject.SetActive(false);
 
@@ -90,6 +97,8 @@ public class SimulationCamera : MonoBehaviour {
             var generateGBufferMipsKernel = _computeShader.FindKernel("GenerateGBufferMips");
             int mipW = GBufferTransmissibility.width;
             int mipH = GBufferTransmissibility.height;
+
+            _postRenderCommands.SetGlobalInt(Shader.PropertyToID("_isRayTracing"), 0);
 
             _postRenderCommands.SetComputeVectorParam(_computeShader, 
                 "g_target_size", new Vector2(GBufferAlbedo.width, GBufferAlbedo.height));

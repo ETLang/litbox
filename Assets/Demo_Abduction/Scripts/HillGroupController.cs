@@ -9,6 +9,7 @@ public class HillGroupController : PhotonerDemoComponent
     [SerializeField] Color rightAmbience;
     [SerializeField] Color haze;
     [SerializeField] Color specularFilter;
+    [SerializeField] float rayTracingVerticalOffset = -0.1f;
 
     ProceduralHill[] _hills;
 
@@ -18,6 +19,7 @@ public class HillGroupController : PhotonerDemoComponent
         DetectChanges(() => rightAmbience);
         DetectChanges(() => specularFilter);
         DetectChanges(() => haze);
+        DetectChanges(() => rayTracingVerticalOffset);
 
         OnEnable();
     }
@@ -46,6 +48,7 @@ public class HillGroupController : PhotonerDemoComponent
                 hill.rightAmbience = rightAmbience;
                 hill.specularFilter = specularFilter;
                 hill.haze = haze;
+                hill.rayTracingVerticalOffset = rayTracingVerticalOffset;
             }
         }
     }
