@@ -151,9 +151,9 @@ public class ProceduralHill : PhotonerDemoComponent
         }
     }
 
-    protected override void OnInvalidated()
+    protected override void OnInvalidated(string group)
     {
-        base.OnInvalidated();
+        base.OnInvalidated(group);
         ValidateArrayListeners();
     }
 

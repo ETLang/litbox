@@ -26,7 +26,7 @@ public class HillGroupController : PhotonerDemoComponent
 
     private void OnEnable()
     {
-        OnInvalidated();
+        OnInvalidated(null);
     }
 
     private void OnDisable()
@@ -34,9 +34,9 @@ public class HillGroupController : PhotonerDemoComponent
         _hills = null;
     }
 
-    protected override void OnInvalidated()
+    protected override void OnInvalidated(string group)
     {
-        base.OnInvalidated();
+        base.OnInvalidated(group);
 
         if(_hills == null && enabled) {
             _hills = this.GetComponentsInDescendants<ProceduralHill>().ToArray();

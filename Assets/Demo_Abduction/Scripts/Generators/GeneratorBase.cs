@@ -14,47 +14,6 @@ public interface IProceduralGenerator
     event Action<IProceduralGenerator> Invalidated;
 }
 
-public interface IChangeManager
-{
-    bool Check();
-}
-
-public class ChangeManager<T> : IChangeManager
-{
-    private T _previous = default(T);
-    private Func<T> _getter;
-    private Action _invalidate;
-
-    public ChangeManager(Func<T> getter, Action invalidate)
-    {
-        _getter = getter;
-        _previous = getter();
-        _invalidate = invalidate;
-    }
-
-    public bool Check()
-    {
-        bool changed = false;
-
-        var current = _getter();
-        var c_null = current == null;
-        var p_null = _previous == null;
-
-        if (c_null != p_null) {
-            changed = true;
-        } else if (!p_null) {
-            changed = !_previous.Equals(current);
-        }
-
-        if (changed) {
-            _previous = current;
-            _invalidate();
-        }
-
-        return changed;
-    }
-}
-
 public class GeneratorBase<T> : PhotonerDemoComponent, IProceduralGenerator where T : Object
 {
     public GeneratorBase() : base(false) { }
@@ -69,9 +28,9 @@ public class GeneratorBase<T> : PhotonerDemoComponent, IProceduralGenerator wher
 
     public virtual Object CreateAsset() => (Object)Activator.CreateInstance(typeof(T));
 
-    protected override void OnInvalidated()
+    protected override void OnInvalidated(string group)
     {
-        base.OnInvalidated();
+        base.OnInvalidated(group);
 
         Invalidated?.Invoke(this);
     }

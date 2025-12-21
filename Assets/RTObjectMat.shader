@@ -44,14 +44,15 @@ Shader "RT/Object"
                 float4 normal : SV_Target2;
             };
 
-            sampler2D _MainTex;
-            float4x4 _worldToSimulationMatrix;
             float4 _MainTex_ST;
+            sampler2D _MainTex;
+            sampler2D _NormalTex;
+
             float4 _Color;
             float _substrateDensity;
             float _particleAlignment;
+            float _heightScale;
 
-            sampler2D _NormalTex;
 
             v2f vert (appdata v)
             {

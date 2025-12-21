@@ -201,7 +201,7 @@ public class TrainingSubstrate : MonoBehaviour {
 
         if(changed) {
             ForceCreateTexture();
-            GetComponent<RTObject>().Invalidate();
+           // GetComponent<RTObject>().Invalidate();
         }
     }
 
@@ -315,7 +315,7 @@ public class TrainingSubstrate : MonoBehaviour {
         generated = _target[destTarget];
 #if UNITY_EDITOR
         if(EditorApplication.isPlaying)
-             GetComponent<Renderer>().material.SetTexture("_MainTex", _target[destTarget]);
+             GetComponent<RTObject>().texture = _target[destTarget];
 #endif
 
         return _target[1-destTarget];
