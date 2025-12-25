@@ -8,6 +8,8 @@ public class BindSimulationToCamera : MonoBehaviour
     private Simulation _sim;
     private Camera _cam;
 
+    public static BindSimulationToCamera Main { get; private set; }
+
     private void Awake()
     {
         _sim = GetComponent<Simulation>();
@@ -19,6 +21,17 @@ public class BindSimulationToCamera : MonoBehaviour
             Debug.LogWarning("Camera is not orthographic");
         } else if(_cam.transform.position.z != 0) {
             Debug.LogWarning("Camera Z is not zero");
+        }
+
+        if(_cam == Camera.main) {
+            Main = this;
+        }
+    }
+
+    void OnDestroy()
+    {
+        if(Main == this) {
+            Main = null;
         }
     }
 

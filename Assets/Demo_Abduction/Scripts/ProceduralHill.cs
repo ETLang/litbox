@@ -1,8 +1,6 @@
-using GLTFast;
 using System;
 using System.Collections.Generic;
 using System.Linq;
-using System.Xml.Linq;
 using UnityEditor;
 using UnityEditor.SceneManagement;
 using UnityEngine;
@@ -49,12 +47,15 @@ public class ProceduralHill : PhotonerDemoComponent
     [SerializeField] public Color haze;
     [SerializeField] public float rayTracingVerticalOffset = -0.1f;
 
-    CommandBuffer cb;
+    CommandBuffer _litCB;
+    CommandBuffer _unlitCB;
     MaterialPropertyBlock[] layerPropertyBlocks = new MaterialPropertyBlock[0];
+    MaterialPropertyBlock[] unlitLayerPropertyBlocks = new MaterialPropertyBlock[0];
     HashSet<Camera> registeredCameras = new HashSet<Camera>();
     PolygonCollider2D _collider;
     RTObject _rayTracing;
     int _layerListeningCount = 0;
+    Texture _hdrLightMap;
 
     public ProceduralHill()
     {
@@ -69,6 +70,7 @@ public class ProceduralHill : PhotonerDemoComponent
         DetectChanges(() => specularFilter);
         DetectChanges(() => haze);
         DetectChanges(() => rayTracingVerticalOffset);
+        DetectChanges(() => _hdrLightMap);
     }
 
     private void ValidateArrayListeners()
@@ -86,40 +88,59 @@ public class ProceduralHill : PhotonerDemoComponent
 
         if (layers.Length != layerPropertyBlocks.Length) {
             layerPropertyBlocks = new MaterialPropertyBlock[layers.Length];
+            unlitLayerPropertyBlocks = new MaterialPropertyBlock[layers.Length];
 
             for (int i = 0; i < layers.Length; i++) {
                 layerPropertyBlocks[i] = new MaterialPropertyBlock();
-            }
+                unlitLayerPropertyBlocks[i] = new MaterialPropertyBlock();}
         }
 
         for (int i = 0; i < layers.Length; i++) {
-            var matrix = Matrix4x4.TRS(
-                new Vector3(layers[i].textureOffset, 0, 0),
-                Quaternion.AngleAxis(layers[i].textureAngle, Vector3.forward),
-                new Vector3(layers[i].textureScale, layers[i].textureScale, 1));
+            BuildLayerPropertyBlock(layerPropertyBlocks[i], layers[i], false);
+            BuildLayerPropertyBlock(unlitLayerPropertyBlocks[i], layers[i], true);
+        }
+    }
 
-            var density = _rayTracing.SubstrateDensity;
+    private void BuildLayerPropertyBlock(MaterialPropertyBlock block, HillLayerProperties layer, bool unlit = false)
+    {
+        var matrix = Matrix4x4.TRS(
+            new Vector3(layer.textureOffset, 0, 0),
+            Quaternion.AngleAxis(layer.textureAngle, Vector3.forward),
+            new Vector3(layer.textureScale, layer.textureScale, 1));
 
-            layerPropertyBlocks[i].SetColor("_FuzzColor", layers[i].fuzzColor);
-            layerPropertyBlocks[i].SetFloat("_FuzzLength", layers[i].fuzzLength);
-            layerPropertyBlocks[i].SetColor("_SpecularColor", layers[i].specularColor * specularFilter);
-            layerPropertyBlocks[i].SetFloat("_SpecularPower", layers[i].specularPower);
+        var density = _rayTracing.SubstrateDensity;
 
-            layerPropertyBlocks[i].SetMatrix("_FarmlandTransform", matrix);
-            layerPropertyBlocks[i].SetFloat("_FarmlandRowCount", layers[i].rowCount);
-            layerPropertyBlocks[i].SetTexture("_MainTex", layers[i].hillTexture);
-            layerPropertyBlocks[i].SetFloat("_ZOffset", 0);// i * 0.000001f);
+        block.SetColor("_FuzzColor", layer.fuzzColor);
+        block.SetFloat("_FuzzLength", layer.fuzzLength);
 
-            layerPropertyBlocks[i].SetFloat("_LeftHeight", leftHeight);
-            layerPropertyBlocks[i].SetFloat("_PeakHeight", peakHeight);
-            layerPropertyBlocks[i].SetFloat("_RightHeight", rightHeight);
+        block.SetMatrix("_FarmlandTransform", matrix);
+        block.SetFloat("_FarmlandRowCount", layer.rowCount);
+        block.SetTexture("_MainTex", layer.hillTexture);
+        block.SetFloat("_ZOffset", 0);// i * 0.000001f);
 
-            layerPropertyBlocks[i].SetVector("_SpecularSource", specularLightSource);
-            layerPropertyBlocks[i].SetFloat("_ViewXShift", viewShift);
-            layerPropertyBlocks[i].SetColor("_LeftAmbience", leftAmbience);
-            layerPropertyBlocks[i].SetColor("_RightAmbience", rightAmbience);
-            layerPropertyBlocks[i].SetColor("_Haze", haze);
-            layerPropertyBlocks[i].SetFloat("_RayTracingVerticalOffset", rayTracingVerticalOffset);
+        block.SetFloat("_LeftHeight", leftHeight);
+        block.SetFloat("_PeakHeight", peakHeight);
+        block.SetFloat("_RightHeight", rightHeight);
+
+        block.SetFloat("_RayTracingVerticalOffset", rayTracingVerticalOffset);
+        block.SetColor("_Haze", haze);
+        block.SetFloat("_ViewXShift", viewShift);
+        block.SetVector("_SpecularSource", specularLightSource);
+        block.SetFloat("_SpecularPower", layer.specularPower);
+
+        if(unlit)
+        {
+            block.SetTexture("_diffuseLightMap", Texture2D.blackTexture);
+            block.SetColor("_SpecularColor", Color.clear);
+            block.SetColor("_LeftAmbience", Color.white);
+            block.SetColor("_RightAmbience", Color.white);
+        } else {
+            if(_hdrLightMap != null) {
+                block.SetTexture("_diffuseLightMap", _hdrLightMap); 
+            }
+            block.SetColor("_SpecularColor", layer.specularColor * specularFilter);
+            block.SetColor("_LeftAmbience", leftAmbience);
+            block.SetColor("_RightAmbience", rightAmbience);
         }
     }
 
@@ -167,50 +188,62 @@ public class ProceduralHill : PhotonerDemoComponent
         }
 
         // Create a new command buffer instance.
-        cb = new CommandBuffer();
-        cb.name = gameObject.name + " CB";
+        _litCB = new CommandBuffer();
+        _litCB.name = gameObject.name + " CB";
+
+        _unlitCB = new CommandBuffer();
+        _unlitCB.name = gameObject.name + " Unlit CB";
+    }
+
+    void Cleanup()
+    {
+        if (_litCB != null) {
+            foreach (var cam in registeredCameras) {
+                if (cam) {
+                    cam.RemoveCommandBuffer(CameraEvent.BeforeForwardOpaque, _litCB);
+                }
+            }
+            _litCB.Release();
+            _litCB = null;
+        }
+
+        if (_unlitCB != null) {
+            foreach (var cam in registeredCameras) {
+                if (cam) {
+                    cam.RemoveCommandBuffer(CameraEvent.BeforeForwardOpaque, _unlitCB);
+                }
+            }
+            _unlitCB.Release();
+            _unlitCB = null;
+        }
+        registeredCameras.Clear();
     }
 
     void OnDisable()
     {
-        // Always remember to remove the command buffer from the camera to avoid memory leaks.
-        if (cb != null) {
-            foreach (var cam in registeredCameras) {
-                if (cam) {
-                    cam.RemoveCommandBuffer(CameraEvent.BeforeForwardOpaque, cb);
-                }
-            }
-            registeredCameras.Clear();
-            cb.Release();
-            cb = null;
-        }
+        Cleanup();
     }
 
     protected override void OnDestroy()
     {
         base.OnDestroy();
-
-        // Always remember to remove the command buffer from the camera to avoid memory leaks.
-        if (cb != null) {
-            foreach (var cam in registeredCameras) {
-                if (cam) {
-                    cam.RemoveCommandBuffer(CameraEvent.BeforeForwardOpaque, cb);
-                }
-            }
-            registeredCameras.Clear();
-            cb.Release();
-            cb = null;
-        }
+        Cleanup();
     }
 
     protected override void Update()
     {
         base.Update();
 
+        _hdrLightMap = BindSimulationToCamera.Main?.GetComponent<Simulation>().SimulationOutputHDR;
+
         List<Camera> toRemove = new List<Camera>();
         foreach(var cam in registeredCameras) {
             if((cam.cullingMask & (1 << gameObject.layer)) == 0) {
-                cam.RemoveCommandBuffer(CameraEvent.BeforeForwardOpaque, cb);
+                if(cam.GetComponent<SimulationCamera>() != null) {
+                    cam.RemoveCommandBuffer(CameraEvent.BeforeForwardOpaque, _unlitCB);
+                } else {
+                    cam.RemoveCommandBuffer(CameraEvent.BeforeForwardOpaque, _litCB);
+                }
                 toRemove.Add(cam);
             }
         }
@@ -223,14 +256,18 @@ public class ProceduralHill : PhotonerDemoComponent
             var allCameras = FindObjectsByType<Camera>(FindObjectsInactive.Include, FindObjectsSortMode.None);
             foreach (var cam in allCameras)
                 if ((cam.cullingMask & (1 << gameObject.layer)) != 0 && !registeredCameras.Contains(cam)) {
-                    cam.AddCommandBuffer(CameraEvent.BeforeForwardOpaque, cb);
+                    if(cam.GetComponent<SimulationCamera>() != null) {
+                        cam.AddCommandBuffer(CameraEvent.BeforeForwardOpaque, _unlitCB);
+                    } else {
+                        cam.AddCommandBuffer(CameraEvent.BeforeForwardOpaque, _litCB);
+                    }
                     registeredCameras.Add(cam);
                 }
 
 #if UNITY_EDITOR
             var sceneCam = SceneView.lastActiveSceneView?.camera;
             if (sceneCam != null && !registeredCameras.Contains(sceneCam)) {
-                sceneCam.AddCommandBuffer(CameraEvent.BeforeForwardOpaque, cb);
+                sceneCam.AddCommandBuffer(CameraEvent.BeforeForwardOpaque, _litCB);
                 registeredCameras.Add(sceneCam);
             }
 #endif
@@ -238,7 +275,8 @@ public class ProceduralHill : PhotonerDemoComponent
 
         var matrix = transform.localToWorldMatrix;
 
-        cb.Clear();
+        _litCB.Clear();
+        _unlitCB.Clear();
 
 #if UNITY_EDITOR
         var prefabStage = PrefabStageUtility.GetCurrentPrefabStage();
@@ -250,7 +288,9 @@ public class ProceduralHill : PhotonerDemoComponent
 
         for (int i = 0; i < layerPropertyBlocks.Length; i++) {
             layerPropertyBlocks[i].SetFloat("_substrateDensity", _rayTracing.SubstrateDensity);
-            cb.DrawMesh(hillMesh, matrix, hillMat, 0, Math.Min(i, 1), layerPropertyBlocks[i]);
+            unlitLayerPropertyBlocks[i].SetFloat("_substrateDensity", _rayTracing.SubstrateDensity);
+            _litCB.DrawMesh(hillMesh, matrix, hillMat, 0, Math.Min(i, 1), layerPropertyBlocks[i]);
+            _unlitCB.DrawMesh(hillMesh, matrix, hillMat, 0, Math.Min(i, 1), unlitLayerPropertyBlocks[i]);
         }
     }
 

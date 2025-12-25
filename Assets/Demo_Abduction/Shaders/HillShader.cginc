@@ -10,12 +10,14 @@ struct v2f
 {
     float2 uv : TEXCOORD0;
     float2 farm_uv : TEXCOORD1;
+    float2 screen_uv : TEXCOORD2;
     float4 vertex : SV_POSITION;
     float3 normal : NORMAL;
-    float3 sim_normal : TEXCOORD2;
+    float3 sim_normal : TEXCOORD3;
 };
 
 sampler2D _MainTex;
+sampler2D _diffuseLightMap;
 float4x4 _FarmlandTransform;
 float _FarmlandRowCount;
 float _LeftHeight;
@@ -97,6 +99,8 @@ v2f hill_vert(appdata v)
     o.vertex = UnityObjectToClipPos(float4(pos, 0, 1));
     o.vertex /= o.vertex.w;
     o.vertex.z += _ZOffset;
+    o.screen_uv = o.vertex.xy * 0.5 + 0.5;
+    o.screen_uv.y = 1 - o.screen_uv.y;
     o.uv.xy = v.uv;
     o.farm_uv = mul(_FarmlandTransform, float4(v.uv, 0, 1)).xy;
     o.normal = cn;
@@ -134,7 +138,8 @@ gbuffer_output hill_frag(v2f i)
     float3 normal = i.normal;
     normal.z = min(normal.z, 0);
 
-    float3 diffuse_light = lerp(_LeftAmbience.rgb, _RightAmbience.rgb, (i.normal.x + 1) / 2);
+    float3 diffuse_light_map = tex2D(_diffuseLightMap, frac(i.screen_uv)).rgb;
+    float3 diffuse_light = diffuse_light_map + lerp(_LeftAmbience.rgb, _RightAmbience.rgb, (i.normal.x + 1) / 2);
 
     float fuzz_factor = 1 - pow(abs(i.normal.z), _FuzzLength);
     float3 color = lerp(farmland_color.rgb, _FuzzColor.rgb, fuzz_factor);
