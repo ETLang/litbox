@@ -12,6 +12,7 @@ public class ProceduralGeneratorEditor : Editor
     private new IProceduralGenerator target => (IProceduralGenerator)base.target;
     private string folder => "Assets/Procedural";
     private string assetPath => folder + "/" + target.gameObject.name + "_" + target.assetType.Name + ".asset";
+    bool loaded = false;
 
     public override VisualElement CreateInspectorGUI()
     {
@@ -21,6 +22,12 @@ public class ProceduralGeneratorEditor : Editor
 
     private void Target_Invalidated(IProceduralGenerator obj)
     {
+        if(!loaded)
+        {
+            loaded = true;
+            return;
+        }
+        
         Generate();
     }
 
@@ -29,7 +36,7 @@ public class ProceduralGeneratorEditor : Editor
         DrawDefaultInspector();
 
         if(target.CheckChanged()) {
-            Generate();
+            //Generate();
         }
 
         if (GUILayout.Button("Generate & Save")) {
@@ -67,3 +74,6 @@ public class GenerateHillMeshEditor : ProceduralGeneratorEditor { }
 
 [CustomEditor(typeof(GenerateGradientTexture))]
 public class GenerateHillTextureEditor : ProceduralGeneratorEditor { }
+
+[CustomEditor(typeof(GenerateCloudTexture))]
+public class GenerateCloudTextureEditor : ProceduralGeneratorEditor { }

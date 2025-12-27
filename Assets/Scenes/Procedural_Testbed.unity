@@ -194,6 +194,7 @@ MonoBehaviour:
     m_NumColorKeys: 8
     m_NumAlphaKeys: 2
   wrapMode: 0
+  hdr: 0
   texture: {fileID: 2800000, guid: 2ad2fd9bce767cf4da43a4024e7445aa, type: 2}
 --- !u!1 &184103060
 GameObject:
@@ -270,6 +271,7 @@ MonoBehaviour:
     m_NumColorKeys: 2
     m_NumAlphaKeys: 2
   wrapMode: 1
+  hdr: 0
   texture: {fileID: 2800000, guid: bebb6990f8aa8954dbc4cf469cf308bc, type: 2}
 --- !u!1 &317683240
 GameObject:
@@ -346,6 +348,7 @@ MonoBehaviour:
     m_NumColorKeys: 8
     m_NumAlphaKeys: 2
   wrapMode: 0
+  hdr: 0
   texture: {fileID: 2800000, guid: cc3da1f80f336d24db670505168ba08e, type: 2}
 --- !u!1 &733927942
 GameObject:
@@ -393,8 +396,8 @@ MonoBehaviour:
   m_EditorClassIdentifier: 
   gradient:
     serializedVersion: 2
-    key0: {r: 0.372736, g: 0.56, b: 0.09184002, a: 1}
-    key1: {r: 0.3764706, g: 0.56078434, b: 0.09411765, a: 1}
+    key0: {r: 0.45952937, g: 0.693, b: 0.111176476, a: 1}
+    key1: {r: 0.45882353, g: 0.69411767, b: 0.10980392, a: 1}
     key2: {r: 0.09803922, g: 0.5882353, b: 0, a: 0}
     key3: {r: 0.09803922, g: 0.5882353, b: 0, a: 0}
     key4: {r: 0, g: 0, b: 0, a: 0}
@@ -422,6 +425,7 @@ MonoBehaviour:
     m_NumColorKeys: 2
     m_NumAlphaKeys: 2
   wrapMode: 1
+  hdr: 0
   texture: {fileID: 2800000, guid: b6472febd834cee49af91fe54124c4ba, type: 2}
 --- !u!1 &1160119958
 GameObject:
@@ -498,6 +502,7 @@ MonoBehaviour:
     m_NumColorKeys: 6
     m_NumAlphaKeys: 3
   wrapMode: 2
+  hdr: 0
   texture: {fileID: 2800000, guid: 1861597d2fc6ed84093fa412f5a44a86, type: 2}
 --- !u!1 &1214753318
 GameObject:
@@ -574,6 +579,7 @@ MonoBehaviour:
     m_NumColorKeys: 2
     m_NumAlphaKeys: 5
   wrapMode: 0
+  hdr: 0
   texture: {fileID: 2800000, guid: a40fb86bd388b274fb954734adcb385a, type: 2}
 --- !u!1 &1275475396
 GameObject:
@@ -650,6 +656,7 @@ MonoBehaviour:
     m_NumColorKeys: 2
     m_NumAlphaKeys: 2
   wrapMode: 2
+  hdr: 0
   texture: {fileID: 2800000, guid: 67770033ba3a4e147ad4853079c44679, type: 2}
 --- !u!1 &1377115774
 GameObject:
@@ -813,6 +820,7 @@ MonoBehaviour:
     m_NumColorKeys: 2
     m_NumAlphaKeys: 8
   wrapMode: 0
+  hdr: 0
   texture: {fileID: 2800000, guid: 9ae09ffa7d937774088c91dfa5a623e8, type: 2}
 --- !u!1 &1740993092
 GameObject:
@@ -921,6 +929,7 @@ MonoBehaviour:
     m_NumColorKeys: 2
     m_NumAlphaKeys: 2
   wrapMode: 1
+  hdr: 0
   texture: {fileID: 2800000, guid: ac878a7262e29124484edbd8b9379c73, type: 2}
 --- !u!1 &1969110540
 GameObject:
