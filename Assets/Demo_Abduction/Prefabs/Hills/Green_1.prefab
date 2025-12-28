@@ -67,6 +67,7 @@ MonoBehaviour:
   rightAmbience: {r: 0.35686275, g: 0.35686275, b: 0.35686275, a: 0}
   specularFilter: {r: 1, g: 1, b: 1, a: 1}
   haze: {r: 0, g: 0, b: 0, a: 0}
+  rayTracingVerticalOffset: -0.1
 --- !u!60 &3345521633154429
 PolygonCollider2D:
   m_ObjectHideFlags: 0
@@ -127,6 +128,9 @@ MonoBehaviour:
   m_Script: {fileID: 11500000, guid: 28d460496ca4a42079dfe1d475e93ab8, type: 3}
   m_Name: 
   m_EditorClassIdentifier: Assembly-CSharp::RTObject
+  texture: {fileID: 0}
   normal: {fileID: 0}
-  substrateLogDensity: -1
-  objectHeight: 0
+  color: {r: 1, g: 1, b: 1, a: 1}
+  substrateLogDensity: -0.5
+  particleAlignment: 0
+  heightScale: 1

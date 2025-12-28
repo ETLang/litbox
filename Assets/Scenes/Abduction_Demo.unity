@@ -1314,7 +1314,7 @@ MonoBehaviour:
   rightAmbience: {r: 0.07738519, g: 0.11463347, b: 0.3490566, a: 0}
   haze: {r: 0, g: 0.13948797, b: 0.4339623, a: 0.02745098}
   specularFilter: {r: 0.6509434, g: 0.6509434, b: 0.6509434, a: 0}
-  rayTracingVerticalOffset: 0.04
+  rayTracingVerticalOffset: 0.03
 --- !u!1001 &316888376
 PrefabInstance:
   m_ObjectHideFlags: 0

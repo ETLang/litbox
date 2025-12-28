@@ -1,5 +1,6 @@
 #include "../Shaders/RayTracing2DCommon.cginc"
 #include "../Shaders/Random.cginc"
+#include "../Shaders/ToneMapping.cginc"
 
 #pragma multi_compile __ FILTER_INACTIVE_CELLS
 #pragma multi_compile __ BILINEAR_PHOTON_DISTRIBUTION
@@ -822,12 +823,6 @@ struct ExplicitBoundedBounceImplicitInvervalIntegrator : BaseContext, IMonteCarl
         float2 uv = pSample / g_target_size;
         float4 normal_alignment = g_normalAlignment.SampleLevel(samplerg_normalAlignment, uv, 0);
 
-        if(dot(normal_alignment.xy, normal_alignment.xy) > 0) {
-            // Presence of normal implies that transmissibility at this pixel is artificially high.
-            // TODO: Make allowances for interior scattering.
-            return;
-        }
-
         float3 albedo = g_albedo.SampleLevel(sampler_point_clamp, uv, 0).rgb;
         float outScatterDensity = transmissibility * (1 - pow(tested_transmissibility, 1.0/(1 << lod)));
         WritePhoton(pSample, photon.Energy * albedo, outScatterDensity, false);//bounce == 0);
@@ -1163,15 +1158,6 @@ void GenerateOutputMips(uint3 id : SV_DispatchThreadID) {
     g_destMipLevelHDR[id.xy] = hdr / (span_x * span_y);
 }
 
-float3 ToneMap_ApproximationA(float3 x) {
-    x = max(0, x - 0.004);
-    return (x*(6.2*x+0.5))/(x*(6.2*x+1.7)+0.06);
-}
-
-float3 ToneMap_ApproximationB(float3 x) {
-    return smoothstep(-4, 2, log10(x)); // Analogous to UE5's standard tone mapping
-}
-
 Texture2D<uint> g_photon_density;
 SamplerState samplerg_photon_density;
 Texture2D<float4> g_hdr;
@@ -1200,8 +1186,8 @@ void ToneMap (uint3 id : SV_DispatchThreadID) {
     //     photonDensityIndex /= 2;
     // }
 
-    //g_output_tonemapped[id.xy] = float4(ToneMap_ApproximationB(hdrValue.rgb), 1);
-    g_output_tonemapped[id.xy] = float4(ToneMap_ApproximationB(g_hdr[id.xy]), 1);
+    //g_output_tonemapped[id.xy] = float4(ToneMap_UE5(hdrValue.rgb), 1);
+    g_output_tonemapped[id.xy] = float4(ToneMap_UE5(g_hdr[id.xy]), 1);
 }
 
 float g_getCellTransmissibility_lod;

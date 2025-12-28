@@ -1,4 +1,5 @@
 #include "UnityCG.cginc"
+#include "../../Shaders/ToneMapping.cginc"
 
 struct appdata
 {
@@ -101,6 +102,7 @@ v2f hill_vert(appdata v)
     o.vertex.z += _ZOffset;
     o.screen_uv = o.vertex.xy * 0.5 + 0.5;
     o.screen_uv.y = 1 - o.screen_uv.y;
+    o.screen_uv.y -= 0.03;
     o.uv.xy = v.uv;
     o.farm_uv = mul(_FarmlandTransform, float4(v.uv, 0, 1)).xy;
     o.normal = cn;
@@ -127,6 +129,12 @@ struct gbuffer_output
 
 gbuffer_output hill_frag(v2f i)
 {
+    ToneMappingShape tone_shape = {
+        -0.8,
+        {1, 1, 1},
+        {-3, -3, -6}
+    };
+
     float2 farmuv = i.farm_uv;
     if (_FarmlandRowCount != -1)
     {
@@ -143,7 +151,7 @@ gbuffer_output hill_frag(v2f i)
 
     float fuzz_factor = 1 - pow(abs(i.normal.z), _FuzzLength);
     float3 color = lerp(farmland_color.rgb, _FuzzColor.rgb, fuzz_factor);
-    float3 diffuse_color = diffuse_light * color;
+    float3 diffuse_color = ToneMap_UE5(diffuse_light, tone_shape) * color;
 
     const float3 view_vec = normalize(float3((i.uv.x * 2 - 1) * _ViewXShift, 0, 1));
     const float3 specular_source = normalize(_SpecularSource.xyz);
