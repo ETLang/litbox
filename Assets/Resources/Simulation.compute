@@ -770,8 +770,6 @@ struct ExplicitBounceImplicitInvervalIntegrator : BaseContext, IMonteCarloMethod
     
     bool Propagate(inout IntegrationContext ctx)
     {
-        transmissibility *= tested_transmissibility;
-
         if(tested_u > uSampleTarget) {
             currentSample += 1;
             WriteSample(ctx.photon, uSampleTarget, ctx.lod);

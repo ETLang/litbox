@@ -1101,7 +1101,7 @@ public class Simulation : SimulationBaseBehavior
         _computeShader.SetVector("g_lightEnergy", light.Energy * (float)photonEnergy);
         _computeShader.SetInt("g_bounces", bounces);
         _computeShader.SetMatrix("g_lightToTarget", lightToTargetSpace.transpose);
-        _computeShader.SetFloat("g_integration_interval", integrationInterval * height);
+        _computeShader.SetFloat("g_integration_interval", Mathf.Max(0.01f, integrationInterval * height));
 
         RunKernel(_computeShader, simulateKernel, raysPerFrame,
             ("g_rand", _randomBuffer),

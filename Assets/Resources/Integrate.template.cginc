@@ -20,7 +20,7 @@
             for(int steps = 0;steps < 3000;steps++) {
                 ctx.testUV = uvOrigin + uvDirection * ctx.uHitCurrent;
                 bool overshoot = false;
-                ctx.lod = g_quadTreeLeaves.SampleLevel(sampler_point_clamp, ctx.testUV, 0).x;
+                ctx.lod = 0;//g_quadTreeLeaves.SampleLevel(sampler_point_clamp, ctx.testUV, 0).x;
 
                 do {
                     ctx.transmissibilityNext = g_transmissibility.SampleLevel(samplerg_transmissibility, ctx.testUV, ctx.lod);
