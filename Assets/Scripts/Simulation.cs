@@ -438,7 +438,7 @@ public class Simulation : SimulationBaseBehavior
     }
 
     const int ConvergenceMeasurementInterval = 100;
-    void Update()
+    void LateUpdate()
     {
         if (_realContentCamera == null)
         {
