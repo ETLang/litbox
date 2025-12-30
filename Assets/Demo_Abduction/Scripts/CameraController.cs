@@ -11,7 +11,6 @@ public class CameraController : MonoBehaviour
     [SerializeField] float damping = 0.8f;
     [SerializeField] float maxVelocity = 5;
     [SerializeField] float maxAcceleration = 50;
-    [SerializeField] float groundProportion = 0.2f;
 
     float velocityX = 0;
     float velocityY = 0;
@@ -68,7 +67,7 @@ public class CameraController : MonoBehaviour
                 idealY = transform.position.y + (followY - topRoamEdge);
             }
 
-            var groundBasedY = groundY + camera.orthographicSize - groundProportion * camera.orthographicSize * 2;
+            var groundBasedY = groundY + camera.orthographicSize;
 
             if(transform.position.y < groundBasedY) {
                 idealY = groundBasedY;
