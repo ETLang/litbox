@@ -56,6 +56,7 @@ public class ProceduralHill : PhotonerDemoComponent
     RTObject _rayTracing;
     int _layerListeningCount = 0;
     Texture _hdrLightMap;
+    Matrix4x4 _simulationUVTransform;
 
     public ProceduralHill()
     {
@@ -71,6 +72,7 @@ public class ProceduralHill : PhotonerDemoComponent
         DetectChanges(() => haze);
         DetectChanges(() => rayTracingVerticalOffset);
         DetectChanges(() => _hdrLightMap);
+        DetectChanges(() => _simulationUVTransform);
     }
 
     private void ValidateArrayListeners()
@@ -138,6 +140,8 @@ public class ProceduralHill : PhotonerDemoComponent
             if(_hdrLightMap != null) {
                 block.SetTexture("_diffuseLightMap", _hdrLightMap); 
             }
+
+            block.SetMatrix("_LightingUVTransform", _simulationUVTransform);
             block.SetColor("_SpecularColor", layer.specularColor * specularFilter);
             block.SetColor("_LeftAmbience", leftAmbience);
             block.SetColor("_RightAmbience", rightAmbience);
@@ -234,7 +238,13 @@ public class ProceduralHill : PhotonerDemoComponent
     {
         base.Update();
 
-        _hdrLightMap = BindSimulationToCamera.Main?.GetComponent<Simulation>().SimulationOutputHDR;
+        var simulationBinder = BindSimulationToCamera.Main;
+
+        if(simulationBinder)
+        {
+            _hdrLightMap = simulationBinder.GetComponent<Simulation>().SimulationOutputHDR;
+            _simulationUVTransform = simulationBinder.ScreenToSimulationUVTransform;
+        }
 
         List<Camera> toRemove = new List<Camera>();
         foreach(var cam in registeredCameras) {
@@ -290,7 +300,9 @@ public class ProceduralHill : PhotonerDemoComponent
             layerPropertyBlocks[i].SetFloat("_substrateDensity", _rayTracing.SubstrateDensity);
             unlitLayerPropertyBlocks[i].SetFloat("_substrateDensity", _rayTracing.SubstrateDensity);
             _litCB.DrawMesh(hillMesh, matrix, hillMat, 0, Math.Min(i, 1), layerPropertyBlocks[i]);
-            _unlitCB.DrawMesh(hillMesh, matrix, hillMat, 0, Math.Min(i, 1), unlitLayerPropertyBlocks[i]);
+
+            if(i == 0)
+                _unlitCB.DrawMesh(hillMesh, matrix, hillMat, 0, Math.Min(i, 1), unlitLayerPropertyBlocks[i]);
         }
     }
 

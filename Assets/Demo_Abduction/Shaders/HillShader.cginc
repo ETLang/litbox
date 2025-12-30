@@ -20,6 +20,7 @@ struct v2f
 sampler2D _MainTex;
 sampler2D _diffuseLightMap;
 float4x4 _FarmlandTransform;
+float4x4 _LightingUVTransform;
 float _FarmlandRowCount;
 float _LeftHeight;
 float _PeakHeight;
@@ -87,7 +88,7 @@ v2f hill_vert(appdata v)
     if (abs(dy) < 1e-6)
         cn = float3(0, 1, 0);
     else
-        cn = normalize(float3((2 * gaussianLimit) / (xRight - xLeft), -1 / dy, 0)) * sign(-dy);
+        cn = normalize(float3((2 * gaussianLimit) / (xRight - xLeft), -1 / dy , 0)) * sign(-dy);
     cn = lerp(normalize(float3(0, 1, -2)), cn, pow(v.uv.y, 2));
 
     // Compute simulation normal from smooth derivative
@@ -100,9 +101,9 @@ v2f hill_vert(appdata v)
     o.vertex = UnityObjectToClipPos(float4(pos, 0, 1));
     o.vertex /= o.vertex.w;
     o.vertex.z += _ZOffset;
-    o.screen_uv = o.vertex.xy * 0.5 + 0.5;
-    o.screen_uv.y = 1 - o.screen_uv.y;
-    o.screen_uv.y -= 0.03;
+    o.screen_uv = mul(_LightingUVTransform, float4(o.vertex.xy, 0, 1)).xy;
+    //o.screen_uv.y = 1 - o.screen_uv.y;
+    o.screen_uv.y -= 0.01;
     o.uv.xy = v.uv;
     o.farm_uv = mul(_FarmlandTransform, float4(v.uv, 0, 1)).xy;
     o.normal = cn;

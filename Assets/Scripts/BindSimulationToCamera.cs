@@ -3,12 +3,15 @@ using UnityEngine;
 [RequireComponent(typeof(Simulation))]
 public class BindSimulationToCamera : MonoBehaviour
 {
-    [SerializeField] float resolutionScale = 0.25f;
+    [SerializeField, Range(0.0625f, 1)] float resolutionScale = 0.25f;
+    [SerializeField, Range(0, 100)] float paddingPercent = 0;
 
     private Simulation _sim;
     private Camera _cam;
 
     public static BindSimulationToCamera Main { get; private set; }
+
+    public Matrix4x4 ScreenToSimulationUVTransform { get; private set; }
 
     private void Awake()
     {
@@ -38,10 +41,20 @@ public class BindSimulationToCamera : MonoBehaviour
     // Update is called once per frame
     void Update()
     {
-        _sim.width = (int)(_cam.pixelWidth * resolutionScale);
-        _sim.height = (int)(_cam.pixelHeight * resolutionScale);
+        float padding = paddingPercent / 100.0f;
+
+        _sim.width = (int)((_cam.pixelWidth + 2 * _cam.pixelHeight * padding) * resolutionScale);
+        _sim.height = (int)((_cam.pixelHeight + 2 * _cam.pixelHeight * padding) * resolutionScale);
 
         var cameraScale = _cam.transform.lossyScale;
-        _sim.transform.localScale = new Vector3(_cam.orthographicSize * _cam.aspect * 2 / cameraScale.x, _cam.orthographicSize * 2 / cameraScale.y, 1);
+        var xPaddingScale = 1.0f + 2 * padding * _cam.pixelHeight / _cam.pixelWidth;
+        var yPaddingScale = 1.0f + 2 * padding;
+        _sim.transform.localScale = new Vector3(
+            xPaddingScale * _cam.orthographicSize * _cam.aspect * 2 / cameraScale.x, 
+            yPaddingScale * _cam.orthographicSize * 2 / cameraScale.y, 1);
+
+        ScreenToSimulationUVTransform =
+            Matrix4x4.Translate(new Vector3(0.5f, -0.5f, 0)) *
+            Matrix4x4.Scale(new Vector3(0.5f / xPaddingScale, -0.5f / yPaddingScale));
     }
 }
