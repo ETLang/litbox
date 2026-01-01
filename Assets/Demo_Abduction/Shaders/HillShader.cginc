@@ -132,8 +132,8 @@ gbuffer_output hill_frag(v2f i)
 {
     ToneMappingShape tone_shape = {
         -0.8,
-        {1, 1, 1},
-        {-3, -3, -6}
+        {2, 2, 2},
+        {-3, -3, -4}
     };
 
     float2 farmuv = i.farm_uv;
@@ -152,7 +152,7 @@ gbuffer_output hill_frag(v2f i)
 
     float fuzz_factor = 1 - pow(abs(i.normal.z), _FuzzLength);
     float3 color = lerp(farmland_color.rgb, _FuzzColor.rgb, fuzz_factor);
-    float3 diffuse_color = ToneMap_UE5(diffuse_light, tone_shape) * color;
+    float3 diffuse_color = diffuse_light * color;
 
     const float3 view_vec = normalize(float3((i.uv.x * 2 - 1) * _ViewXShift, 0, 1));
     const float3 specular_source = normalize(_SpecularSource.xyz);
@@ -161,6 +161,8 @@ gbuffer_output hill_frag(v2f i)
     float3 specular_color = _SpecularColor.rgb * specular_factor;
     
     float3 final_color = lerp(diffuse_color + specular_color, _Haze.rgb, _Haze.a);
+
+    final_color = ToneMap_UE5(final_color, tone_shape);
 
     float t = 1 - _substrateDensity * farmland_color.a / sqrt(_ScreenParams.x * _ScreenParams.y) * 100;
     gbuffer_output output;

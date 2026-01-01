@@ -1546,10 +1546,10 @@ MonoBehaviour:
   m_Script: {fileID: 11500000, guid: e21a34577358da44d8fd16bd61a93fa0, type: 3}
   m_Name: 
   m_EditorClassIdentifier: 
-  leftAmbience: {r: 0.110745296, g: 0.12276416, b: 0.18200001, a: 0}
-  rightAmbience: {r: 0, g: 0, b: 0, a: 0}
+  leftAmbience: {r: 0.206, g: 0.206, b: 0.206, a: 0}
+  rightAmbience: {r: 0.11399999, g: 0.11399999, b: 0.11399999, a: 0}
   haze: {r: 0, g: 0, b: 0, a: 0.02745098}
-  specularFilter: {r: 0.19369999, g: 0.19369999, b: 0.325, a: 0}
+  specularFilter: {r: 0.106000006, g: 0.106000006, b: 0.106000006, a: 0}
   rayTracingVerticalOffset: 0.015
 --- !u!1001 &316888376
 PrefabInstance:
@@ -4714,7 +4714,7 @@ MonoBehaviour:
   m_OnCullStateChanged:
     m_PersistentCalls:
       m_Calls: []
-  m_text: ABDUCTION
+  m_text: SUPER ABDUCTION
   m_isRightToLeft: 0
   m_fontAsset: {fileID: 11400000, guid: 84999eb3cb008fb41bf2216001b7bdb8, type: 2}
   m_sharedMaterial: {fileID: 567985325255128873, guid: 84999eb3cb008fb41bf2216001b7bdb8, type: 2}
@@ -4741,8 +4741,8 @@ MonoBehaviour:
   m_faceColor:
     serializedVersion: 2
     rgba: 4294967295
-  m_fontSize: 115.67
-  m_fontSizeBase: 115.67
+  m_fontSize: 129.9
+  m_fontSizeBase: 129.9
   m_fontWeight: 400
   m_enableAutoSizing: 0
   m_fontSizeMin: 18
@@ -4779,7 +4779,7 @@ MonoBehaviour:
   m_VertexBufferAutoSizeReduction: 0
   m_useMaxVisibleDescender: 1
   m_pageToDisplay: 1
-  m_margin: {x: 0, y: 0, z: 0, w: 0}
+  m_margin: {x: -185.34857, y: 0, z: -216.56494, w: 0}
   m_isUsingLegacyAnimationComponent: 0
   m_isVolumetricText: 0
   m_hasFontAssetChanged: 0
@@ -5722,7 +5722,7 @@ MonoBehaviour:
     x: 8
     y: 8
   raysPerFrame: 64000
-  energyPrecision: 10000
+  energyPrecision: 1
   photonBounces: -1
   bilinearPhotonWrites: 1
   pathSamples: 10
@@ -6230,8 +6230,8 @@ MonoBehaviour:
   horizontalAcceleration: 30
   verticalAcceleration: 30
   maxAltitude: 100
-  maxTiltAngle: 10
-  returnForce: 0.1
+  maxTiltAngle: 18
+  returnForce: 0.4
 --- !u!1 &1390383968 stripped
 GameObject:
   m_CorrespondingSourceObject: {fileID: 7814911865595071351, guid: 2b1b72c94886a7944bc5c4849d60716a, type: 3}
