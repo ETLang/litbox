@@ -2268,7 +2268,6 @@ MonoBehaviour:
   damping: 0.7
   maxVelocity: 20
   maxAcceleration: 30
-  groundProportion: 0.2
 --- !u!1001 &467400989
 PrefabInstance:
   m_ObjectHideFlags: 0
@@ -6027,6 +6026,9 @@ PrefabInstance:
       addedObject: {fileID: 1343938190}
     - targetCorrespondingSourceObject: {fileID: 1791066042098376346, guid: 7b6695ada5cdacf40bd9975555b7031c, type: 3}
       insertIndex: -1
+      addedObject: {fileID: 1343938194}
+    - targetCorrespondingSourceObject: {fileID: 1791066042098376346, guid: 7b6695ada5cdacf40bd9975555b7031c, type: 3}
+      insertIndex: -1
       addedObject: {fileID: 1343938191}
     - targetCorrespondingSourceObject: {fileID: 1791066042098376346, guid: 7b6695ada5cdacf40bd9975555b7031c, type: 3}
       insertIndex: -1
@@ -6085,7 +6087,7 @@ MonoBehaviour:
   m_PrefabInstance: {fileID: 0}
   m_PrefabAsset: {fileID: 0}
   m_GameObject: {fileID: 1343938188}
-  m_Enabled: 1
+  m_Enabled: 0
   m_EditorHideFlags: 0
   m_Script: {fileID: 11500000, guid: d60da0f8dede17f438623445dac9f7f3, type: 3}
   m_Name: 
@@ -6109,7 +6111,7 @@ Rigidbody2D:
   m_Mass: 110
   m_LinearDamping: 0.12
   m_AngularDamping: 4
-  m_GravityScale: 0.5
+  m_GravityScale: 0
   m_Material: {fileID: 0}
   m_IncludeLayers:
     serializedVersion: 2
@@ -6145,8 +6147,8 @@ HingeJoint2D:
     m_MaximumMotorForce: 10000
   m_UseLimits: 1
   m_AngleLimits:
-    m_LowerAngle: -30
-    m_UpperAngle: 30
+    m_LowerAngle: -20
+    m_UpperAngle: 20
 --- !u!60 &1343938193
 PolygonCollider2D:
   m_ObjectHideFlags: 0
@@ -6212,6 +6214,24 @@ PolygonCollider2D:
       - {x: 14.57876, y: 16.475649}
       - {x: 12.690954, y: 20.781061}
   m_UseDelaunayMesh: 0
+--- !u!114 &1343938194
+MonoBehaviour:
+  m_ObjectHideFlags: 0
+  m_CorrespondingSourceObject: {fileID: 0}
+  m_PrefabInstance: {fileID: 0}
+  m_PrefabAsset: {fileID: 0}
+  m_GameObject: {fileID: 1343938188}
+  m_Enabled: 1
+  m_EditorHideFlags: 0
+  m_Script: {fileID: 11500000, guid: d8f97e119fb595f49ac4664d8ef367fa, type: 3}
+  m_Name: 
+  m_EditorClassIdentifier: Assembly-CSharp::UfoController2
+  maxSpeed: 15
+  horizontalAcceleration: 30
+  verticalAcceleration: 30
+  maxAltitude: 100
+  maxTiltAngle: 10
+  returnForce: 0.1
 --- !u!1 &1390383968 stripped
 GameObject:
   m_CorrespondingSourceObject: {fileID: 7814911865595071351, guid: 2b1b72c94886a7944bc5c4849d60716a, type: 3}
@@ -7744,9 +7764,7 @@ MonoBehaviour:
   m_OnCullStateChanged:
     m_PersistentCalls:
       m_Calls: []
-  m_text: 'A,D - Tilt Left, Right
-
-    Space - Thrust
+  m_text: 'WASD - Move
 
     E - Tractor Beam'
   m_isRightToLeft: 0

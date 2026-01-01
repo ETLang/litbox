@@ -34,7 +34,6 @@ public class UfoController : MonoBehaviour
         // anything to do? Probably soon.
     }
     
-    // Start is called once before the first execution of Update after the MonoBehaviour is created
     void Start()
     {
         _turnPower = MobileDetector.IsMobileDevice ? turnPowerMobile : turnPowerDesktop;
@@ -105,7 +104,6 @@ public class UfoController : MonoBehaviour
 
     void OnControlsChanged()
     {
-        Debug.Log("INPUT: Controls Changed");
     }
 
     private void OnPause()
