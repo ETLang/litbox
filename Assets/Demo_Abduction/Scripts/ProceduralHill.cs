@@ -248,7 +248,9 @@ public class ProceduralHill : PhotonerDemoComponent
 
         List<Camera> toRemove = new List<Camera>();
         foreach(var cam in registeredCameras) {
-            if((cam.cullingMask & (1 << gameObject.layer)) == 0) {
+            if(!cam) {
+                toRemove.Add(cam);
+            } else if((cam.cullingMask & (1 << gameObject.layer)) == 0) {
                 if(cam.GetComponent<SimulationCamera>() != null) {
                     cam.RemoveCommandBuffer(CameraEvent.BeforeForwardOpaque, _unlitCB);
                 } else {
