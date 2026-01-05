@@ -3,7 +3,7 @@ using System.Collections.Generic;
 using System.Linq;
 using UnityEngine;
 
-public class PhotonerDemoComponent : MonoBehaviour
+public class PhotonerDemoComponent : DisposalHelperComponent
 {
     private List<IChangeManager> _changeManagers = new List<IChangeManager>();
     private List<string> _dirtyGroups = new List<string>();

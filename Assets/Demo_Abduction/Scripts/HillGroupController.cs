@@ -29,8 +29,10 @@ public class HillGroupController : PhotonerDemoComponent
         OnInvalidated(null);
     }
 
-    private void OnDisable()
+    protected override void OnDisable()
     {
+        base.OnDisable();
+
         _hills = null;
     }
 

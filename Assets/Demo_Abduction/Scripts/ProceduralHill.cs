@@ -223,8 +223,9 @@ public class ProceduralHill : PhotonerDemoComponent
         registeredCameras.Clear();
     }
 
-    void OnDisable()
+    protected override void OnDisable()
     {
+        base.OnDisable();
         Cleanup();
     }
 

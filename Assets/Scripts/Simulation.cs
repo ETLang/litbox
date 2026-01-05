@@ -23,7 +23,7 @@ public struct SimulationProfile {
 [RequireComponent(typeof(MeshRenderer))]
 [RequireComponent(typeof(MeshFilter))]
 [ExecuteAlways]
-public class Simulation : SimulationBaseBehavior
+public class Simulation : DisposalHelperComponent
 {
     public enum IntegrationMethod
     {
@@ -82,25 +82,32 @@ public class Simulation : SimulationBaseBehavior
     [SerializeField] public int width = 256;
     [SerializeField] public int height = 256;
 
-    [SerializeField] private IntegrationMethod integrationMethod = IntegrationMethod.ExplicitBoundedBounceImplicitInterval;
-    [SerializeField] private Strategy strategy = Strategy.LightTransport;
-    [SerializeField] private uint2 gridCells = new uint2(8, 8);
     [SerializeField] private int raysPerFrame = 512000;
-    [SerializeField] private int energyPrecision = 100;
     [SerializeField] private int photonBounces = -1;
-    [SerializeField] private bool bilinearPhotonWrites = true;
-    [SerializeField] private int pathSamples = 10;
-    [SerializeField, Range(0, 1)] private float pathBalance = 0.5f;
+    [SerializeField] private IntegrationMethod integrationMethod = IntegrationMethod.ExplicitBoundedBounceImplicitInterval;
     [SerializeField] private float integrationInterval = 0.1f;
     [SerializeField] private int densityGranularity = 10000;
-
     [SerializeField] private float transmissibilityVariationEpsilon = 1e-3f;
     [SerializeField, Range(0, 0.5f)] private float outscatterCoefficient = 0.01f;
+    
+    [Header("Tone Mapping")]
+    [SerializeField] private bool enableToneMappping = true;
+    [SerializeField] private float exposure = 0.0f;
+    [SerializeField] private Vector3 whitePointLog = new Vector3(2.0f, 2.0f, 2.0f);
+    [SerializeField] private Vector3 blackPointLog = new Vector3(-4.0f, -4.0f, -5.0f);
 
     [Header("Convergence Information")]
     [SerializeField] private float _convergenceThreshold = -1;
     [SerializeField] private int framesSinceClear = 0;
     [SerializeField, ReadOnly] private float convergenceProgress = 100000;
+
+    [Header("Archaic Properties")]
+    [SerializeField] private Strategy strategy = Strategy.LightTransport;
+    [SerializeField] private uint2 gridCells = new uint2(8, 8);
+    [SerializeField] private int energyPrecision = 100;
+    [SerializeField] private bool bilinearPhotonWrites = true;
+    [SerializeField] private int pathSamples = 10;
+    [SerializeField, Range(0, 1)] private float pathBalance = 0.5f;
 
     private static int _MainTexID = Shader.PropertyToID("_MainTex");
     private Material _compositorMat;
@@ -219,7 +226,7 @@ public class Simulation : SimulationBaseBehavior
                 _randomBuffer.Release();
             }
 
-            _randomBuffer = CreateStructuredBuffer(seeds);
+            _randomBuffer = this.CreateStructuredBuffer(seeds);
         }
     }
 
@@ -296,7 +303,7 @@ public class Simulation : SimulationBaseBehavior
             };
         }
         _gridCellInputInitialValue = (ConvergenceCellInput[])_gridCellInput.Clone();
-        _gridCellInputBuffer = CreateStructuredBuffer(_gridCellInput);
+        _gridCellInputBuffer = this.CreateStructuredBuffer(_gridCellInput);
 
         _gridCellOutput = new ConvergenceCellOutput[gridCells.x * gridCells.y];
         for (int i = 0; i < _gridCellOutput.Length; i++) {
@@ -307,7 +314,7 @@ public class Simulation : SimulationBaseBehavior
             };
         }
         _gridCellOutputInitialValue = (ConvergenceCellOutput[])_gridCellOutput.Clone();
-        _gridCellOutputBuffer = CreateStructuredBuffer(_gridCellOutput);
+        _gridCellOutputBuffer = this.CreateStructuredBuffer(_gridCellOutput);
 
         _mieScatteringLUT = LUT.CreateMieScatteringLUT().AsTexture();
         DisposeOnDisable(() => DestroyImmediate(_mieScatteringLUT));
@@ -354,23 +361,23 @@ public class Simulation : SimulationBaseBehavior
     {
         for (int i = 0; i < _renderTexture.Length; i++)
         {
-            _renderTexture[i] = CreateRWTexture(width, height, RenderTextureFormat.DefaultHDR);
+            _renderTexture[i] = this.CreateRWTexture(width, height, RenderTextureFormat.DefaultHDR);
         }
 
-        SimulationPhotonsForward = CreateRWTexture(width * 3, height, RenderTextureFormat.RInt);
-        SimulationOutputRaw = CreateRWTexture(width * 3, height, RenderTextureFormat.RInt);
-        SimulationOutputAccumulated = CreateRWTexture(width, height, RenderTextureFormat.ARGBFloat);
-        SimulationOutputHDR = CreateRWTextureWithMips(width, height, RenderTextureFormat.ARGBFloat);
-        PhotonDensityBuffer = CreateRWTextureWithMips(width, height, RenderTextureFormat.RInt);
+        SimulationPhotonsForward = this.CreateRWTexture(width * 3, height, RenderTextureFormat.RInt);
+        SimulationOutputRaw = this.CreateRWTexture(width * 3, height, RenderTextureFormat.RInt);
+        SimulationOutputAccumulated = this.CreateRWTexture(width, height, RenderTextureFormat.ARGBFloat);
+        SimulationOutputHDR = this.CreateRWTextureWithMips(width, height, RenderTextureFormat.ARGBFloat);
+        PhotonDensityBuffer = this.CreateRWTextureWithMips(width, height, RenderTextureFormat.RInt);
 
         for (int i = 0; i < 2; i++)
         {
-            _gBufferAlbedo[i] = CreateRWTextureWithMips(width, height, RenderTextureFormat.ARGBFloat, 32);
-            _gBufferTransmissibility[i] = CreateRWTextureWithMips(width, height, RenderTextureFormat.ARGBFloat);
-            _gBufferNormalAlignment[i] = CreateRWTextureWithMips(width, height, RenderTextureFormat.ARGBFloat);
+            _gBufferAlbedo[i] = this.CreateRWTextureWithMips(width, height, RenderTextureFormat.ARGBFloat, 32);
+            _gBufferTransmissibility[i] = this.CreateRWTextureWithMips(width, height, RenderTextureFormat.ARGBFloat);
+            _gBufferNormalAlignment[i] = this.CreateRWTextureWithMips(width, height, RenderTextureFormat.ARGBFloat);
         }
 
-        GBufferQuadTreeLeaves = CreateRWTexture(width, height, RenderTextureFormat.ARGBHalf);
+        GBufferQuadTreeLeaves = this.CreateRWTexture(width, height, RenderTextureFormat.ARGBHalf);
 
         SwapGBuffer();
     }
@@ -543,34 +550,34 @@ public class Simulation : SimulationBaseBehavior
         _computeShader.SetFloat("g_lightEmissionOutscatter", 0);
         _computeShader.SetInt("g_density_granularity", densityGranularity);
         _computeShader.SetFloat("g_outscatterCoefficient", outscatterCoefficient);
-        SetShaderFlag(_computeShader, "BILINEAR_PHOTON_DISTRIBUTION", bilinearPhotonWrites);
+        _computeShader.SetShaderFlag("BILINEAR_PHOTON_DISTRIBUTION", bilinearPhotonWrites);
 
-        SetShaderFlag(_computeShader, "INTEGRATE_EXPLICIT", false);
-        SetShaderFlag(_computeShader, "INTEGRATE_IMPLICIT", false);
-        SetShaderFlag(_computeShader, "INTEGRATE_IMPLICIT_INTERVAL", false);
-        SetShaderFlag(_computeShader, "INTEGRATE_EXPLICIT_BOUNDED", false);
-        SetShaderFlag(_computeShader, "INTEGRATE_EXPLICIT_BOUNCE_IMPLICIT_INTERVAL", false);
-        SetShaderFlag(_computeShader, "INTEGRATE_EXPLICIT_BOUNDED_BOUNCE_IMPLICIT_INTERVAL", false);
+        _computeShader.SetShaderFlag("INTEGRATE_EXPLICIT", false);
+        _computeShader.SetShaderFlag("INTEGRATE_IMPLICIT", false);
+        _computeShader.SetShaderFlag("INTEGRATE_IMPLICIT_INTERVAL", false);
+        _computeShader.SetShaderFlag("INTEGRATE_EXPLICIT_BOUNDED", false);
+        _computeShader.SetShaderFlag("INTEGRATE_EXPLICIT_BOUNCE_IMPLICIT_INTERVAL", false);
+        _computeShader.SetShaderFlag("INTEGRATE_EXPLICIT_BOUNDED_BOUNCE_IMPLICIT_INTERVAL", false);
 
         switch (integrationMethod)
         {
             case IntegrationMethod.Explicit:
-                SetShaderFlag(_computeShader, "INTEGRATE_EXPLICIT", true);
+                _computeShader.SetShaderFlag("INTEGRATE_EXPLICIT", true);
                 break;
             case IntegrationMethod.Implicit:
-                SetShaderFlag(_computeShader, "INTEGRATE_IMPLICIT", true);
+                _computeShader.SetShaderFlag("INTEGRATE_IMPLICIT", true);
                 break;
             case IntegrationMethod.ImplicitInterval:
-                SetShaderFlag(_computeShader, "INTEGRATE_IMPLICIT_INTERVAL", true);
+                _computeShader.SetShaderFlag("INTEGRATE_IMPLICIT_INTERVAL", true);
                 break;
             case IntegrationMethod.ExplicitBounded:
-                SetShaderFlag(_computeShader, "INTEGRATE_EXPLICIT_BOUNDED", true);
+                _computeShader.SetShaderFlag("INTEGRATE_EXPLICIT_BOUNDED", true);
                 break;
             case IntegrationMethod.ExplicitBounceImplicitInterval:
-                SetShaderFlag(_computeShader, "INTEGRATE_EXPLICIT_BOUNCE_IMPLICIT_INTERVAL", true);
+                _computeShader.SetShaderFlag("INTEGRATE_EXPLICIT_BOUNCE_IMPLICIT_INTERVAL", true);
                 break;
             case IntegrationMethod.ExplicitBoundedBounceImplicitInterval:
-                SetShaderFlag(_computeShader, "INTEGRATE_EXPLICIT_BOUNDED_BOUNCE_IMPLICIT_INTERVAL", true);
+                _computeShader.SetShaderFlag("INTEGRATE_EXPLICIT_BOUNDED_BOUNCE_IMPLICIT_INTERVAL", true);
                 break;
         }
         
@@ -596,7 +603,7 @@ public class Simulation : SimulationBaseBehavior
                 energyNormPerFrame = raysPerFrame / pixelCount;
                 _computeShader.SetFloat("g_energy_norm", (float)((double)uint.MaxValue / pixelCount * energyPrecision));
 
-                SetShaderFlag(_computeShader, "FILTER_INACTIVE_CELLS", true);
+                _computeShader.SetShaderFlag("FILTER_INACTIVE_CELLS", true);
                 foreach (var light in allLights)
                 {
                     SimulateLight(light, strategy, photonBounces != -1 ? photonBounces : (int)light.bounces, worldToTargetSpace, SimulationOutputRaw);
@@ -632,14 +639,14 @@ public class Simulation : SimulationBaseBehavior
 
                 // Clear intermediate target
                 SimulationPhotonsForward.Clear(Color.clear);
-                SetShaderFlag(_computeShader, "FILTER_INACTIVE_CELLS", false);
+                _computeShader.SetShaderFlag("FILTER_INACTIVE_CELLS", false);
                 foreach (var light in allLights)
                 {
                     SimulateLight(light, Strategy.LightTransport, photonBounces != -1 ? photonBounces / 2 : (int)light.bounces, worldToTargetSpace, SimulationPhotonsForward);
                 }
 
-                SetShaderFlag(_computeShader, "FILTER_INACTIVE_CELLS", true);
-                RunKernel(_computeShader, "Simulate_View_Backward", width, height,
+                _computeShader.SetShaderFlag("FILTER_INACTIVE_CELLS", true);
+                _computeShader.RunKernel("Simulate_View_Backward", width, height,
                     ("g_rand", _randomBuffer),
                     ("g_photons_forward", SimulationPhotonsForward),
                     ("g_output_raw", SimulationOutputRaw),
@@ -665,7 +672,7 @@ public class Simulation : SimulationBaseBehavior
         _gridCellInputBuffer.SetData(_gridCellInput);
 
         // HDR MAPPING
-        RunKernel(_computeShader, "ConvertToHDR", width, height,
+        _computeShader.RunKernel("ConvertToHDR", width, height,
             ("g_output_raw", SimulationOutputRaw),
             ("g_output_accumulated", SimulationOutputAccumulated),
             ("g_output_hdr", SimulationOutputHDR),
@@ -677,20 +684,28 @@ public class Simulation : SimulationBaseBehavior
         for(int i = 1;i < PhotonDensityBuffer.mipmapCount;i++) {
             mipW /= 2;
             mipH /= 2;
-            RunKernel(_computeShader, "GenerateOutputMips", mipW, mipH,
-                ("g_sourceMipLevelPhotonCount", SelectMip(PhotonDensityBuffer, i - 1)),
-                ("g_sourceMipLevelHDR", SelectMip(SimulationOutputHDR, i - 1)),
-                ("g_destMipLevelPhotonCount", SelectMip(PhotonDensityBuffer, i)),
-                ("g_destMipLevelHDR", SelectMip(SimulationOutputHDR, i)));
+            _computeShader.RunKernel("GenerateOutputMips", mipW, mipH,
+                ("g_sourceMipLevelPhotonCount", PhotonDensityBuffer.SelectMip(i - 1)),
+                ("g_sourceMipLevelHDR", SimulationOutputHDR.SelectMip(i - 1)),
+                ("g_destMipLevelPhotonCount", PhotonDensityBuffer.SelectMip(i)),
+                ("g_destMipLevelHDR", SimulationOutputHDR.SelectMip(i)));
         }
 
         // TONE MAPPING
         // TODO: Leverage adaptive sampling from photon count buffer
-        RunKernel(_computeShader, "ToneMap", width, height,
-            ("g_hdr", SimulationOutputHDR),
-            ("g_photon_density", PhotonDensityBuffer),
-            ("g_output_tonemapped", _renderTexture[_currentRenderTextureIndex]),
-            ("g_convergenceCellStateIn", _gridCellInputBuffer));
+        if (enableToneMappping)
+        {
+            _computeShader.RunKernel("ToneMap", width, height,
+                ("g_hdr", SimulationOutputHDR),
+                ("g_photon_density", PhotonDensityBuffer),
+                ("g_output_tonemapped", _renderTexture[_currentRenderTextureIndex]),
+                ("g_convergenceCellStateIn", _gridCellInputBuffer),
+                ("g_blackPointLog", blackPointLog),
+                ("g_whitePointLog", whitePointLog),
+                ("g_exposure", exposure));
+        } else {
+            SimulationOutputToneMapped = SimulationOutputHDR;
+        }
 
         SimulationOutputToneMapped = _renderTexture[_currentRenderTextureIndex];
         _compositorMat.SetTexture(_MainTexID, SimulationOutputToneMapped);
@@ -769,13 +784,13 @@ public class Simulation : SimulationBaseBehavior
 
         if (true || !hasValidGridTransmissibility)
         {
-            RunKernel(_computeShader, "GetCellTransmissibility", (int)gridCells.x, (int)gridCells.y,
+            _computeShader.RunKernel("GetCellTransmissibility", (int)gridCells.x, (int)gridCells.y,
                 ("g_transmissibility", GBufferTransmissibility),
                 ("g_convergenceCellStateOut", _gridCellOutputBuffer));
             hasValidGridTransmissibility = true;
         }
 
-        RunKernel(_computeShader, "MeasureConvergence", width, height,
+        _computeShader.RunKernel("MeasureConvergence", width, height,
             ("g_output_raw", SimulationOutputRaw),
             ("g_output_tonemapped", _renderTexture[_currentRenderTextureIndex]),
             ("g_previousResult", _renderTexture[1 - _currentRenderTextureIndex]),
@@ -1014,9 +1029,9 @@ public class Simulation : SimulationBaseBehavior
             }
         }
 
-        Visualize(EfficiencyDiagnostic, efficiencies);
-        Visualize(PhotonsDiagnostic, feedback.Select(f => (float)f.PhotonCount));
-        Visualize(MaxValueDiagnostic, feedback.Select(f => (float)f.MaxValue / (float)(1u << 31)), false);
+        efficiencies.Visualize(EfficiencyDiagnostic);
+        feedback.Select(f => (float)f.PhotonCount).Visualize(PhotonsDiagnostic);
+        feedback.Select(f => (float)f.MaxValue / (float)(1u << 31)).Visualize(MaxValueDiagnostic, false);
 
         _gridCellOutputBuffer.SetData(_gridCellOutputInitialValue);
         _gridCellInputBuffer.SetData(_gridCellInput);
@@ -1038,7 +1053,7 @@ public class Simulation : SimulationBaseBehavior
         int h = (int)(height / gridCells.y);
 
         _computeShader.SetVector("g_accumulate_base_index", new Vector2(xCell * w, yCell * h));
-        RunKernel(_computeShader, "AccumulatePhotons", w, h,
+        _computeShader.RunKernel("AccumulatePhotons", w, h,
             ("g_output_accumulated", SimulationOutputAccumulated),
             ("g_output_raw", SimulationOutputRaw),
             ("g_convergenceCellStateIn", _gridCellInputBuffer));
@@ -1103,7 +1118,7 @@ public class Simulation : SimulationBaseBehavior
         _computeShader.SetMatrix("g_lightToTarget", lightToTargetSpace.transpose);
         _computeShader.SetFloat("g_integration_interval", Mathf.Max(0.01f, integrationInterval * height));
 
-        RunKernel(_computeShader, simulateKernel, raysPerFrame,
+        _computeShader.RunKernel(simulateKernel, raysPerFrame,
             ("g_rand", _randomBuffer),
             ("g_output_raw", outputTexture),
             ("g_photon_density_raw", PhotonDensityBuffer),
