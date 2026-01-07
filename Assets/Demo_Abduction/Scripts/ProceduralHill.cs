@@ -57,6 +57,7 @@ public class ProceduralHill : PhotonerDemoComponent
     int _layerListeningCount = 0;
     Texture _hdrLightMap;
     Matrix4x4 _simulationUVTransform;
+    BindSimulationToCamera _binder;
 
     public ProceduralHill()
     {
@@ -150,15 +151,15 @@ public class ProceduralHill : PhotonerDemoComponent
 
     private void ListenOnArray(int index)
     {
-        DetectChanges(() => index < layers.Length ? layers[index].fuzzColor : default(Color));
-        DetectChanges(() => index < layers.Length ? layers[index].fuzzLength : default(float));
-        DetectChanges(() => index < layers.Length ? layers[index].specularColor : default(Color));
-        DetectChanges(() => index < layers.Length ? layers[index].specularPower : default(float));
-        DetectChanges(() => index < layers.Length ? layers[index].hillTexture : default(Texture));
-        DetectChanges(() => index < layers.Length ? layers[index].textureAngle : default(float));
-        DetectChanges(() => index < layers.Length ? layers[index].textureOffset : default(float));
-        DetectChanges(() => index < layers.Length ? layers[index].textureScale : default(float));
-        DetectChanges(() => index < layers.Length ? layers[index].rowCount : default(int));
+        DetectChanges(() => index < layers.Length ? layers[index].fuzzColor : default);
+        DetectChanges(() => index < layers.Length ? layers[index].fuzzLength : default);
+        DetectChanges(() => index < layers.Length ? layers[index].specularColor : default);
+        DetectChanges(() => index < layers.Length ? layers[index].specularPower : default);
+        DetectChanges(() => index < layers.Length ? layers[index].hillTexture : default);
+        DetectChanges(() => index < layers.Length ? layers[index].textureAngle : default);
+        DetectChanges(() => index < layers.Length ? layers[index].textureOffset : default);
+        DetectChanges(() => index < layers.Length ? layers[index].textureScale : default);
+        DetectChanges(() => index < layers.Length ? layers[index].rowCount : default);
     }
 
     // Start is called once before the first execution of Update after the MonoBehaviour is created
@@ -239,12 +240,14 @@ public class ProceduralHill : PhotonerDemoComponent
     {
         base.Update();
 
-        var simulationBinder = BindSimulationToCamera.Main;
+        if(_binder == null) {
+            _binder = Camera.main.GetComponentInChildren<BindSimulationToCamera>();
+        }
 
-        if(simulationBinder)
+        if(_binder)
         {
-            _hdrLightMap = simulationBinder.GetComponent<Simulation>().SimulationOutputHDR;
-            _simulationUVTransform = simulationBinder.ScreenToSimulationUVTransform;
+            _hdrLightMap = _binder.GetComponent<Simulation>().SimulationOutputHDR;
+            _simulationUVTransform = _binder.ScreenToSimulationUVTransform;
         }
 
         List<Camera> toRemove = new List<Camera>();

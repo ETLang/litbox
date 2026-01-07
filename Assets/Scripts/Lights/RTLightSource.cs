@@ -5,13 +5,13 @@ using UnityEngine;
 [RequireComponent(typeof(SpriteRenderer))]
 public class RTLightSource : MonoBehaviour
 {
-    [Range(0, 80)]
+    [Range(0, 10)]
     public float intensity = 1;
     public uint bounces = 2;
 
     public Vector4 Energy
     {
-        get => (Vector4)gameObject.GetComponent<SpriteRenderer>().color * intensity;
+        get => (Vector4)gameObject.GetComponent<SpriteRenderer>().color * intensity * intensity;
     }
 
     public virtual Matrix4x4 WorldTransform

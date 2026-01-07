@@ -91,10 +91,10 @@ public class Simulation : DisposalHelperComponent
     [SerializeField, Range(0, 0.5f)] private float outscatterCoefficient = 0.01f;
     
     [Header("Tone Mapping")]
-    [SerializeField] private bool enableToneMappping = true;
-    [SerializeField] private float exposure = 0.0f;
-    [SerializeField] private Vector3 whitePointLog = new Vector3(2.0f, 2.0f, 2.0f);
-    [SerializeField] private Vector3 blackPointLog = new Vector3(-4.0f, -4.0f, -5.0f);
+    [SerializeField] public bool enableToneMappping = true;
+    [SerializeField] public float exposure = 0.0f;
+    [SerializeField] public Vector3 whitePointLog = new Vector3(2.0f, 2.0f, 2.0f);
+    [SerializeField] public Vector3 blackPointLog = new Vector3(-4.0f, -4.0f, -5.0f);
 
     [Header("Convergence Information")]
     [SerializeField] private float _convergenceThreshold = -1;
@@ -390,11 +390,19 @@ public class Simulation : DisposalHelperComponent
 
         //_gBufferNextTarget = 1 - _gBufferNextTarget;
 
-        _realContentCamera.GBufferAlbedo = _gBufferAlbedo[_gBufferNextTarget];
-        _realContentCamera.GBufferTransmissibility = _gBufferTransmissibility[_gBufferNextTarget];
-        _realContentCamera.GBufferNormalSlope = _gBufferNormalAlignment[_gBufferNextTarget];
-        _realContentCamera.GBufferQuadTreeLeaves = GBufferQuadTreeLeaves;
-        _realContentCamera.VarianceEpsilon = transmissibilityVariationEpsilon;
+        if(_realContentCamera != null) {
+            _realContentCamera.GBufferAlbedo = _gBufferAlbedo[_gBufferNextTarget];
+            _realContentCamera.GBufferTransmissibility = _gBufferTransmissibility[_gBufferNextTarget];
+            _realContentCamera.GBufferNormalSlope = _gBufferNormalAlignment[_gBufferNextTarget];
+            _realContentCamera.GBufferQuadTreeLeaves = GBufferQuadTreeLeaves;
+            _realContentCamera.VarianceEpsilon = transmissibilityVariationEpsilon;
+        }
+    }
+
+    void OnEnable()
+    {
+        ValidateTargets();
+        ValidateRandomBuffer();
     }
 
     protected override void OnDisable()
@@ -444,6 +452,12 @@ public class Simulation : DisposalHelperComponent
         return changed;
     }
 
+    void Update()
+    {
+        ValidateTargets();
+        ValidateRandomBuffer();
+    }
+
     const int ConvergenceMeasurementInterval = 100;
     void LateUpdate()
     {
@@ -453,9 +467,6 @@ public class Simulation : DisposalHelperComponent
         }
 
         _realContentCamera.Render();
-
-        ValidateTargets();
-        ValidateRandomBuffer();
 
         var worldToPresentation = _realContentCamera.transform.worldToLocalMatrix;
         var presentationToTargetSpace = Matrix4x4.Scale(new Vector3(width, height, 1)) * Matrix4x4.Translate(new Vector3(0.5f, 0.5f, 0));

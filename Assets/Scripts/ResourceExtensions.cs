@@ -39,4 +39,12 @@ public static class ResourceExtensions
         _this.DisposeOnDisable(output);
         return output;
     }
+
+    public static int MipWidth(this Texture _this, int mipLevel) {
+        return Mathf.Max(1, _this.width >> mipLevel);
+    }
+
+    public static int MipHeight(this Texture _this, int mipLevel) {
+        return Mathf.Max(1, _this.height >> mipLevel);
+    }
 }

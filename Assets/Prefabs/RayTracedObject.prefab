@@ -105,6 +105,6 @@ MonoBehaviour:
   texture: {fileID: 0}
   normal: {fileID: 0}
   color: {r: 1, g: 1, b: 1, a: 1}
-  substrateLogDensity: 0
+  substrateLogDensity: -0.18
   particleAlignment: 0
   heightScale: 1

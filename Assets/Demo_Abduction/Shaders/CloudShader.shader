@@ -1,4 +1,4 @@
-Shader "RT/Object"
+Shader "Abduction/Cloud"
 {
     Properties
     {
@@ -12,11 +12,7 @@ Shader "RT/Object"
 
         Pass
         {
-            Blend 0 One OneMinusSrcAlpha
-            Blend 1 Zero SrcColor
-            Blend 2 One Zero
-
-            ZWrite Off
+            Blend One OneMinusSrcAlpha
 
             CGPROGRAM
             #pragma vertex vert
@@ -38,16 +34,8 @@ Shader "RT/Object"
                 float4 vertex : SV_POSITION;
             };
 
-            struct gbuffer_output
-            {
-                float4 albedo : SV_Target0;
-                float4 transmissibility: SV_Target1;
-                float4 normal : SV_Target2;
-            };
-
             float4 _MainTex_ST;
             sampler2D _MainTex;
-            sampler2D _NormalTex;
 
             float4 _Color;
             float _substrateDensity;
@@ -64,24 +52,13 @@ Shader "RT/Object"
                 return o;
             }
 
-            gbuffer_output frag (v2f i)
+            float4 frag (v2f i) : SV_Target0
             {
-                gbuffer_output output;
-
                 float4 c = tex2D(_MainTex, i.uv);
-                float4 n = tex2D(_NormalTex, i.uv);
-
-                float imageDensity = _substrateDensity * c.a;
-                float imageTransmissibility = 1 - imageDensity;
-
-                float t = pow(imageTransmissibility, 100.0/_ScreenParams.y);
-
-                output.albedo = float4(c.rgb * _Color.rgb,1) * c.a * _Color.a;
-                output.transmissibility = float4(t,t,0,1);
-                output.normal = float4(i.normal, _particleAlignment);
-                return output;
+                return float4(c.rgb * _Color.rgb,1) * c.a * _Color.a;
             }
             ENDCG
         }
     }
+
 }

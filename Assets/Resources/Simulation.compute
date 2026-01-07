@@ -2,6 +2,9 @@
 #include "../Shaders/Random.cginc"
 #include "../Shaders/ToneMapping.cginc"
 
+#define NUMTHREADS_2D 8,8,1
+#define NUMTHREADS_1D 64,1,1
+
 #pragma multi_compile __ FILTER_INACTIVE_CELLS
 #pragma multi_compile __ BILINEAR_PHOTON_DISTRIBUTION
 #pragma multi_compile __ INTEGRATE_EXPLICIT INTEGRATE_IMPLICIT INTEGRATE_IMPLICIT_INTERVAL INTEGRATE_EXPLICIT_BOUNDED INTEGRATE_EXPLICIT_BOUNCE_IMPLICIT_INTERVAL INTEGRATE_EXPLICIT_BOUNDED_BOUNCE_IMPLICIT_INTERVAL
@@ -1077,7 +1080,7 @@ SimulationContext CreateSimulationContext(uint4 seed) {
 }
 
 #define SIMULATION_IMPLEMENTATION_LIGHT(lightType)                  \
-[numthreads(64,1,1)]                                                \
+[numthreads(NUMTHREADS_1D)]                                                \
 void Simulate_##lightType (uint3 id : SV_DispatchThreadID) {        \
     SimulationContext sim = CreateSimulationContext(g_rand[id.x]);  \
     sim.SimulateLight(sim.Emit##lightType());                       \
@@ -1102,7 +1105,7 @@ SIMULATION_IMPLEMENTATION(DirectionalLight)
 
 RWTexture2D<float4> g_output_accumulated;
 uint2 g_accumulate_base_index;
-[numthreads(8, 8, 1)]
+[numthreads(NUMTHREADS_2D)]
 void AccumulatePhotons(uint3 id : SV_DispatchThreadID)
 {
     uint2 index = g_accumulate_base_index + id.xy;
@@ -1111,7 +1114,7 @@ void AccumulatePhotons(uint3 id : SV_DispatchThreadID)
 }
 
 RWTexture2D<float4> g_output_hdr;
-[numthreads(8,8,1)]
+[numthreads(NUMTHREADS_2D)]
 void ConvertToHDR (uint3 id : SV_DispatchThreadID) {
     ConvergenceCellInput cellData = g_convergenceCellStateIn[GetGridCellIndex((int2) id.xy)];
     float frames = cellData.FrameCount;
@@ -1123,7 +1126,7 @@ RWTexture2D<uint> g_sourceMipLevelPhotonCount;
 RWTexture2D<float4> g_sourceMipLevelHDR;
 RWTexture2D<uint> g_destMipLevelPhotonCount;
 RWTexture2D<float4> g_destMipLevelHDR;
-[numthreads(8,8,1)]
+[numthreads(NUMTHREADS_2D)]
 void GenerateOutputMips(uint3 id : SV_DispatchThreadID) {
     uint2 sourceSize = (uint2)TextureSize(g_sourceMipLevelPhotonCount);
     uint2 destSize = (uint2)TextureSize(g_destMipLevelPhotonCount);
@@ -1160,7 +1163,11 @@ Texture2D<uint> g_photon_density;
 SamplerState samplerg_photon_density;
 Texture2D<float4> g_hdr;
 SamplerState samplerg_hdr;
-[numthreads(8,8,1)]
+float g_exposure;
+float3 g_whitePointLog;
+float3 g_blackPointLog;
+
+[numthreads(NUMTHREADS_2D)]
 void ToneMap (uint3 id : SV_DispatchThreadID) {
     float2 uv = (id.xy + 0.5) / TextureSize(g_output_tonemapped);
     uint2 photonDensityIndex = id.xy;
@@ -1185,11 +1192,17 @@ void ToneMap (uint3 id : SV_DispatchThreadID) {
     // }
 
     //g_output_tonemapped[id.xy] = float4(ToneMap_UE5(hdrValue.rgb), 1);
-    g_output_tonemapped[id.xy] = float4(ToneMap_UE5(g_hdr[id.xy]), 1);
+    ToneMappingShape tone_shape = {
+        g_exposure,
+        g_whitePointLog,
+        g_blackPointLog
+    };
+    
+    g_output_tonemapped[id.xy] = float4(ToneMap_UE5(g_hdr[id.xy], tone_shape), 1);
 }
 
 float g_getCellTransmissibility_lod;
-[numthreads(8,8,1)]
+[numthreads(NUMTHREADS_2D)]
 void GetCellTransmissibility(uint3 id : SV_DispatchThreadID) {
     uint cellIndex = id.y * g_convergenceCells.x + id.x;
     float2 uv = (id.xy + 0.5) / g_convergenceCells;
@@ -1198,7 +1211,7 @@ void GetCellTransmissibility(uint3 id : SV_DispatchThreadID) {
         g_transmissibility.SampleLevel(samplerg_transmissibility, uv, g_getCellTransmissibility_lod).x;
 }
 
-[numthreads(8,8,1)]
+[numthreads(NUMTHREADS_2D)]
 void MeasureConvergence (uint3 id : SV_DispatchThreadID) {
     //const uint EnergyMax = (1 << 31);
 
@@ -1276,7 +1289,7 @@ float4 DownsampleNormalSlope(uint2 id) {
     return float4(normalize(a.xy + b.xy + c.xy + d.xy), (a.zw + b.zw + c.zw + d.zw) / 4);
 }
 
-[numthreads(8,8,1)]
+[numthreads(NUMTHREADS_2D)]
 void GenerateGBufferMips (uint3 id : SV_DispatchThreadID) {
     g_destMipLevelAlbedo[id.xy] = DownsampleAlbedo(id.xy * 2);
     g_destMipLevelTransmissibility[id.xy] = DownsampleTransmissibility(id.xy * 2);
@@ -1317,12 +1330,12 @@ void ComputeTransmissibilityVariance(uint2 id) {
     g_sourceMipLevelTransmissibility[id] = newValue;
 }
 
-[numthreads(8,8,1)]
+[numthreads(NUMTHREADS_2D)]
 void ComputeGBufferVariance (uint3 id : SV_DispatchThreadID) {
     ComputeTransmissibilityVariance(id.xy);
 }
 
-[numthreads(8,8,1)]
+[numthreads(NUMTHREADS_2D)]
 void GenerateGBufferQuadTree (uint3 id : SV_DispatchThreadID) {
     float2 uv = (id.xy + 0.5) / g_target_size;
     for(int i = g_lowest_lod;i >= 0;i--) {

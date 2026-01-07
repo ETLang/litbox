@@ -4,6 +4,7 @@ public class ProceduralCloud : PhotonerDemoComponent
 {
     [SerializeField] public Texture2D cloudTexture;
     [SerializeField] public float cloudScale = 1f;
+    [SerializeField] Material foregroundMat;
 
     private MaterialPropertyBlock _propertyBlock;
     private Renderer _renderer;
