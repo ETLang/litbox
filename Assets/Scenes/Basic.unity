@@ -1386,24 +1386,28 @@ MonoBehaviour:
   frameLimit: -1
   width: 512
   height: 512
-  integrationMethod: 5
-  strategy: 0
-  gridCells:
-    x: 16
-    y: 16
   raysPerFrame: 256000
-  energyPrecision: 1000
   photonBounces: -1
-  bilinearPhotonWrites: 1
-  pathSamples: 10
-  pathBalance: 0.5
+  integrationMethod: 5
   integrationInterval: 0.2
   densityGranularity: 10000
   transmissibilityVariationEpsilon: 0.001
   outscatterCoefficient: 0.05
+  enableToneMappping: 1
+  exposure: 0
+  whitePointLog: {x: 2, y: 2, z: 2}
+  blackPointLog: {x: -4, y: -4, z: -5}
   _convergenceThreshold: 0.1
   framesSinceClear: 0
   convergenceProgress: 0.5718811
+  strategy: 0
+  gridCells:
+    x: 16
+    y: 16
+  energyPrecision: 1000
+  bilinearPhotonWrites: 1
+  pathSamples: 10
+  pathBalance: 0.5
   hasConverged: 1
 --- !u!64 &2885319533301894557
 MeshCollider:

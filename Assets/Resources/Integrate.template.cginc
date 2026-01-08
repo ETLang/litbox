@@ -22,15 +22,15 @@
                 bool overshoot = false;
                 ctx.lod = 0;//g_quadTreeLeaves.SampleLevel(sampler_point_clamp, ctx.testUV, 0).x;
 
-                do {
+                //do {
                     ctx.transmissibilityNext = g_transmissibility.SampleLevel(samplerg_transmissibility, ctx.testUV, ctx.lod);
                     ctx.uHitNext = ctx.uHitCurrent + (1 << ctx.lod);
                     overshoot = state.Test(ctx);
                     
-                    if (!overshoot) { break; }
-                    if (ctx.lod <= 0) { break; }
-                    ctx.lod--;
-                } while (true);
+                //     if (!overshoot) { break; }
+                //     if (ctx.lod <= 0) { break; }
+                //     ctx.lod--;
+                // } while (true);
             
                 if(!overshoot) { // Keep propagating
                     ctx.uHitCurrent = ctx.uHitNext;

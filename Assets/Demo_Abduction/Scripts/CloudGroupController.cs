@@ -73,11 +73,12 @@ public class CloudGroupController : PhotonerDemoComponent
 
         if(blurSize != 0) {
             _gaussianBlurShader.RunKernel("GaussianBlur1D", _foregroundSimulationTex.width, _foregroundSimulationTex.height,
-                ("blur_input", _simulation.SimulationOutputHDR.SelectMip(foregroundSimulationLOD)),
+                ("blur_input", _simulation.SimulationOutputHDR),
                 ("blur_output", _intermediateSimulationTex),
                 ("kernel_lut", _weightsLUT),
                 ("sample_offset", new Vector2(sampleOffset.x, 0)),
-                ("sample_increment", new Vector2(pixelSize.x, 0)));
+                ("sample_increment", new Vector2(pixelSize.x, 0)),
+                ("lod", foregroundSimulationLOD));
             _fence = Graphics.CreateGraphicsFence(GraphicsFenceType.AsyncQueueSynchronisation, SynchronisationStageFlags.ComputeProcessing);
 
             Graphics.WaitOnAsyncGraphicsFence(_fence);
@@ -86,7 +87,8 @@ public class CloudGroupController : PhotonerDemoComponent
                 ("blur_output", _foregroundSimulationTex),
                 ("kernel_lut", _weightsLUT),
                 ("sample_offset", new Vector2(0, sampleOffset.y)),
-                ("sample_increment", new Vector2(0, pixelSize.y)));
+                ("sample_increment", new Vector2(0, pixelSize.y)),
+                ("lod", 0));
             _fence = Graphics.CreateGraphicsFence(GraphicsFenceType.AsyncQueueSynchronisation, SynchronisationStageFlags.ComputeProcessing);
 
             Graphics.WaitOnAsyncGraphicsFence(_fence);
@@ -99,6 +101,12 @@ public class CloudGroupController : PhotonerDemoComponent
 
         if(_binder != null) {
             _simulationUVTransform = _binder.ScreenToSimulationUVTransform;
+        }
+
+        if(foregroundCloudMat != null) {
+            foregroundCloudMat.SetFloat("_exposure", _simulation.exposure);
+            foregroundCloudMat.SetVector("_whitePointLog", _simulation.whitePointLog);
+            foregroundCloudMat.SetVector("_blackPointLog", _simulation.blackPointLog);
         }
     }
 
@@ -185,9 +193,6 @@ public class CloudGroupController : PhotonerDemoComponent
             //_gaussianBlurShader.SetVectorArray("kernel_sample_points", _kernelSamples1);
         }
 
-        foregroundCloudMat.SetFloat("_exposure", _simulation.exposure);
-        foregroundCloudMat.SetVector("_whitePointLog", _simulation.whitePointLog);
-        foregroundCloudMat.SetVector("_blackPointLog", _simulation.blackPointLog);
         foregroundCloudMat.SetMatrix(_foregroundSimulationUVTransformId, _simulationUVTransform);
         if(blurSize == 0) {
             foregroundCloudMat.SetTexture(_foregroundSimulationTexId, _simulation.SimulationOutputHDR);

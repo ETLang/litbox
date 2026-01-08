@@ -13,6 +13,7 @@ float kernel_weights[256];
 int kernel_sample_count;
 float2 sample_offset;
 float2 sample_increment;
+int lod;
 
 [numthreads(16,16,1)]
 void GaussianBlur1D (uint3 id : SV_DispatchThreadID) {
@@ -24,9 +25,8 @@ void GaussianBlur1D (uint3 id : SV_DispatchThreadID) {
         float2 sample_uv = uv + i * sample_increment;
 
         float weight = kernel_lut.SampleLevel(sampler_point_clamp, float2((i + 0.5) / kernel_sample_count, 0.5), 0).r;
-        result += blur_input.SampleLevel(samplerblur_input, sample_uv, 0).rgb * weight;//kernel_weights[i];
+        result += blur_input.SampleLevel(samplerblur_input, sample_uv, lod).rgb * weight;
     }
 
-    result /= kernel_sample_count;
     blur_output[id.xy] = float4(result, 1.0);
 }
