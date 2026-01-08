@@ -4,8 +4,9 @@ using System.Linq;
 using UnityEngine;
 using UnityEngine.UIElements;
 using Unity.Mathematics;
+using UnityEngine.Experimental.Rendering;
 
-public static class MiscExtensions {
+public static class TextureExtensions {
     public static T ReadClamped<T>(this T[,] arr, int i, int j) {
         return arr[
             i < 0 ? 0 : (i >= arr.GetLength(0) ? arr.GetLength(0) - 1 : i),
@@ -175,7 +176,6 @@ public static class MiscExtensions {
         return texture;
     }
 
-
     public static Texture AsTexture(this float[,,] lut) {
         var texture = new Texture3D(lut.GetLength(0), lut.GetLength(1), lut.GetLength(2), TextureFormat.RFloat, false, true);
         Color[] c = new Color[lut.GetLength(0) * lut.GetLength(1) * lut.GetLength(2)];
@@ -239,4 +239,101 @@ public static class MiscExtensions {
         texture.Apply();
         return texture;
     }
+
+    // Slow. Do not use frequently.
+    public static float4[,] ForceReadData(this Texture tex, int miplevel = 0) {
+        var tex2d = tex as Texture2D;
+        var tex3d = tex as Texture3D;
+        var renderTex = tex as RenderTexture;
+
+        var w = tex.MipWidth(miplevel);
+        var h = tex.MipHeight(miplevel);
+
+        Color[] pixels;
+
+        if(renderTex != null) {
+            Texture2D readableTex = new Texture2D(w, h, GraphicsFormatUtility.GetTextureFormat(tex.graphicsFormat), false, !tex.isDataSRGB);
+
+            Graphics.SetRenderTarget(renderTex, miplevel);
+            readableTex.ReadPixels(new Rect(0, 0, w, h), 0, 0);
+            readableTex.Apply();
+            pixels = readableTex.GetPixels();
+            GameObject.DestroyImmediate(readableTex);
+        } else if(tex2d != null) {
+            Texture2D readableTex = new Texture2D(w, h, GraphicsFormatUtility.GetTextureFormat(tex.graphicsFormat), false, !tex.isDataSRGB);
+            Graphics.CopyTexture(tex2d, 0, miplevel, readableTex, 0, 0);
+            pixels = readableTex.GetPixels(miplevel);
+        } else if(tex3d != null) {
+            throw new NotImplementedException("ForceReadData not implemented for Texture3D.");
+        } else {
+            throw new NotImplementedException("ForceReadData - Unknown texture type");
+        }
+
+        var result = new float4[w, h];
+
+        for(int j = 0;j < h;j++) {
+            for(int i = 0;i < w;i++) {
+                var c = pixels[i + j * w];
+                result[i,j] = new float4(c.r, c.g, c.b, c.a);
+            }
+        }
+        return result;
+    }
+
+    public static void SaveTextureEXR(this RenderTexture target, string path)
+    {
+        if(target.format != RenderTextureFormat.ARGBFloat) {
+            var descriptor = target.descriptor;
+            descriptor.colorFormat = RenderTextureFormat.ARGBFloat;
+            descriptor.sRGB = false;
+            descriptor.mipCount = 1;
+
+            var floatTarget = new RenderTexture(descriptor);
+            floatTarget.Create();
+
+            var current = RenderTexture.active;
+            Graphics.Blit(target, floatTarget);
+            RenderTexture.active = current;
+            target = floatTarget;
+        }
+
+        Texture2D image = new Texture2D(target.width, target.height, TextureFormat.RGBAFloat, false, true);
+
+        Graphics.SetRenderTarget(target);
+        image.ReadPixels(new Rect(0, 0, image.width, image.height), 0, 0);
+        image.Apply();
+
+        byte[] bytes = image.EncodeToEXR(Texture2D.EXRFlags.CompressZIP);
+        System.IO.File.WriteAllBytes(path, bytes);
+    }
+
+    public static void SaveTexturePNG(this RenderTexture target, string path)
+    {
+        if(!target.sRGB) {
+            var descriptor = target.descriptor;
+            descriptor.colorFormat = RenderTextureFormat.ARGB32;
+            descriptor.sRGB = true;
+            descriptor.mipCount = 1;
+
+            var srgbTarget = new RenderTexture(descriptor);
+            srgbTarget.Create();
+
+            var current = RenderTexture.active;
+            Graphics.Blit(target, srgbTarget);
+            RenderTexture.active = current;
+            target = srgbTarget;
+        }
+
+        Texture2D image = new Texture2D(target.width, target.height, TextureFormat.RGBA32, false, true);
+
+        Graphics.SetRenderTarget(target);
+        image.ReadPixels(new Rect(0, 0, image.width, image.height), 0, 0);
+        image.Apply();
+
+        byte[] bytes = image.EncodeToPNG();
+        System.IO.File.WriteAllBytes(path, bytes);
+
+        GameObject.DestroyImmediate(image);
+    }
+
 }

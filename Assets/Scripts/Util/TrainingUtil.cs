@@ -16,62 +16,6 @@ public static class TrainingUtil
         RenderTexture.active = rt;
     }
 
-    public static void SaveTextureEXR(this RenderTexture target, string path)
-    {
-        if(target.format != RenderTextureFormat.ARGBFloat) {
-            var descriptor = target.descriptor;
-            descriptor.colorFormat = RenderTextureFormat.ARGBFloat;
-            descriptor.sRGB = false;
-            descriptor.mipCount = 1;
-
-            var floatTarget = new RenderTexture(descriptor);
-            floatTarget.Create();
-
-            var current = RenderTexture.active;
-            Graphics.Blit(target, floatTarget);
-            RenderTexture.active = current;
-            target = floatTarget;
-        }
-
-        Texture2D image = new Texture2D(target.width, target.height, TextureFormat.RGBAFloat, false, true);
-
-        Graphics.SetRenderTarget(target);
-        image.ReadPixels(new Rect(0, 0, image.width, image.height), 0, 0);
-        image.Apply();
-
-        byte[] bytes = image.EncodeToEXR(Texture2D.EXRFlags.CompressZIP);
-        System.IO.File.WriteAllBytes(path, bytes);
-    }
-
-    public static void SaveTexturePNG(this RenderTexture target, string path)
-    {
-        if(!target.sRGB) {
-            var descriptor = target.descriptor;
-            descriptor.colorFormat = RenderTextureFormat.ARGB32;
-            descriptor.sRGB = true;
-            descriptor.mipCount = 1;
-
-            var srgbTarget = new RenderTexture(descriptor);
-            srgbTarget.Create();
-
-            var current = RenderTexture.active;
-            Graphics.Blit(target, srgbTarget);
-            RenderTexture.active = current;
-            target = srgbTarget;
-        }
-
-        Texture2D image = new Texture2D(target.width, target.height, TextureFormat.RGBA32, false, true);
-
-        Graphics.SetRenderTarget(target);
-        image.ReadPixels(new Rect(0, 0, image.width, image.height), 0, 0);
-        image.Apply();
-
-        byte[] bytes = image.EncodeToPNG();
-        System.IO.File.WriteAllBytes(path, bytes);
-
-        GameObject.DestroyImmediate(image);
-    }
-
     public static string GetTrainingFolder(string sessionName)
     {
         return Application.dataPath + "/" + sessionName;
