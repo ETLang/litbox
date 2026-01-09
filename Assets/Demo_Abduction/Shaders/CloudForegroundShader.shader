@@ -6,6 +6,8 @@ Shader "Abduction/CloudForeground"
         _Color ("Color", Color) = (1,1,1,1) 
         _ForegroundAmbientTex ("Foreground Ambient Texture", 2D) = "white" {}
         _ForegroundAmbientColor ("Foreground Ambient Color", Color) = (0,0,0,1)
+        _ObscurityStrength ("Obscurity Strength", Float) = 1.0
+        _ObscurityVariation ("Obscurity Variation", Float) = 3.0
     }
     SubShader
     {
@@ -42,6 +44,7 @@ Shader "Abduction/CloudForeground"
             sampler2D _MainTex;
             sampler2D _ForegroundAmbientTex;
             sampler2D _ForegroundSimulationTex;
+            sampler2D _TransmissibilityTex;
             int _ForegroundSimulationLOD;
             float4x4 _ForegroundSimulationUVTransform;
             float2 _ForegroundSimulationTex_Size;
@@ -54,6 +57,8 @@ Shader "Abduction/CloudForeground"
             float _exposure;
             float3 _whitePointLog;
             float3 _blackPointLog;
+            float _ObscurityStrength;
+            float _ObscurityVariation;
 
 
             v2f vert (appdata v)
@@ -80,12 +85,16 @@ Shader "Abduction/CloudForeground"
 
                 float4 c = tex2D(_MainTex, i.uv);
 
+                float alpha = c.a * _Color.a;
+
+                float obscurity = 1-tex2Dlod(_TransmissibilityTex, float4(i.screen_uv, 0, 0)).r;
+
                // float3 simulatedLight = float3(i.screen_uv, 0);
                 float3 simulatedLight = tex2Dlod(_ForegroundSimulationTex, float4(i.screen_uv,0,_ForegroundSimulationLOD)).rgb;
                 float3 ambientLight = tex2D(_ForegroundAmbientTex, i.uv).rgb * _ForegroundAmbientColor;
-                float3 totalLight = simulatedLight + ambientLight;
+                float3 totalLight = simulatedLight*(1 + _ObscurityStrength*(pow(obscurity,_ObscurityVariation) - 1)) + ambientLight;
 
-                return float4(ToneMap_UE5(c.rgb * _Color.rgb * totalLight, tone_shape),1) * c.a * _Color.a;
+                return float4(ToneMap_UE5(c.rgb * _Color.rgb * totalLight, tone_shape),1) * alpha;
             }
             ENDCG
         }

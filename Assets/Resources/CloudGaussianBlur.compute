@@ -1,9 +1,11 @@
 #include "UnityCG.cginc"
 #include "../Shaders/RayTracing2DCommon.cginc"
-#pragma kernel GaussianBlur1D
+#pragma kernel CloudForegroundBlur
 
 Texture2D<float4> blur_input;
 SamplerState samplerblur_input;
+Texture2D<float4> transmissibility;
+SamplerState samplertransmissibility;
 SamplerState sampler_point_clamp;
 RWTexture2D<float4> blur_output;
 Texture2D<float4> kernel_lut;
@@ -14,18 +16,18 @@ int kernel_sample_count;
 float2 sample_offset;
 float2 sample_increment;
 int lod;
+float transmission_depth;
 
 [numthreads(16,16,1)]
-void GaussianBlur1D (uint3 id : SV_DispatchThreadID) {
+void CloudForegroundBlur (uint3 id : SV_DispatchThreadID) {
     float2 uv = (id.xy + 0.5) / TextureSize(blur_output) + sample_offset;
     float3 result = float3(0,0,0);
 
     for(int i = 0;i < kernel_sample_count;i++) {
-        //float2 sample_uv = uv + kernel_sample_points[i].xy;
         float2 sample_uv = uv + i * sample_increment;
-
         float weight = kernel_lut.SampleLevel(sampler_point_clamp, float2((i + 0.5) / kernel_sample_count, 0.5), 0).r;
-        result += blur_input.SampleLevel(samplerblur_input, sample_uv, lod).rgb * weight;
+        float t = transmissibility.SampleLevel(samplertransmissibility, sample_uv, lod).x;
+        result += blur_input.SampleLevel(samplerblur_input, sample_uv, lod).rgb * weight * pow(t, transmission_depth);
     }
 
     blur_output[id.xy] = float4(result, 1.0);

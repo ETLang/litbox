@@ -10,6 +10,7 @@ public class CloudGroupController : PhotonerDemoComponent
     [SerializeField] Material foregroundCloudMat;
     [SerializeField] int foregroundSimulationLOD = 5;
     [SerializeField, Range(0, 120)] int blurSize = 1; // kernelsize = 2 * blurSize + 1
+    [SerializeField, Range(0, 3)] float transmissionDepth = 1.5f;
     
     Simulation _simulation;
     BindSimulationToCamera _binder;
@@ -29,6 +30,7 @@ public class CloudGroupController : PhotonerDemoComponent
     private static int _foregroundSimulationTexId = Shader.PropertyToID("_ForegroundSimulationTex");
     private static int _foregroundSimuilationLodId = Shader.PropertyToID("_ForegroundSimulationLOD");
     private static int _foregroundSimulationUVTransformId = Shader.PropertyToID("_ForegroundSimulationUVTransform");
+    private static int _transmissionDepthId = Shader.PropertyToID("transmission_depth");
 
     public CloudGroupController()
     {
@@ -38,11 +40,12 @@ public class CloudGroupController : PhotonerDemoComponent
         DetectChanges(() => _simulationUVTransform);
         DetectChanges(() => _simulation?.SimulationOutputHDR.width, "foregroundSimulation");
         DetectChanges(() => _simulation?.SimulationOutputHDR.height, "foregroundSimulation");
+        DetectChanges(() => transmissionDepth);
     }
 
     void Awake()
     {
-        _gaussianBlurShader = (ComputeShader)Resources.Load("GaussianBlur");
+        _gaussianBlurShader = (ComputeShader)Resources.Load("CloudGaussianBlur");
         _binder = Camera.main.GetComponentInChildren<BindSimulationToCamera>();
         _simulation = _binder.GetComponent<Simulation>();
     }
@@ -72,9 +75,11 @@ public class CloudGroupController : PhotonerDemoComponent
         Vector2 sampleOffset = -_kernelSampleCount * pixelSize / 2.0f;
 
         if(blurSize != 0) {
-            _gaussianBlurShader.RunKernel("GaussianBlur1D", _foregroundSimulationTex.width, _foregroundSimulationTex.height,
+            _gaussianBlurShader.RunKernel("CloudForegroundBlur", _foregroundSimulationTex.width, _foregroundSimulationTex.height,
                 ("blur_input", _simulation.SimulationOutputHDR),
                 ("blur_output", _intermediateSimulationTex),
+                ("transmissibility", _simulation.GBufferTransmissibility),
+                ("transmission_depth", transmissionDepth),
                 ("kernel_lut", _weightsLUT),
                 ("sample_offset", new Vector2(sampleOffset.x, 0)),
                 ("sample_increment", new Vector2(pixelSize.x, 0)),
@@ -82,9 +87,11 @@ public class CloudGroupController : PhotonerDemoComponent
             _fence = Graphics.CreateGraphicsFence(GraphicsFenceType.AsyncQueueSynchronisation, SynchronisationStageFlags.ComputeProcessing);
 
             Graphics.WaitOnAsyncGraphicsFence(_fence);
-            _gaussianBlurShader.RunKernel("GaussianBlur1D", _foregroundSimulationTex.width, _foregroundSimulationTex.height,
+            _gaussianBlurShader.RunKernel("CloudForegroundBlur", _foregroundSimulationTex.width, _foregroundSimulationTex.height,
                 ("blur_input", _intermediateSimulationTex),
                 ("blur_output", _foregroundSimulationTex),
+                ("transmissibility", _simulation.GBufferTransmissibility),
+                ("transmission_depth", transmissionDepth),
                 ("kernel_lut", _weightsLUT),
                 ("sample_offset", new Vector2(0, sampleOffset.y)),
                 ("sample_increment", new Vector2(0, pixelSize.y)),
@@ -193,6 +200,8 @@ public class CloudGroupController : PhotonerDemoComponent
             //_gaussianBlurShader.SetVectorArray("kernel_sample_points", _kernelSamples1);
         }
 
+        foregroundCloudMat.SetTexture("_TransmissibilityTex", _simulation.GBufferTransmissibility);
+        foregroundCloudMat.SetFloat(_transmissionDepthId, transmissionDepth);
         foregroundCloudMat.SetMatrix(_foregroundSimulationUVTransformId, _simulationUVTransform);
         if(blurSize == 0) {
             foregroundCloudMat.SetTexture(_foregroundSimulationTexId, _simulation.SimulationOutputHDR);
