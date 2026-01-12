@@ -11,6 +11,7 @@ Shader "Unlit/SkyShader"
 
         Pass
         {
+            ZWrite Off
             Blend SrcAlpha OneMinusSrcAlpha
 
             CGPROGRAM

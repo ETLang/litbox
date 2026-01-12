@@ -13,6 +13,7 @@ Shader "Photoner/SimulationCompositor"
         {
             Lighting Off
             Cull Off
+            ZWrite Off
             Blend One OneMinusSrcAlpha
 
             CGPROGRAM
