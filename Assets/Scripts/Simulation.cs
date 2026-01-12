@@ -91,7 +91,7 @@ public class Simulation : DisposalHelperComponent
     [SerializeField, Range(0, 0.5f)] private float outscatterCoefficient = 0.01f;
     
     [Header("Tone Mapping")]
-    [SerializeField] public bool enableToneMappping = true;
+    [SerializeField] public bool enableToneMapping = true;
     [SerializeField] public float exposure = 0.0f;
     [SerializeField] public Vector3 whitePointLog = new Vector3(2.0f, 2.0f, 2.0f);
     [SerializeField] public Vector3 blackPointLog = new Vector3(-4.0f, -4.0f, -5.0f);
@@ -704,7 +704,7 @@ public class Simulation : DisposalHelperComponent
 
         // TONE MAPPING
         // TODO: Leverage adaptive sampling from photon count buffer
-        if (enableToneMappping)
+        if (enableToneMapping)
         {
             _computeShader.RunKernel("ToneMap", width, height,
                 ("g_hdr", SimulationOutputHDR),
@@ -719,7 +719,12 @@ public class Simulation : DisposalHelperComponent
         }
 
         SimulationOutputToneMapped = _renderTexture[_currentRenderTextureIndex];
-        _compositorMat.SetTexture(_MainTexID, SimulationOutputToneMapped);
+
+        if(enableToneMapping) {
+            _compositorMat.SetTexture(_MainTexID, SimulationOutputToneMapped);
+        } else {
+            _compositorMat.SetTexture(_MainTexID, SimulationOutputHDR);
+        }
 
         OnStep?.Invoke(framesSinceClear);
 

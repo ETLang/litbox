@@ -1192,7 +1192,7 @@ void ToneMap (uint3 id : SV_DispatchThreadID) {
     // }
 
     //g_output_tonemapped[id.xy] = float4(ToneMap_UE5(hdrValue.rgb), 1);
-    ToneMappingShape tone_shape = {
+    ToneMappingShape_UE5 tone_shape = {
         g_exposure,
         g_whitePointLog,
         g_blackPointLog
