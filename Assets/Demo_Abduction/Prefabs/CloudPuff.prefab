@@ -233,6 +233,7 @@ GameObject:
   serializedVersion: 6
   m_Component:
   - component: {fileID: 5838393114117271183}
+  - component: {fileID: 1943826333388570524}
   m_Layer: 0
   m_Name: CloudPuff
   m_TagString: Untagged
@@ -258,6 +259,22 @@ Transform:
   - {fileID: 1217696345861641214}
   m_Father: {fileID: 0}
   m_LocalEulerAnglesHint: {x: 0, y: 0, z: 0}
+--- !u!114 &1943826333388570524
+MonoBehaviour:
+  m_ObjectHideFlags: 0
+  m_CorrespondingSourceObject: {fileID: 0}
+  m_PrefabInstance: {fileID: 0}
+  m_PrefabAsset: {fileID: 0}
+  m_GameObject: {fileID: 8776168904157660944}
+  m_Enabled: 1
+  m_EditorHideFlags: 0
+  m_Script: {fileID: 11500000, guid: 54a6d634bd2581b4aa47d7be261b96c1, type: 3}
+  m_Name: 
+  m_EditorClassIdentifier: Assembly-CSharp::CloudPuff
+  puffThickness: 1
+  rayTracedObject: {fileID: 7131339840463288196}
+  backgroundObject: {fileID: 8526477048624256229}
+  foregroundObject: {fileID: 2223380210963642499}
 --- !u!1001 &7758221249338470067
 PrefabInstance:
   m_ObjectHideFlags: 0
@@ -328,3 +345,14 @@ Transform:
   m_CorrespondingSourceObject: {fileID: 2684394036290301758, guid: 841ea4ee117571a469ac4000e56e77d5, type: 3}
   m_PrefabInstance: {fileID: 7758221249338470067}
   m_PrefabAsset: {fileID: 0}
+--- !u!114 &7131339840463288196 stripped
+MonoBehaviour:
+  m_CorrespondingSourceObject: {fileID: 674738203580913975, guid: 841ea4ee117571a469ac4000e56e77d5, type: 3}
+  m_PrefabInstance: {fileID: 7758221249338470067}
+  m_PrefabAsset: {fileID: 0}
+  m_GameObject: {fileID: 0}
+  m_Enabled: 1
+  m_EditorHideFlags: 0
+  m_Script: {fileID: 11500000, guid: 28d460496ca4a42079dfe1d475e93ab8, type: 3}
+  m_Name: 
+  m_EditorClassIdentifier: Assembly-CSharp::RTObject
