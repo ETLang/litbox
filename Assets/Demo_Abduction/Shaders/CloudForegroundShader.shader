@@ -16,6 +16,7 @@ Shader "Abduction/CloudForeground"
         Pass
         {
             Blend One OneMinusSrcAlpha
+            ZWrite Off
 
             CGPROGRAM
             #pragma vertex vert

@@ -10,7 +10,12 @@ public class PhotonerDemoComponent : DisposalHelperComponent
     private bool _autoUpdate;
 
     private static Action<string> _onGlobalChangeCheck;
+
+    #if UNITY_EDITOR
     private bool IsAvailable => (bool)this && UnityEditor.EditorApplication.isPlaying;
+    #else
+    private bool IsAvailable => (bool)this;
+    #endif
 
     public static void CheckForGlobalChanges()
     {

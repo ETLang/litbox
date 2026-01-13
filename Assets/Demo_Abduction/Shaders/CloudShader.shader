@@ -13,6 +13,7 @@ Shader "Abduction/Cloud"
         Pass
         {
             Blend One OneMinusSrcAlpha
+            ZWrite Off
 
             CGPROGRAM
             #pragma vertex vert
