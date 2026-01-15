@@ -13,11 +13,8 @@ public delegate void SimulationConvergedEvent();
 [Serializable]
 public struct SimulationProfile {
     public int frameLimit;
-    public int resolution;
     public int raysPerFrame;
     public int photonBounces;
-    public float transmissibilityVariationEps;
-    public float outscatterCoefficient;
 }
 
 [RequireComponent(typeof(MeshRenderer))]
@@ -88,7 +85,6 @@ public class Simulation : DisposalHelperComponent
     [SerializeField] private float integrationInterval = 0.1f;
     [SerializeField] private int densityGranularity = 10000;
     [SerializeField] private float transmissibilityVariationEpsilon = 1e-3f;
-    [SerializeField, Range(0, 0.5f)] private float outscatterCoefficient = 0.01f;
     
     [Header("Tone Mapping")]
     [SerializeField] public bool enableToneMapping = true;
@@ -195,11 +191,7 @@ public class Simulation : DisposalHelperComponent
     public void LoadProfile(SimulationProfile profile)
     {
         frameLimit = profile.frameLimit;
-        width = profile.resolution;
-        height = profile.resolution;
         raysPerFrame = profile.raysPerFrame;
-        transmissibilityVariationEpsilon = profile.transmissibilityVariationEps;
-        outscatterCoefficient = profile.outscatterCoefficient;
         photonBounces = profile.photonBounces;
         hasConverged = false;
         framesSinceClear = 0;
@@ -419,7 +411,6 @@ public class Simulation : DisposalHelperComponent
     Matrix4x4 _previousSimulationMatrix;
     HashSet<RTLightSource> _previousLightSources = new HashSet<RTLightSource>();
     HashSet<RTObject> _previousObjects = new HashSet<RTObject>();
-    float _previousOutscatterCoefficient;
     float _previousPathBalance;
     int _sceneId;
     IntegrationMethod _previousIntegrationMethod;
@@ -434,13 +425,11 @@ public class Simulation : DisposalHelperComponent
             !allObjects.All(o => _previousObjects.Contains(o)) ||
             allObjects.Any(o => o.Changed) ||
             _previousSimulationMatrix != worldToPresentation ||
-            _previousOutscatterCoefficient != outscatterCoefficient ||
             _previousPathBalance != pathBalance ||
             _previousIntegrationMethod != integrationMethod;
 
         _previousIntegrationMethod = integrationMethod;
         _previousPathBalance = pathBalance;
-        _previousOutscatterCoefficient = outscatterCoefficient;
         _previousSimulationMatrix = worldToPresentation;
         _previousLightSources.Clear();
         foreach (var light in allLights)
@@ -560,7 +549,6 @@ public class Simulation : DisposalHelperComponent
         _computeShader.SetInt("g_4x4_lod", (int)(GBufferTransmissibility.mipmapCount - 3));
         _computeShader.SetFloat("g_lightEmissionOutscatter", 0);
         _computeShader.SetInt("g_density_granularity", densityGranularity);
-        _computeShader.SetFloat("g_outscatterCoefficient", outscatterCoefficient);
         _computeShader.SetShaderFlag("BILINEAR_PHOTON_DISTRIBUTION", bilinearPhotonWrites);
 
         _computeShader.SetShaderFlag("INTEGRATE_EXPLICIT", false);
@@ -714,15 +702,10 @@ public class Simulation : DisposalHelperComponent
                 ("g_blackPointLog", blackPointLog),
                 ("g_whitePointLog", whitePointLog),
                 ("g_exposure", exposure));
-        } else {
-            SimulationOutputToneMapped = SimulationOutputHDR;
-        }
-
-        SimulationOutputToneMapped = _renderTexture[_currentRenderTextureIndex];
-
-        if(enableToneMapping) {
+            SimulationOutputToneMapped = _renderTexture[_currentRenderTextureIndex];
             _compositorMat.SetTexture(_MainTexID, SimulationOutputToneMapped);
         } else {
+            SimulationOutputToneMapped = SimulationOutputHDR;
             _compositorMat.SetTexture(_MainTexID, SimulationOutputHDR);
         }
 

@@ -85,7 +85,6 @@ float g_path_balance;
 float2 g_importance_sampling_target;
 float g_integration_interval;
 
-float g_outscatterCoefficient;
 uint3 g_lightEnergy;
 float g_lightEmissionOutscatter;
 

@@ -28,7 +28,7 @@ public struct JsonLightData {
 }
 
 
-public class TrainingManager : MonoBehaviour {
+public class TrainingManager : DisposalHelperComponent {
     [SerializeField] bool _train;
     [SerializeField] bool _continuePreviousSession;
     [SerializeField] public string outputFolder;
@@ -66,9 +66,14 @@ public class TrainingManager : MonoBehaviour {
     float _estimatedConvergenceTime = 0;
 
     int _activeProfile;
-    string _imagePathPNG;
-    string _imagePathEXR;
+    string _previewPathPNG;
+    string _radiancePathEXR;
+    string _albedoPathPNG;
+    string _transmissibilityPathEXR;
+    string _photonCountPathEXR;
+
     RenderTexture[] profileSamples;
+    ComputeShader _sceneOutputPrepShader;
 
     public bool IsGenerating { get; private set; }
 
@@ -84,8 +89,11 @@ public class TrainingManager : MonoBehaviour {
         while(_generatedSamples < _samplesToGenerateThisSession) {
             int sampleId;
             if(_activeProfile == inputProfiles.Length) {
-                _imagePathPNG = null;
-                _imagePathEXR = null;
+                _previewPathPNG = null;
+                _radiancePathEXR = null;
+                _albedoPathPNG = null;
+                _transmissibilityPathEXR = null;
+                _photonCountPathEXR = null;
                 _generatedSamples++;
                 if(profileSamples != null) {
                     foreach(var sample in profileSamples) {
@@ -117,15 +125,19 @@ public class TrainingManager : MonoBehaviour {
 
             _activeProfile++;
 
+            _albedoPathPNG = Path.Combine(_datasetPath, $"Albedo_{sampleId:00000}.png");
+            _transmissibilityPathEXR = Path.Combine(_datasetPath, $"Transmissibility_{sampleId:00000}.exr");
             if(_activeProfile == inputProfiles.Length) {
-                _imagePathPNG = Path.Combine(_datasetPath, $"Output_{sampleId:00000}.png");
-                _imagePathEXR = Path.Combine(_datasetPath, $"Output_{sampleId:00000}.exr");
+                _previewPathPNG = Path.Combine(_datasetPath, $"Output_Preview_{sampleId:00000}.png");
+                _radiancePathEXR = Path.Combine(_datasetPath, $"Output_Radiance_{sampleId:00000}.exr");
+                _photonCountPathEXR = Path.Combine(_datasetPath, $"Output_PhotonCount_{sampleId:00000}.exr");
             } else {
-                _imagePathPNG = Path.Combine(_datasetPath, $"Input_{_activeProfile}_{sampleId:00000}.png");
-                _imagePathEXR = Path.Combine(_datasetPath, $"Input_{_activeProfile}_{sampleId:00000}.exr");
+                _previewPathPNG = Path.Combine(_datasetPath, $"Input{_activeProfile}_Preview_{sampleId:00000}.png");
+                _radiancePathEXR = Path.Combine(_datasetPath, $"Input{_activeProfile}_Radiance_{sampleId:00000}.exr");
+                _photonCountPathEXR = Path.Combine(_datasetPath, $"PhotonCount{_activeProfile}_{sampleId:00000}.exr");
             }
 
-            if(File.Exists(_imagePathPNG) && File.Exists(_imagePathEXR)) {
+            if(File.Exists(_previewPathPNG) && File.Exists(_radiancePathEXR)) {
                 continue;
             }
 
@@ -139,6 +151,7 @@ public class TrainingManager : MonoBehaviour {
 
     void Start() {
         _rand = new Random(Environment.TickCount);
+        _sceneOutputPrepShader = (ComputeShader)Resources.Load("TrainingSceneOutputPrep");
 
         if (_continuePreviousSession) {
             _datasetPath = Directory.GetDirectories(outputFolder).OrderByDescending(s => s).FirstOrDefault();
@@ -168,6 +181,7 @@ public class TrainingManager : MonoBehaviour {
         _simulation.OnConvergenceUpdate += OnSimulationConvergenceUpdate;
 
 
+
         /*
 
         Important Sampling thoughts:
@@ -187,7 +201,7 @@ public class TrainingManager : MonoBehaviour {
 
     }
 
-    void OnDisable() {
+    protected override void OnDisable() {
         _simulation.OnStep -= OnSimulationStep;
         _simulation.OnConverged -= OnSimulationConverged;
 
@@ -207,14 +221,47 @@ public class TrainingManager : MonoBehaviour {
         }
     }
 
+    RenderTexture _tempEXRImage;
+    RenderTexture GetTempEXRImage()
+    {
+        if(!_tempEXRImage) {
+            _tempEXRImage = this.CreateRWTexture(_simulation.width, _simulation.height, RenderTextureFormat.ARGBFloat);
+        }
+        return _tempEXRImage;
+    }
+
     void OnSimulationConverged() {
         if (IsGenerating)
         {
-            _simulation.SimulationOutputHDR.SaveTextureEXR(_imagePathEXR);
-            _simulation.SimulationOutputToneMapped.SaveTexturePNG(_imagePathPNG);
+            if(!File.Exists(_albedoPathPNG))
+            {
+                _simulation.GBufferAlbedo.SaveTexturePNG(_albedoPathPNG);
+            }
+
+            if(!File.Exists(_transmissibilityPathEXR))
+            {
+                var img = GetTempEXRImage();
+                _sceneOutputPrepShader.RunKernel("MakeTransmissibilityTensor", img.width, img.height,
+                    ("in_transmissibility", _simulation.GBufferTransmissibility),
+                    ("in_photon_count", _simulation.PhotonDensityBuffer),
+                    ("out_transmissibility", img));
+                img.SaveTextureEXR(_transmissibilityPathEXR);
+            }
+
+            {
+                var img = GetTempEXRImage();
+                _sceneOutputPrepShader.RunKernel("MakePhotonCountTensor", img.width, img.height,
+                    ("in_transmissibility", _simulation.GBufferTransmissibility),
+                    ("in_photon_count", _simulation.PhotonDensityBuffer),
+                    ("out_photon_count", img));
+                img.SaveTextureEXR(_photonCountPathEXR);
+            }
+            
+            _simulation.SimulationOutputHDR.SaveTextureEXR(_radiancePathEXR);
+           // _simulation.SimulationOutputToneMapped.SaveTexturePNG(_previewPathPNG);
             if (_activeProfile == inputProfiles.Length)
             {
-                _simulation.SimulationOutputToneMapped.SaveTexturePNG(_imagePathPNG);
+                _simulation.SimulationOutputToneMapped.SaveTexturePNG(_previewPathPNG);
                 Debug.Log($"Completed Scene {_generatedSamples:00000}");
             }
             else
@@ -280,7 +327,7 @@ public class TrainingManager : MonoBehaviour {
             });
 
             light.color = _rand.NextLightColor();
-            light.intensity = _rand.NextRange(0.01f, 150f, 0.2f);
+            light.intensity = _rand.NextRange(0.01f, 10);
 
             switch (light.type) {
                 case "Directional":

@@ -113,8 +113,8 @@ public class TrainingSubstrate : MonoBehaviour {
         noiseFloor = rand.NextRange(0, 0.6f, 0.75f);
         noiseCeiling = rand.NextRange(0.6f, 1);
 
-        colorA = Color.HSVToRGB(rand.NextSingle(), rand.NextSingle(), 1);
-        colorB = Color.HSVToRGB(rand.NextSingle(), rand.NextSingle(), 1);
+        colorA = Color.HSVToRGB(rand.NextSingle(), rand.NextRange(0,1,0.75f), rand.NextRange(0.25f, 1, 0.75f));
+        colorB = Color.HSVToRGB(rand.NextSingle(), rand.NextRange(0,1,0.75f), rand.NextRange(0.25f, 1, 0.75f));
         densityA = Mathf.Min(Mathf.Pow(10, rand.NextRange(-3, 0)), 0.9f);
         densityB = Mathf.Min(Mathf.Pow(10, rand.NextRange(-3, 0)), 0.9f);
         
