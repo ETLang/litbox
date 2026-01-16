@@ -244,24 +244,27 @@ MonoBehaviour:
   frameLimit: -1
   width: 512
   height: 512
+  viewThicknessLog: 3
+  raysPerFrame: 128000
+  photonBounces: -1
   integrationMethod: 5
+  integrationInterval: 0.1
+  densityGranularity: 10000
+  transmissibilityVariationEpsilon: 0.001
+  enableToneMapping: 1
+  exposure: 0
+  whitePointLog: {x: 2, y: 2, z: 2}
+  blackPointLog: {x: -4, y: -4, z: -5}
+  _convergenceThreshold: -1
+  framesSinceClear: 0
+  convergenceProgress: 100000
   strategy: 0
   gridCells:
     x: 8
     y: 8
-  raysPerFrame: 128000
   energyPrecision: 1000
-  photonBounces: -1
   bilinearPhotonWrites: 1
   pathSamples: 10
-  pathBalance: 0.5
-  integrationInterval: 0.1
-  densityGranularity: 10000
-  transmissibilityVariationEpsilon: 0.001
-  outscatterCoefficient: 0.01
-  _convergenceThreshold: -1
-  framesSinceClear: 0
-  convergenceProgress: 100000
   hasConverged: 0
 --- !u!33 &443151170
 MeshFilter:
@@ -338,7 +341,7 @@ Material:
   m_CustomRenderQueue: -1
   stringTagMap: {}
   disabledShaderPasses: []
-  m_LockedProperties: 
+  m_LockedProperties: _MainTex
   m_SavedProperties:
     serializedVersion: 3
     m_TexEnvs:

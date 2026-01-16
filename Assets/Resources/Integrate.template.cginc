@@ -1,4 +1,4 @@
-    void Integrate(inout Ray photon, MONTE_CARLO_MODEL state) { 
+    void INTEGRATOR_NAME(inout Ray photon, MONTE_CARLO_MODEL state) { 
         IntegrationContext ctx;
         ctx.Init(photon);
 
@@ -11,14 +11,14 @@
             float2 uvOrigin = ctx.photon.Origin / g_target_size;
             float2 uvDirection = ctx.photon.Direction / g_target_size;
             float4 uBoundaryBox = (float4(0,1,0,1) - uvOrigin.xxyy) / uvDirection.xxyy;
+
             ctx.uEscape = min(max(uBoundaryBox[0], uBoundaryBox[1]), max(uBoundaryBox[2], uBoundaryBox[3]));
+            ctx.uHitCurrent = 0;
+            ctx.testUV = uvOrigin;
 
             state.BeginTraversal(ctx);
-
-            ctx.uHitCurrent = 0;
             bool continueRunning = true;
             for(int steps = 0;steps < 3000;steps++) {
-                ctx.testUV = uvOrigin + uvDirection * ctx.uHitCurrent;
                 bool overshoot = false;
                 ctx.lod = 0;//g_quadTreeLeaves.SampleLevel(sampler_point_clamp, ctx.testUV, 0).x;
 
@@ -34,6 +34,7 @@
             
                 if(!overshoot) { // Keep propagating
                     ctx.uHitCurrent = ctx.uHitNext;
+                    ctx.testUV = uvOrigin + uvDirection * ctx.uHitCurrent;
                     if(!state.Propagate(ctx)) {
                         continueRunning = false;
                         break;
@@ -59,4 +60,6 @@
                 bounce++;
             }
         }
+
+        photon = ctx.photon;
     }

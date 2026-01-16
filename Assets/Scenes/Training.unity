@@ -1127,7 +1127,7 @@ MonoBehaviour:
   m_Name: 
   m_EditorClassIdentifier: 
   _train: 1
-  _continuePreviousSession: 1
+  _continuePreviousSession: 0
   outputFolder: ./training_data
   _samplesToGenerate: 30000
   inputProfiles:

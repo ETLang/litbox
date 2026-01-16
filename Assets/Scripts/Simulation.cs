@@ -78,6 +78,7 @@ public class Simulation : DisposalHelperComponent
     [RenamedFrom("textureResolution")]
     [SerializeField] public int width = 256;
     [SerializeField] public int height = 256;
+    [SerializeField, Range(0,6)] public float viewThicknessLog = 3;
 
     [SerializeField] private int raysPerFrame = 512000;
     [SerializeField] private int photonBounces = -1;
@@ -103,7 +104,6 @@ public class Simulation : DisposalHelperComponent
     [SerializeField] private int energyPrecision = 100;
     [SerializeField] private bool bilinearPhotonWrites = true;
     [SerializeField] private int pathSamples = 10;
-    [SerializeField, Range(0, 1)] private float pathBalance = 0.5f;
 
     private static int _MainTexID = Shader.PropertyToID("_MainTex");
     private Material _compositorMat;
@@ -152,9 +152,10 @@ public class Simulation : DisposalHelperComponent
     public RenderTexture GBufferNormalAlignment { get; private set; }
     public RenderTexture GBufferQuadTreeLeaves { get; private set; }
 
-    public RenderTexture SimulationPhotonsForward { get; private set; }
-    public RenderTexture SimulationOutputRaw { get; private set; }
-    public RenderTexture SimulationOutputAccumulated { get; private set; }
+    public RenderTexture SimulationPhotonsRaw { get; private set; }
+    public RenderTexture SimulationForwardHDR { get;private set; }
+    public RenderTexture SimulationForwardAccumulated { get; private set; }
+    public RenderTexture SimulationBackwardAccumulated { get; private set; }
     public RenderTexture SimulationOutputHDR { get; private set; }
     public RenderTexture SimulationOutputToneMapped { get; private set; }
     public RenderTexture PhotonDensityBuffer { get; private set; }
@@ -356,9 +357,10 @@ public class Simulation : DisposalHelperComponent
             _renderTexture[i] = this.CreateRWTexture(width, height, RenderTextureFormat.DefaultHDR);
         }
 
-        SimulationPhotonsForward = this.CreateRWTexture(width * 3, height, RenderTextureFormat.RInt);
-        SimulationOutputRaw = this.CreateRWTexture(width * 3, height, RenderTextureFormat.RInt);
-        SimulationOutputAccumulated = this.CreateRWTexture(width, height, RenderTextureFormat.ARGBFloat);
+        SimulationPhotonsRaw = this.CreateRWTexture(width * 3, height, RenderTextureFormat.RInt);
+        SimulationForwardHDR = this.CreateRWTexture(width, height, RenderTextureFormat.ARGBFloat);
+        SimulationForwardAccumulated = this.CreateRWTexture(width, height, RenderTextureFormat.ARGBFloat);
+        SimulationBackwardAccumulated = this.CreateRWTexture(width, height, RenderTextureFormat.ARGBFloat);
         SimulationOutputHDR = this.CreateRWTextureWithMips(width, height, RenderTextureFormat.ARGBFloat);
         PhotonDensityBuffer = this.CreateRWTextureWithMips(width, height, RenderTextureFormat.RInt);
 
@@ -411,9 +413,10 @@ public class Simulation : DisposalHelperComponent
     Matrix4x4 _previousSimulationMatrix;
     HashSet<RTLightSource> _previousLightSources = new HashSet<RTLightSource>();
     HashSet<RTObject> _previousObjects = new HashSet<RTObject>();
-    float _previousPathBalance;
     int _sceneId;
     IntegrationMethod _previousIntegrationMethod;
+    Strategy _previousStrategy;
+    float _previousViewThicknessLog;
 
     bool CheckChanged(RTLightSource[] allLights, RTObject[] allObjects, Matrix4x4 worldToPresentation)
     {
@@ -425,11 +428,11 @@ public class Simulation : DisposalHelperComponent
             !allObjects.All(o => _previousObjects.Contains(o)) ||
             allObjects.Any(o => o.Changed) ||
             _previousSimulationMatrix != worldToPresentation ||
-            _previousPathBalance != pathBalance ||
-            _previousIntegrationMethod != integrationMethod;
+            _previousIntegrationMethod != integrationMethod || 
+            _previousViewThicknessLog != viewThicknessLog ||
+            strategy != _previousStrategy;
 
         _previousIntegrationMethod = integrationMethod;
-        _previousPathBalance = pathBalance;
         _previousSimulationMatrix = worldToPresentation;
         _previousLightSources.Clear();
         foreach (var light in allLights)
@@ -437,6 +440,8 @@ public class Simulation : DisposalHelperComponent
         _previousObjects.Clear();
         foreach (var o in allObjects)
             _previousObjects.Add(o);
+        _previousStrategy = strategy;
+        _previousViewThicknessLog = viewThicknessLog;
 
         return changed;
     }
@@ -520,9 +525,14 @@ public class Simulation : DisposalHelperComponent
             convergenceProgress = -1;
             ConvergenceStartTime = now;
 
-            SimulationOutputRaw.Clear(Color.clear);
-            SimulationOutputAccumulated.Clear(Color.clear);
+            SimulationPhotonsRaw.Clear(Color.clear);
+            SimulationForwardAccumulated.Clear(Color.clear);
             PhotonDensityBuffer.Clear(Color.clear);
+
+            if(strategy == Strategy.Hybrid)
+            {
+                SimulationBackwardAccumulated.Clear(Color.clear);
+            }
 
             for (int i = 0; i < _gridCellState.Length; i++)
             {
@@ -581,6 +591,15 @@ public class Simulation : DisposalHelperComponent
         }
         
 
+        for (int i = 0; i < _gridCellInput.Length; i++)
+        {
+            if (_gridCellInput[i].IsActive != 0)
+            {
+                _gridCellInput[i].FrameCount++;
+            }
+        }
+        _gridCellInputBuffer.SetData(_gridCellInput);
+
         float energyNormPerFrame = 1;
         float pixelCount = width * height;
 
@@ -602,11 +621,18 @@ public class Simulation : DisposalHelperComponent
                 energyNormPerFrame = raysPerFrame / pixelCount;
                 _computeShader.SetFloat("g_energy_norm", (float)((double)uint.MaxValue / pixelCount * energyPrecision));
 
-                _computeShader.SetShaderFlag("FILTER_INACTIVE_CELLS", true);
+                _computeShader.SetShaderFlag("FILTER_INACTIVE_CELLS", false);
                 foreach (var light in allLights)
                 {
-                    SimulateLight(light, strategy, photonBounces != -1 ? photonBounces : (int)light.bounces, worldToTargetSpace, SimulationOutputRaw);
+                    SimulateLight(light, strategy, photonBounces != -1 ? photonBounces : (int)light.bounces, worldToTargetSpace, SimulationPhotonsRaw);
                 }
+                
+                // HDR MAPPING
+                _computeShader.RunKernel("ConvertToHDR", width, height,
+                    ("g_output_raw", SimulationPhotonsRaw),
+                    ("g_output_accumulated", SimulationForwardAccumulated),
+                    ("g_output_hdr", SimulationOutputHDR),
+                    ("g_convergenceCellStateIn", _gridCellInputBuffer));
                 break;
             case Strategy.PathTracing:
                 // Path tracing technique:
@@ -619,7 +645,6 @@ public class Simulation : DisposalHelperComponent
                 //     When a light source is hit, the value of the light is added to the associated pixel.
 
                 // TODO
-                SimulationPhotonsForward.Clear(Color.clear);
                 break;
             case Strategy.Hybrid:
                 // Hybrid forward/backward tracing technique
@@ -634,21 +659,25 @@ public class Simulation : DisposalHelperComponent
 
                 energyNormPerFrame = raysPerFrame / pixelCount;
                 _computeShader.SetFloat("g_energy_norm", (float)((double)uint.MaxValue / pixelCount * energyPrecision));
-                _computeShader.SetFloat("g_path_balance", pathBalance);
 
                 // Clear intermediate target
-                SimulationPhotonsForward.Clear(Color.clear);
                 _computeShader.SetShaderFlag("FILTER_INACTIVE_CELLS", false);
                 foreach (var light in allLights)
                 {
-                    SimulateLight(light, Strategy.LightTransport, photonBounces != -1 ? photonBounces / 2 : (int)light.bounces, worldToTargetSpace, SimulationPhotonsForward);
+                    SimulateLight(light, Strategy.LightTransport, photonBounces != -1 ? photonBounces / 2 : (int)light.bounces, worldToTargetSpace, SimulationPhotonsRaw);
                 }
 
-                _computeShader.SetShaderFlag("FILTER_INACTIVE_CELLS", true);
-                _computeShader.RunKernel("Simulate_View_Backward", width, height,
+                // HDR MAPPING
+                _computeShader.RunKernel("ConvertToHDR", width, height,
+                    ("g_output_raw", SimulationPhotonsRaw),
+                    ("g_output_accumulated", SimulationForwardAccumulated),
+                    ("g_output_hdr", SimulationForwardHDR),
+                    ("g_convergenceCellStateIn", _gridCellInputBuffer));
+
+                _computeShader.RunKernel("Simulate_Camera", width, height,
                     ("g_rand", _randomBuffer),
-                    ("g_photons_forward", SimulationPhotonsForward),
-                    ("g_output_raw", SimulationOutputRaw),
+                    ("g_hdr", SimulationForwardHDR),
+                    ("g_output_hdr", SimulationBackwardAccumulated),
                     ("g_albedo", GBufferAlbedo),
                     ("g_transmissibility", GBufferTransmissibility),
                     ("g_normalAlignment", GBufferNormalAlignment),
@@ -657,25 +686,16 @@ public class Simulation : DisposalHelperComponent
                     ("g_teardropScatteringLUT", _teardropScatteringLUT),
                     ("g_bdrfLUT", _bdrfLUT),
                     ("g_convergenceCellStateIn", _gridCellInputBuffer),
-                    ("g_convergenceCellStateOut", _gridCellOutputBuffer));
+                    ("g_convergenceCellStateOut", _gridCellOutputBuffer),
+                    ("g_view_thickness", Mathf.Pow(10, viewThicknessLog)));
+
+                _computeShader.RunKernel("Camera_Buffer_Divide", width, height,
+                    ("g_hdr", SimulationBackwardAccumulated),
+                    ("g_output_hdr", SimulationOutputHDR),
+                    ("g_count", framesSinceClear));
+
                 break;
         }
-
-        for (int i = 0; i < _gridCellInput.Length; i++)
-        {
-            if (_gridCellInput[i].IsActive != 0)
-            {
-                _gridCellInput[i].FrameCount++;
-            }
-        }
-        _gridCellInputBuffer.SetData(_gridCellInput);
-
-        // HDR MAPPING
-        _computeShader.RunKernel("ConvertToHDR", width, height,
-            ("g_output_raw", SimulationOutputRaw),
-            ("g_output_accumulated", SimulationOutputAccumulated),
-            ("g_output_hdr", SimulationOutputHDR),
-            ("g_convergenceCellStateIn", _gridCellInputBuffer));
 
         // Generate photon count and HDR mip levels
         int mipW = PhotonDensityBuffer.width;
@@ -790,7 +810,7 @@ public class Simulation : DisposalHelperComponent
         }
 
         _computeShader.RunKernel("MeasureConvergence", width, height,
-            ("g_output_raw", SimulationOutputRaw),
+            ("g_output_raw", SimulationPhotonsRaw),
             ("g_output_tonemapped", _renderTexture[_currentRenderTextureIndex]),
             ("g_previousResult", _renderTexture[1 - _currentRenderTextureIndex]),
             ("g_convergenceCellStateIn", _gridCellInputBuffer),
@@ -1053,8 +1073,8 @@ public class Simulation : DisposalHelperComponent
 
         _computeShader.SetVector("g_accumulate_base_index", new Vector2(xCell * w, yCell * h));
         _computeShader.RunKernel("AccumulatePhotons", w, h,
-            ("g_output_accumulated", SimulationOutputAccumulated),
-            ("g_output_raw", SimulationOutputRaw),
+            ("g_output_accumulated", SimulationForwardAccumulated),
+            ("g_output_raw", SimulationPhotonsRaw),
             ("g_convergenceCellStateIn", _gridCellInputBuffer));
     }
 

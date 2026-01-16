@@ -7,6 +7,7 @@ public class SimulationTexturePicker : MonoBehaviour {
         Photons_Raw,
         ToneMapped,
         HDR,
+        Camera_Accum,
         AI_ToneMapped,
         AI_HDR,
         Albedo,
@@ -36,10 +37,13 @@ public class SimulationTexturePicker : MonoBehaviour {
 
         switch(type) {
         case TextureType.Photons_Forward:
-            value = simulation?.SimulationPhotonsForward;
+            value = simulation?.SimulationForwardHDR;
+            break;
+        case TextureType.Camera_Accum:
+            value = simulation?.SimulationBackwardAccumulated;
             break;
         case TextureType.Photons_Raw:
-            value = simulation?.SimulationOutputRaw;
+            value = simulation?.SimulationPhotonsRaw;
             break;
         case TextureType.ToneMapped:
             value = simulation?.SimulationOutputToneMapped;
