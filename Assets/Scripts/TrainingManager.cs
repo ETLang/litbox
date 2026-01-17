@@ -256,19 +256,20 @@ public class TrainingManager : DisposalHelperComponent {
                     ("out_photon_count", img));
                 img.SaveTextureEXR(_photonCountPathEXR);
             }
-            
+
             _simulation.SimulationOutputHDR.SaveTextureEXR(_radiancePathEXR);
-           // _simulation.SimulationOutputToneMapped.SaveTexturePNG(_previewPathPNG);
             if (_activeProfile == inputProfiles.Length)
             {
-                _simulation.SimulationOutputToneMapped.SaveTexturePNG(_previewPathPNG);
+                Debug.Log("[TODO] Use UE5 shader to save tone mapped preview PNG");
+                //_simulation.SimulationOutputToneMapped.SaveTexturePNG(_previewPathPNG);
+                _simulation.SimulationOutputHDR.SaveTexturePNG(_previewPathPNG);
                 Debug.Log($"Completed Scene {_generatedSamples:00000}");
             }
             else
             {
-                var sample = new RenderTexture(_simulation.SimulationOutputToneMapped);
+                var sample = new RenderTexture(_simulation.SimulationOutputHDR);
                 var tmp = RenderTexture.active;
-                Graphics.Blit(_simulation.SimulationOutputToneMapped, sample);
+                Graphics.Blit(_simulation.SimulationOutputHDR, sample);
                 RenderTexture.active = tmp;
                 profileSamples[_activeProfile] = sample;
             }

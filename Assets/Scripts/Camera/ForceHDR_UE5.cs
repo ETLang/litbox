@@ -5,7 +5,7 @@ public class ForceHDR_UE5 : MonoBehaviour
 {
     [SerializeField, Range(-4, 4)] public float exposure = 0.0f;
     [SerializeField] public Vector3 whitePointLog = new Vector3(2.0f, 2.0f, 2.0f);
-    [SerializeField] public Vector3 blackPointLog = new Vector3(-4.0f, -4.0f, -5.0f);
+    [SerializeField] public Vector3 blackPointLog = new Vector3(-4.0f, -4.0f, -4.0f);
 
     Camera _cam;
     RenderTexture _hdrTarget;

@@ -251,7 +251,7 @@ MonoBehaviour:
   integrationInterval: 0.1
   densityGranularity: 10000
   transmissibilityVariationEpsilon: 0.001
-  enableToneMapping: 1
+  enableToneMapping: 0
   exposure: 0
   whitePointLog: {x: 2, y: 2, z: 2}
   blackPointLog: {x: -4, y: -4, z: -5}

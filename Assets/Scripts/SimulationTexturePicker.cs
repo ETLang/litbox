@@ -5,7 +5,6 @@ public class SimulationTexturePicker : MonoBehaviour {
     public enum TextureType {
         Photons_Forward,
         Photons_Raw,
-        ToneMapped,
         HDR,
         Camera_Accum,
         AI_ToneMapped,
@@ -21,7 +20,7 @@ public class SimulationTexturePicker : MonoBehaviour {
 
     [SerializeField] public Simulation simulation;
     //[SerializeField] private AIAccelerator aiAccelerator;
-    [SerializeField] public TextureType type = TextureType.ToneMapped;
+    [SerializeField] public TextureType type = TextureType.HDR;
 
     void OnDisable()
     {
@@ -44,9 +43,6 @@ public class SimulationTexturePicker : MonoBehaviour {
             break;
         case TextureType.Photons_Raw:
             value = simulation?.SimulationPhotonsRaw;
-            break;
-        case TextureType.ToneMapped:
-            value = simulation?.SimulationOutputToneMapped;
             break;
         case TextureType.HDR:
             value = simulation?.SimulationOutputHDR;

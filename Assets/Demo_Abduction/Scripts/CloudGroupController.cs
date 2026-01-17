@@ -109,12 +109,6 @@ public class CloudGroupController : PhotonerComponent
         if(_binder != null) {
             _simulationUVTransform = _binder.ScreenToSimulationUVTransform;
         }
-
-        if(foregroundCloudMat != null) {
-            foregroundCloudMat.SetFloat("_exposure", _simulation.exposure);
-            foregroundCloudMat.SetVector("_whitePointLog", _simulation.whitePointLog);
-            foregroundCloudMat.SetVector("_blackPointLog", _simulation.blackPointLog);
-        }
     }
 
     protected override void OnInvalidated(string group)

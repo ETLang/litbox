@@ -279,6 +279,7 @@ GameObject:
   - component: {fileID: 503795291}
   - component: {fileID: 503795290}
   - component: {fileID: 503795293}
+  - component: {fileID: 503795294}
   m_Layer: 0
   m_Name: Main Camera
   m_TagString: MainCamera
@@ -378,6 +379,21 @@ MonoBehaviour:
   cleanMagnitudes: 1
   normalize: 0
   logScale: 0
+--- !u!114 &503795294
+MonoBehaviour:
+  m_ObjectHideFlags: 0
+  m_CorrespondingSourceObject: {fileID: 0}
+  m_PrefabInstance: {fileID: 0}
+  m_PrefabAsset: {fileID: 0}
+  m_GameObject: {fileID: 503795289}
+  m_Enabled: 1
+  m_EditorHideFlags: 0
+  m_Script: {fileID: 11500000, guid: 9c0d92786a1b3f54695265a77fb5d8e7, type: 3}
+  m_Name: 
+  m_EditorClassIdentifier: Assembly-CSharp::ForceHDR_UE5
+  exposure: 0
+  whitePointLog: {x: 2, y: 2, z: 2}
+  blackPointLog: {x: -4, y: -4, z: -4}
 --- !u!1 &687478585
 GameObject:
   m_ObjectHideFlags: 0
@@ -1393,7 +1409,7 @@ MonoBehaviour:
   integrationInterval: 0.2
   densityGranularity: 10000
   transmissibilityVariationEpsilon: 0.001
-  enableToneMapping: 1
+  enableToneMapping: 0
   exposure: 0
   whitePointLog: {x: 0.5, y: 0.5, z: 0.5}
   blackPointLog: {x: -3, y: -3, z: -3}

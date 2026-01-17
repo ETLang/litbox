@@ -77,7 +77,6 @@ public class Simulation : PhotonerComponent
     [RenamedFrom("textureResolution")]
     [SerializeField] public int width = 256;
     [SerializeField] public int height = 256;
-    [SerializeField, Range(0,6)] public float viewThicknessLog = 3;
 
     [SerializeField] private int raysPerFrame = 512000;
     [SerializeField] private int photonBounces = -1;
@@ -85,12 +84,6 @@ public class Simulation : PhotonerComponent
     [SerializeField] private float integrationInterval = 0.1f;
     [SerializeField] private int densityGranularity = 10000;
     [SerializeField] private float transmissibilityVariationEpsilon = 1e-3f;
-    
-    [Header("Tone Mapping")]
-    [SerializeField] public bool enableToneMapping = true;
-    [SerializeField] public float exposure = 0.0f;
-    [SerializeField] public Vector3 whitePointLog = new Vector3(2.0f, 2.0f, 2.0f);
-    [SerializeField] public Vector3 blackPointLog = new Vector3(-4.0f, -4.0f, -5.0f);
 
     [Header("Convergence Information")]
     [SerializeField] private float _convergenceThreshold = -1;
@@ -118,7 +111,6 @@ public class Simulation : PhotonerComponent
     private ConvergenceCellOutput[] _gridCellOutputInitialValue;
     private ConvergenceCellState[] _gridCellState;
 
-    private RenderTexture[] _renderTexture = new RenderTexture[2];
     private int _currentRenderTextureIndex = 0;
     private Texture _mieScatteringLUT;
     private Texture _teardropScatteringLUT;
@@ -153,7 +145,6 @@ public class Simulation : PhotonerComponent
     public RenderTexture SimulationForwardAccumulated { get; private set; }
     public RenderTexture SimulationBackwardAccumulated { get; private set; }
     public RenderTexture SimulationOutputHDR { get; private set; }
-    public RenderTexture SimulationOutputToneMapped { get; private set; }
     public RenderTexture PhotonDensityBuffer { get; private set; }
     public Texture2D EfficiencyDiagnostic { get; private set; }
     public Texture2D CumulativePhotonsDiagnostic { get; private set; }
@@ -233,7 +224,7 @@ public class Simulation : PhotonerComponent
 
     void ValidateTargets()
     {
-        if (_renderTexture[0] == null || _renderTexture[0].width != width || _renderTexture[0].height != height)
+        if (SimulationOutputHDR == null || SimulationOutputHDR.width != width || SimulationOutputHDR.height != height)
         {
             CreateTargetBuffers();
             _validationFailed = true;
@@ -358,11 +349,6 @@ public class Simulation : PhotonerComponent
 
     private void CreateTargetBuffers()
     {
-        for (int i = 0; i < _renderTexture.Length; i++)
-        {
-            _renderTexture[i] = this.CreateRWTexture(width, height, RenderTextureFormat.DefaultHDR);
-        }
-
         SimulationPhotonsRaw = this.CreateRWTexture(width * 3, height, RenderTextureFormat.RInt);
         SimulationForwardHDR = this.CreateRWTexture(width, height, RenderTextureFormat.ARGBFloat);
         SimulationForwardAccumulated = this.CreateRWTexture(width, height, RenderTextureFormat.ARGBFloat);
@@ -645,8 +631,7 @@ public class Simulation : PhotonerComponent
                     ("g_teardropScatteringLUT", _teardropScatteringLUT),
                     ("g_bdrfLUT", _bdrfLUT),
                     ("g_convergenceCellStateIn", _gridCellInputBuffer),
-                    ("g_convergenceCellStateOut", _gridCellOutputBuffer),
-                    ("g_view_thickness", Mathf.Pow(10, viewThicknessLog)));
+                    ("g_convergenceCellStateOut", _gridCellOutputBuffer));
 
                 // NORMALIZATION
                 _computeShader.RunKernel("Camera_Buffer_Divide", width, height,
@@ -670,25 +655,7 @@ public class Simulation : PhotonerComponent
                 ("g_destMipLevelHDR", SimulationOutputHDR.SelectMip(i)));
         }
 
-        // TONE MAPPING
-        // TODO: Leverage adaptive sampling from photon count buffer
-        if (enableToneMapping)
-        {
-            _computeShader.RunKernel("ToneMap", width, height,
-                ("g_hdr", SimulationOutputHDR),
-                ("g_photon_density", PhotonDensityBuffer),
-                ("g_output_tonemapped", _renderTexture[_currentRenderTextureIndex]),
-                ("g_convergenceCellStateIn", _gridCellInputBuffer),
-                ("g_blackPointLog", blackPointLog),
-                ("g_whitePointLog", whitePointLog),
-                ("g_exposure", exposure));
-            SimulationOutputToneMapped = _renderTexture[_currentRenderTextureIndex];
-            _compositorMat.SetTexture(_MainTexID, SimulationOutputToneMapped);
-        } else {
-            SimulationOutputToneMapped = SimulationOutputHDR;
-            _compositorMat.SetTexture(_MainTexID, SimulationOutputHDR);
-        }
-
+        _compositorMat.SetTexture(_MainTexID, SimulationOutputHDR);
         OnStep?.Invoke(framesSinceClear);
 
         // CONVERGENCE TESTING
@@ -767,12 +734,13 @@ public class Simulation : PhotonerComponent
             hasValidGridTransmissibility = true;
         }
 
-        _computeShader.RunKernel("MeasureConvergence", width, height,
-            ("g_output_raw", SimulationPhotonsRaw),
-            ("g_output_tonemapped", _renderTexture[_currentRenderTextureIndex]),
-            ("g_previousResult", _renderTexture[1 - _currentRenderTextureIndex]),
-            ("g_convergenceCellStateIn", _gridCellInputBuffer),
-            ("g_convergenceCellStateOut", _gridCellOutputBuffer));
+        // TODO: Measure convergence via variance map
+        // _computeShader.RunKernel("MeasureConvergence", width, height,
+        //     ("g_output_raw", SimulationPhotonsRaw),
+        //     ("g_output_tonemapped", _renderTexture[_currentRenderTextureIndex]),
+        //     ("g_previousResult", _renderTexture[1 - _currentRenderTextureIndex]),
+        //     ("g_convergenceCellStateIn", _gridCellInputBuffer),
+        //     ("g_convergenceCellStateOut", _gridCellOutputBuffer));
         _currentRenderTextureIndex = 1 - _currentRenderTextureIndex;
 
         int recentSceneId = _sceneId;

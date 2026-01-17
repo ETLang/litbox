@@ -778,6 +778,7 @@ GameObject:
   - component: {fileID: 503795292}
   - component: {fileID: 503795291}
   - component: {fileID: 503795290}
+  - component: {fileID: 503795293}
   m_Layer: 0
   m_Name: Main Camera
   m_TagString: MainCamera
@@ -859,6 +860,21 @@ Transform:
   m_Children: []
   m_Father: {fileID: 0}
   m_LocalEulerAnglesHint: {x: 0, y: 0, z: 0}
+--- !u!114 &503795293
+MonoBehaviour:
+  m_ObjectHideFlags: 0
+  m_CorrespondingSourceObject: {fileID: 0}
+  m_PrefabInstance: {fileID: 0}
+  m_PrefabAsset: {fileID: 0}
+  m_GameObject: {fileID: 503795289}
+  m_Enabled: 1
+  m_EditorHideFlags: 0
+  m_Script: {fileID: 11500000, guid: 9c0d92786a1b3f54695265a77fb5d8e7, type: 3}
+  m_Name: 
+  m_EditorClassIdentifier: Assembly-CSharp::ForceHDR_UE5
+  exposure: 0
+  whitePointLog: {x: 2, y: 2, z: 2}
+  blackPointLog: {x: -4, y: -4, z: -4}
 --- !u!4 &646539501 stripped
 Transform:
   m_CorrespondingSourceObject: {fileID: 369292323609846550, guid: e105fd872cebbb5de8957537ab2f287f, type: 3}
@@ -1215,13 +1231,14 @@ MonoBehaviour:
   frameLimit: -1
   width: 256
   height: 256
+  viewThicknessLog: 3
   raysPerFrame: 128000
   photonBounces: -1
   integrationMethod: 5
   integrationInterval: 0.2
   densityGranularity: 10000
   transmissibilityVariationEpsilon: 0.001
-  enableToneMapping: 1
+  enableToneMapping: 0
   exposure: 0
   whitePointLog: {x: 2, y: 2, z: 2}
   blackPointLog: {x: -4, y: -4, z: -5}
@@ -1235,7 +1252,6 @@ MonoBehaviour:
   energyPrecision: 1
   bilinearPhotonWrites: 1
   pathSamples: 10
-  pathBalance: 0.5
   hasConverged: 0
 --- !u!64 &923172387
 MeshCollider:
