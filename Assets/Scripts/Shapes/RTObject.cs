@@ -2,7 +2,7 @@ using System.Collections;
 using System.Collections.Generic;
 using UnityEngine;
 
-public class RTObject : PhotonerDemoComponent
+public class RTObject : PhotonerComponent
 {
     [SerializeField] public Texture texture;
     [SerializeField] public Texture normal;

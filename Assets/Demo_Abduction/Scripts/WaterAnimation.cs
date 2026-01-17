@@ -1,7 +1,7 @@
 using UnityEngine;
 
 [RequireComponent(typeof(ProceduralHill))]
-public class WaterAnimation : PhotonerDemoComponent
+public class WaterAnimation : PhotonerComponent
 {
     [SerializeField] float rate1;
     [SerializeField] float rate2;

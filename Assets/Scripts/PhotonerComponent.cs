@@ -3,7 +3,7 @@ using System.Collections.Generic;
 using System.Linq;
 using UnityEngine;
 
-public class PhotonerDemoComponent : DisposalHelperComponent
+public class PhotonerComponent : DisposalHelperComponent
 {
     private List<IChangeManager> _changeManagers = new List<IChangeManager>();
     private List<string> _dirtyGroups = new List<string>();
@@ -22,7 +22,7 @@ public class PhotonerDemoComponent : DisposalHelperComponent
         _onGlobalChangeCheck?.Invoke(null);
     }
 
-    public PhotonerDemoComponent(bool autoUpdate = true)
+    public PhotonerComponent(bool autoUpdate = true)
     {
         _autoUpdate = autoUpdate;
 
@@ -49,6 +49,11 @@ public class PhotonerDemoComponent : DisposalHelperComponent
     protected void DetectChanges<PT>(Func<PT> getter, string group=null)
     {
         _changeManagers.Add(new ChangeManager<PT>(getter, group, Invalidate));
+    }
+
+    protected void DetectSetChanges<E>(Func<IList<E>> getter, string group=null)
+    {
+        _changeManagers.Add(new SetChangeManager<E>(getter, group, Invalidate));
     }
 
     public bool CheckChanged()

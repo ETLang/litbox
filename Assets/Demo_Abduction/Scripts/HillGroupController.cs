@@ -3,7 +3,7 @@ using System.Linq;
 using UnityEngine;
 
 [ExecuteInEditMode]
-public class HillGroupController : PhotonerDemoComponent
+public class HillGroupController : PhotonerComponent
 {
     [SerializeField] Color leftAmbience;
     [SerializeField] Color rightAmbience;

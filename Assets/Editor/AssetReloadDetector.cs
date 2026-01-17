@@ -17,7 +17,7 @@ public class AssetReloadDetector : AssetPostprocessor
     {
         Reloaded?.Invoke();
 
-        PhotonerDemoComponent.CheckForGlobalChanges();
+        PhotonerComponent.CheckForGlobalChanges();
 
         //// Log all imported assets to the console.
         //foreach (string assetPath in importedAssets) {

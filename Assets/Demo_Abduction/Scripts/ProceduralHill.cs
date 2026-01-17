@@ -28,7 +28,7 @@ public class HillLayerProperties
 
 [ExecuteInEditMode]
 [RequireComponent(typeof(PolygonCollider2D))]
-public class ProceduralHill : PhotonerDemoComponent
+public class ProceduralHill : PhotonerComponent
 {
     [Header("Hill Shape")]
     [SerializeField] Mesh hillMesh;
