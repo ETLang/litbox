@@ -20,7 +20,7 @@ public struct SimulationProfile {
 [RequireComponent(typeof(MeshRenderer))]
 [RequireComponent(typeof(MeshFilter))]
 [ExecuteAlways]
-public class Simulation : DisposalHelperComponent
+public class Simulation : PhotonerComponent
 {
     public enum IntegrationMethod
     {
@@ -35,7 +35,6 @@ public class Simulation : DisposalHelperComponent
     public enum Strategy
     {
         LightTransport,
-        PathTracing,
         Hybrid
     }
 
@@ -139,6 +138,12 @@ public class Simulation : DisposalHelperComponent
     private ulong _previousCumulativePhotons;
     private float _previousConvergenceFeedbackTime;
 
+    int _sceneId;
+    bool _dirtyFrame;
+    RTLightSource[] _allLights;
+    RTObject[] _allObjects;
+    Matrix4x4 _worldToPresentation;
+
     private RenderTexture[] _gBufferAlbedo = new RenderTexture[2];
     private RenderTexture[] _gBufferTransmissibility = new RenderTexture[2];
     private RenderTexture[] _gBufferNormalAlignment = new RenderTexture[2];
@@ -187,6 +192,24 @@ public class Simulation : DisposalHelperComponent
             GameObject.DestroyImmediate(tempQuad);
         }
         return _quadMesh;
+    }
+
+    public Simulation()
+    {
+        DetectSetChanges(() => _allLights, "dirtyFrame");
+        DetectSetChanges(() => _allObjects, "dirtyFrame");
+        DetectChanges(() => _worldToPresentation, "dirtyFrame");
+        DetectChanges(() => integrationMethod, "dirtyFrame");
+        DetectChanges(() => integrationInterval, "dirtyFrame");
+        DetectChanges(() => strategy, "dirtyFrame");
+    }
+
+    protected override void OnInvalidated(string group)
+    {
+        if(group == "dirtyFrame")
+        {
+            _dirtyFrame = true;
+        }
     }
 
     public void LoadProfile(SimulationProfile profile)
@@ -255,7 +278,7 @@ public class Simulation : DisposalHelperComponent
 #endif
     }
 
-    void OnDestroy()
+    protected override void OnDestroy()
     {
 #if UNITY_EDITOR
         UnityEditor.EditorApplication.playModeStateChanged -= EditorApplication_playModeStateChanged;
@@ -409,47 +432,29 @@ public class Simulation : DisposalHelperComponent
 
         base.OnDisable();
     }
-
-    Matrix4x4 _previousSimulationMatrix;
-    HashSet<RTLightSource> _previousLightSources = new HashSet<RTLightSource>();
-    HashSet<RTObject> _previousObjects = new HashSet<RTObject>();
-    int _sceneId;
-    IntegrationMethod _previousIntegrationMethod;
-    Strategy _previousStrategy;
-    float _previousViewThicknessLog;
-
-    bool CheckChanged(RTLightSource[] allLights, RTObject[] allObjects, Matrix4x4 worldToPresentation)
-    {
-        var changed =
-            allLights.Length != _previousLightSources.Count ||
-            !allLights.All(l => _previousLightSources.Contains(l)) ||
-            allLights.Any(l => l.Changed) ||
-            allObjects.Length != _previousObjects.Count ||
-            !allObjects.All(o => _previousObjects.Contains(o)) ||
-            allObjects.Any(o => o.Changed) ||
-            _previousSimulationMatrix != worldToPresentation ||
-            _previousIntegrationMethod != integrationMethod || 
-            _previousViewThicknessLog != viewThicknessLog ||
-            strategy != _previousStrategy;
-
-        _previousIntegrationMethod = integrationMethod;
-        _previousSimulationMatrix = worldToPresentation;
-        _previousLightSources.Clear();
-        foreach (var light in allLights)
-            _previousLightSources.Add(light);
-        _previousObjects.Clear();
-        foreach (var o in allObjects)
-            _previousObjects.Add(o);
-        _previousStrategy = strategy;
-        _previousViewThicknessLog = viewThicknessLog;
-
-        return changed;
-    }
-
-    void Update()
+    
+    protected override void Update()
     {
         ValidateTargets();
         ValidateRandomBuffer();
+
+        if (_realContentCamera == null)
+        {
+            return;
+        }
+
+        _worldToPresentation = _realContentCamera.transform.worldToLocalMatrix;
+        _allLights = FindObjectsByType<RTLightSource>(FindObjectsInactive.Exclude, FindObjectsSortMode.None);
+        _allObjects = FindObjectsByType<RTObject>(FindObjectsInactive.Exclude, FindObjectsSortMode.None);
+
+        if((_allLights != null && _allLights.Any(x => x.Changed)) ||
+           (_allObjects != null && _allObjects.Any(x => x.Changed)))
+        {
+            OnInvalidated("dirtyFrame");
+        }
+
+
+        base.Update();
     }
 
     const int ConvergenceMeasurementInterval = 100;
@@ -462,12 +467,8 @@ public class Simulation : DisposalHelperComponent
 
         _realContentCamera.Render();
 
-        var worldToPresentation = _realContentCamera.transform.worldToLocalMatrix;
         var presentationToTargetSpace = Matrix4x4.Scale(new Vector3(width, height, 1)) * Matrix4x4.Translate(new Vector3(0.5f, 0.5f, 0));
-        //var presentationToTargetSpace = Matrix4x4.Translate(new Vector3(0.5f, 0.5f, 0));
-        var worldToTargetSpace = presentationToTargetSpace * worldToPresentation;
-        var allLights = FindObjectsByType<RTLightSource>(FindObjectsInactive.Exclude, FindObjectsSortMode.None);
-        var allObjects = FindObjectsByType<RTObject>(FindObjectsInactive.Exclude, FindObjectsSortMode.None);
+        var worldToTargetSpace = presentationToTargetSpace * _worldToPresentation;
 
         // PERFORMANCE MEASUREMENT
         var now = Time.time;
@@ -479,7 +480,7 @@ public class Simulation : DisposalHelperComponent
             total += value;
         uint bouncesThisFrame = 0;
 
-        foreach (var bounces in allLights.Select(light => light.bounces))
+        foreach (var bounces in _allLights.Select(light => light.bounces))
             bouncesThisFrame += bounces;
 
         bouncesThisFrame *= (uint)raysPerFrame;
@@ -496,9 +497,10 @@ public class Simulation : DisposalHelperComponent
         TraversalsPerSecond = total;
 
         // CHANGE DETECTION
-        if (CheckChanged(allLights, allObjects, worldToPresentation) || _validationFailed)
+        if (_dirtyFrame || _validationFailed)
         {
             hasConverged = false;
+            _dirtyFrame = false;
             _validationFailed = false;
             framesSinceClear = 0;
             _gridCellInput = (ConvergenceCellInput[])_gridCellInputInitialValue.Clone();
@@ -622,7 +624,7 @@ public class Simulation : DisposalHelperComponent
                 _computeShader.SetFloat("g_energy_norm", (float)((double)uint.MaxValue / pixelCount * energyPrecision));
 
                 _computeShader.SetShaderFlag("FILTER_INACTIVE_CELLS", false);
-                foreach (var light in allLights)
+                foreach (var light in _allLights)
                 {
                     SimulateLight(light, strategy, photonBounces != -1 ? photonBounces : (int)light.bounces, worldToTargetSpace, SimulationPhotonsRaw);
                 }
@@ -633,18 +635,6 @@ public class Simulation : DisposalHelperComponent
                     ("g_output_accumulated", SimulationForwardAccumulated),
                     ("g_output_hdr", SimulationOutputHDR),
                     ("g_convergenceCellStateIn", _gridCellInputBuffer));
-                break;
-            case Strategy.PathTracing:
-                // Path tracing technique:
-                // Paths are simulated starting at each pixel in the view.
-
-                // First, light sources are rendered without propagation into the simulation field.
-
-                // Then, paths are followed from each pixel in the view until they hit the max
-                //     bounce count, escape the simulated area, or hit a light source.
-                //     When a light source is hit, the value of the light is added to the associated pixel.
-
-                // TODO
                 break;
             case Strategy.Hybrid:
                 // Hybrid forward/backward tracing technique
@@ -662,7 +652,7 @@ public class Simulation : DisposalHelperComponent
 
                 // Clear intermediate target
                 _computeShader.SetShaderFlag("FILTER_INACTIVE_CELLS", false);
-                foreach (var light in allLights)
+                foreach (var light in _allLights)
                 {
                     SimulateLight(light, Strategy.LightTransport, photonBounces != -1 ? photonBounces / 2 : (int)light.bounces, worldToTargetSpace, SimulationPhotonsRaw);
                 }
@@ -674,6 +664,7 @@ public class Simulation : DisposalHelperComponent
                     ("g_output_hdr", SimulationForwardHDR),
                     ("g_convergenceCellStateIn", _gridCellInputBuffer));
 
+                // BACKTRACING
                 _computeShader.RunKernel("Simulate_Camera", width, height,
                     ("g_rand", _randomBuffer),
                     ("g_hdr", SimulationForwardHDR),
@@ -689,6 +680,7 @@ public class Simulation : DisposalHelperComponent
                     ("g_convergenceCellStateOut", _gridCellOutputBuffer),
                     ("g_view_thickness", Mathf.Pow(10, viewThicknessLog)));
 
+                // NORMALIZATION
                 _computeShader.RunKernel("Camera_Buffer_Divide", width, height,
                     ("g_hdr", SimulationBackwardAccumulated),
                     ("g_output_hdr", SimulationOutputHDR),
@@ -1004,16 +996,12 @@ public class Simulation : DisposalHelperComponent
             }
         }
 
-        //float BoundaryEfficiency = 3;
-
         for (int i = 0; i < gridCells.x; i++)
         {
             for (int j = 0; j < gridCells.y; j++)
             {
                 var g = new Vector2
                 {
-                    // x = (EfficiencyData.ReadClampScaled(i+1,j,BoundaryEfficiency) - EfficiencyData.ReadClampScaled(i-1,j,BoundaryEfficiency)) / -2.0f,
-                    // y = (EfficiencyData.ReadClampScaled(i,j+1,BoundaryEfficiency) - EfficiencyData.ReadClampScaled(i,j-1,BoundaryEfficiency)) / -2.0f
                     x = (EfficiencyData.ReadMirrored(i + 1, j) - EfficiencyData.ReadMirrored(i - 1, j)) / -2.0f,
                     y = (EfficiencyData.ReadMirrored(i, j + 1) - EfficiencyData.ReadMirrored(i, j - 1)) / -2.0f
                 };
