@@ -120,17 +120,13 @@ public class Simulation : PhotonerComponent
 
     private RenderTexture[] _renderTexture = new RenderTexture[2];
     private int _currentRenderTextureIndex = 0;
-    private RenderBuffer[][] _gBuffer;
     private Texture _mieScatteringLUT;
     private Texture _teardropScatteringLUT;
     private Texture _bdrfLUT;
-    private int[] _kernelsHandles;
-
     private bool hasValidGridTransmissibility = false;
     private bool awaitingConvergenceResult = false;
     [SerializeField, ReadOnly] public bool hasConverged = false;
 
-    private uint4[] convergenceResultResetData = new uint4[] { new uint4(0, 0, 0, 0) };
     private SortedDictionary<float, uint> performanceCounter = new SortedDictionary<float, uint>();
 
     public uint TraversalsPerSecond { get; private set; }
@@ -139,18 +135,13 @@ public class Simulation : PhotonerComponent
     private float _previousConvergenceFeedbackTime;
 
     int _sceneId;
+    bool _validationFailed = false;
     bool _dirtyFrame;
     RTLightSource[] _allLights;
     RTObject[] _allObjects;
     Matrix4x4 _worldToPresentation;
-
-    private RenderTexture[] _gBufferAlbedo = new RenderTexture[2];
-    private RenderTexture[] _gBufferTransmissibility = new RenderTexture[2];
-    private RenderTexture[] _gBufferNormalAlignment = new RenderTexture[2];
-    private int _gBufferNextTarget = 0;
-    private bool _validationFailed = false;
-    private MeshFilter _meshFilter;
-    private MeshRenderer _meshRenderer;
+    MeshFilter _meshFilter;
+    MeshRenderer _meshRenderer;
 
     public RenderTexture GBufferAlbedo { get; private set; }
     public RenderTexture GBufferTransmissibility { get; private set; }
@@ -204,13 +195,7 @@ public class Simulation : PhotonerComponent
         DetectChanges(() => strategy, "dirtyFrame");
     }
 
-    protected override void OnInvalidated(string group)
-    {
-        if(group == "dirtyFrame")
-        {
-            _dirtyFrame = true;
-        }
-    }
+    protected override void OnInvalidated(string group) => _dirtyFrame |= (group == "dirtyFrame");
 
     public void LoadProfile(SimulationProfile profile)
     {
@@ -362,8 +347,6 @@ public class Simulation : PhotonerComponent
                 RelaxedEfficiencyGradient[i, j] = new Vector2(0, 0);
             }
         }
-
-        SwapGBuffer();
     }
 
     private void Start()
@@ -387,30 +370,15 @@ public class Simulation : PhotonerComponent
         SimulationOutputHDR = this.CreateRWTextureWithMips(width, height, RenderTextureFormat.ARGBFloat);
         PhotonDensityBuffer = this.CreateRWTextureWithMips(width, height, RenderTextureFormat.RInt);
 
-        for (int i = 0; i < 2; i++)
-        {
-            _gBufferAlbedo[i] = this.CreateRWTextureWithMips(width, height, RenderTextureFormat.ARGBFloat, 32);
-            _gBufferTransmissibility[i] = this.CreateRWTextureWithMips(width, height, RenderTextureFormat.ARGBFloat);
-            _gBufferNormalAlignment[i] = this.CreateRWTextureWithMips(width, height, RenderTextureFormat.ARGBFloat);
-        }
-
+        GBufferAlbedo = this.CreateRWTextureWithMips(width, height, RenderTextureFormat.ARGBFloat, 32);
+        GBufferTransmissibility = this.CreateRWTextureWithMips(width, height, RenderTextureFormat.ARGBFloat);
+        GBufferNormalAlignment = this.CreateRWTextureWithMips(width, height, RenderTextureFormat.ARGBFloat);
         GBufferQuadTreeLeaves = this.CreateRWTexture(width, height, RenderTextureFormat.ARGBHalf);
 
-        SwapGBuffer();
-    }
-
-    private void SwapGBuffer()
-    {
-        GBufferAlbedo = _gBufferAlbedo[_gBufferNextTarget];
-        GBufferTransmissibility = _gBufferTransmissibility[_gBufferNextTarget];
-        GBufferNormalAlignment = _gBufferNormalAlignment[_gBufferNextTarget];
-
-        //_gBufferNextTarget = 1 - _gBufferNextTarget;
-
         if(_realContentCamera != null) {
-            _realContentCamera.GBufferAlbedo = _gBufferAlbedo[_gBufferNextTarget];
-            _realContentCamera.GBufferTransmissibility = _gBufferTransmissibility[_gBufferNextTarget];
-            _realContentCamera.GBufferNormalSlope = _gBufferNormalAlignment[_gBufferNextTarget];
+            _realContentCamera.GBufferAlbedo = GBufferAlbedo;
+            _realContentCamera.GBufferTransmissibility = GBufferTransmissibility;
+            _realContentCamera.GBufferNormalSlope = GBufferNormalAlignment;
             _realContentCamera.GBufferQuadTreeLeaves = GBufferQuadTreeLeaves;
             _realContentCamera.VarianceEpsilon = transmissibilityVariationEpsilon;
         }
@@ -432,7 +400,7 @@ public class Simulation : PhotonerComponent
 
         base.OnDisable();
     }
-    
+
     protected override void Update()
     {
         ValidateTargets();
@@ -626,7 +594,7 @@ public class Simulation : PhotonerComponent
                 _computeShader.SetShaderFlag("FILTER_INACTIVE_CELLS", false);
                 foreach (var light in _allLights)
                 {
-                    SimulateLight(light, strategy, photonBounces != -1 ? photonBounces : (int)light.bounces, worldToTargetSpace, SimulationPhotonsRaw);
+                    SimulateLight(light, photonBounces != -1 ? photonBounces : (int)light.bounces, worldToTargetSpace, SimulationPhotonsRaw);
                 }
                 
                 // HDR MAPPING
@@ -654,7 +622,7 @@ public class Simulation : PhotonerComponent
                 _computeShader.SetShaderFlag("FILTER_INACTIVE_CELLS", false);
                 foreach (var light in _allLights)
                 {
-                    SimulateLight(light, Strategy.LightTransport, photonBounces != -1 ? photonBounces / 2 : (int)light.bounces, worldToTargetSpace, SimulationPhotonsRaw);
+                    SimulateLight(light, photonBounces != -1 ? photonBounces / 2 : (int)light.bounces, worldToTargetSpace, SimulationPhotonsRaw);
                 }
 
                 // HDR MAPPING
@@ -741,8 +709,6 @@ public class Simulation : PhotonerComponent
         {
             MeasureConvergence(framesSinceClear == 1);
         }
-
-        SwapGBuffer();
 
         if (fireConvergedEvent)
         {
@@ -1066,30 +1032,13 @@ public class Simulation : PhotonerComponent
             ("g_convergenceCellStateIn", _gridCellInputBuffer));
     }
 
-    void SimulateLight(RTLightSource light, Strategy strategy, int bounces, Matrix4x4 worldToTargetSpace, RenderTexture outputTexture)
+    void SimulateLight(RTLightSource light, int bounces, Matrix4x4 worldToTargetSpace, RenderTexture outputTexture)
     {
         string simulateKernel = null;
-        int simulateKernelId = -1;
         var lightToTargetSpace = worldToTargetSpace * light.WorldTransform;
         double photonEnergy = (double)uint.MaxValue / raysPerFrame * energyPrecision;
 
-        string kernelFormat;
-
-        switch (strategy)
-        {
-            case Strategy.LightTransport:
-                kernelFormat = "Simulate_{0}";
-                break;
-            case Strategy.PathTracing:
-                kernelFormat = "Simulate_{0}_Splat";
-                break;
-            case Strategy.Hybrid:
-                kernelFormat = "Simulate_{0}_Forward";
-                break;
-            default:
-                Debug.LogError("What?");
-                return;
-        }
+        string kernelFormat = "Simulate_{0}";
 
         switch (light)
         {
@@ -1108,8 +1057,7 @@ public class Simulation : PhotonerComponent
                 break;
             case RTFieldLight field:
                 simulateKernel = string.Format(kernelFormat, "FieldLight");
-                simulateKernelId = _computeShader.FindKernel(simulateKernel);
-                _computeShader.SetTexture(simulateKernelId, "g_lightFieldTexture", field.lightTexture ? field.lightTexture : Texture2D.whiteTexture);
+                _computeShader.SetTexture(_computeShader.FindKernel(simulateKernel), "g_lightFieldTexture", field.lightTexture ? field.lightTexture : Texture2D.whiteTexture);
                 _computeShader.SetFloat("g_lightEmissionOutscatter", field.emissionOutscatter);
                 break;
             case RTDirectionalLight dir:
@@ -1117,8 +1065,6 @@ public class Simulation : PhotonerComponent
                 _computeShader.SetVector("g_directionalLightDirection", lightToTargetSpace.MultiplyVector(new Vector3(0, -1, 0)));
                 break;
         }
-
-        simulateKernelId = _computeShader.FindKernel(simulateKernel);
 
         _computeShader.SetVector("g_lightEnergy", light.Energy * (float)photonEnergy);
         _computeShader.SetInt("g_bounces", bounces);
