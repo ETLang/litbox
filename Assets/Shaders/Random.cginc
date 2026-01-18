@@ -1,3 +1,6 @@
+#ifndef _RANDOM_
+#define _RANDOM_
+
 // https://developer.nvidia.com/gpugems/gpugems3/part-vi-gpu-computing/chapter-37-efficient-random-number-generation-and-application
 
 struct Random
@@ -56,3 +59,5 @@ Random CreateRandom(uint4 seed)
     ret.Init(seed);
     return ret;
 }
+
+#endif // _RANDOM_

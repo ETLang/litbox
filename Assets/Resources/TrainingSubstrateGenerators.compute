@@ -1,4 +1,4 @@
-#include "../Shaders/RayTracing2DCommon.cginc"
+#include "../Shaders/PhotonerCommon.cginc"
 #include "../Shaders/Noise2D.cginc"
 #include "../Shaders/Random.cginc"
 

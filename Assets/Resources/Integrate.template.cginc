@@ -1,6 +1,17 @@
-    void INTEGRATOR_NAME(inout Ray photon, MONTE_CARLO_MODEL state) { 
+    // Dependencies:
+    // g_target_size
+    // g_transmissibility
+    // g_albedo
+
+#ifndef INTEGRATOR_NAME
+    void Integrate(inout Ray photon, MONTE_CARLO_MODEL state) {
+#else
+    void INTEGRATOR_NAME(inout Ray photon, MONTE_CARLO_MODEL state) {
+#endif
         IntegrationContext ctx;
         ctx.Init(photon);
+
+        float2 target_size = TextureSize(g_albedo);
 
         for(uint bounce = 0;bounce < g_bounces;) {
             float uScatter;
@@ -8,8 +19,8 @@
             if(ctx.photon.Direction.x == 0) ctx.photon.Direction.x = 1e-8;
             if(ctx.photon.Direction.y == 0) ctx.photon.Direction.y = 1e-8;
         
-            float2 uvOrigin = ctx.photon.Origin / g_target_size;
-            float2 uvDirection = ctx.photon.Direction / g_target_size;
+            float2 uvOrigin = ctx.photon.Origin / target_size;
+            float2 uvDirection = ctx.photon.Direction / target_size;
             float4 uBoundaryBox = (float4(0,1,0,1) - uvOrigin.xxyy) / uvDirection.xxyy;
 
             ctx.uEscape = min(max(uBoundaryBox[0], uBoundaryBox[1]), max(uBoundaryBox[2], uBoundaryBox[3]));
@@ -18,7 +29,7 @@
 
             state.BeginTraversal(ctx);
             bool continueRunning = true;
-            for(int steps = 0;steps < 3000;steps++) {
+            for(int steps = 0;steps < 2000;steps++) {
                 bool overshoot = false;
                 ctx.lod = 0;//g_quadTreeLeaves.SampleLevel(sampler_point_clamp, ctx.testUV, 0).x;
 
@@ -50,7 +61,7 @@
             //     WritePhoton(ctx.photon.Origin, uint3(1000000000, 1000000000, 0));
             //     WritePhoton(ctx.testUV * g_target_size, uint3(0, 1000000000, 0));
             //     return false;,
-            // }
+            // } 
 
             if(!continueRunning) break;
 

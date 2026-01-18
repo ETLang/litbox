@@ -1,12 +1,11 @@
 #include "UnityCG.cginc"
-#include "../Shaders/RayTracing2DCommon.cginc"
+#include "../Shaders/PhotonerCommon.cginc"
 #pragma kernel CloudForegroundBlur
 
 Texture2D<float4> blur_input;
 SamplerState samplerblur_input;
 Texture2D<float4> transmissibility;
 SamplerState samplertransmissibility;
-SamplerState sampler_point_clamp;
 RWTexture2D<float4> blur_output;
 Texture2D<float4> kernel_lut;
 

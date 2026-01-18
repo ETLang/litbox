@@ -78,7 +78,7 @@ public class Simulation : PhotonerComponent
     [SerializeField] public int width = 256;
     [SerializeField] public int height = 256;
 
-    [SerializeField] private int raysPerFrame = 512000;
+    [SerializeField] private int raysPerFrame = 64000;
     [SerializeField] private int photonBounces = -1;
     [SerializeField] private IntegrationMethod integrationMethod = IntegrationMethod.ExplicitBoundedBounceImplicitInterval;
     [SerializeField] private float integrationInterval = 0.1f;
@@ -101,6 +101,7 @@ public class Simulation : PhotonerComponent
     private Material _compositorMat;
     private SimulationCamera _realContentCamera;
     private ComputeShader _computeShader;
+    private ComputeShader _forwardIntegrationShader;
     private ComputeBuffer _randomBuffer;
     private ComputeBuffer _gridCellInputBuffer;
     private ComputeBuffer _gridCellOutputBuffer;
@@ -234,6 +235,7 @@ public class Simulation : PhotonerComponent
     private void Awake()
     {
         _computeShader = (ComputeShader)Resources.Load("Simulation");
+        _forwardIntegrationShader = (ComputeShader)Resources.Load("ForwardMonteCarlo");
 
         _meshFilter = GetComponent<MeshFilter>();
         _meshRenderer = GetComponent<MeshRenderer>();
@@ -511,11 +513,14 @@ public class Simulation : PhotonerComponent
         _computeShader.SetInt("g_samples_per_pixel", pathSamples);
         _computeShader.SetMatrix("g_worldToTarget", Matrix4x4.identity);
         _computeShader.SetFloat("g_TransmissibilityVariationEpsilon", transmissibilityVariationEpsilon);
-        _computeShader.SetInt("g_lowest_lod", (int)(GBufferTransmissibility.mipmapCount - 4));
-        _computeShader.SetInt("g_4x4_lod", (int)(GBufferTransmissibility.mipmapCount - 3));
         _computeShader.SetFloat("g_lightEmissionOutscatter", 0);
         _computeShader.SetInt("g_density_granularity", densityGranularity);
         _computeShader.SetShaderFlag("BILINEAR_PHOTON_DISTRIBUTION", bilinearPhotonWrites);
+
+        // Temporary silliness
+        _forwardIntegrationShader.SetVector("g_importance_sampling_target", ImportanceSamplingTarget);
+        //_forwardIntegrationShader.SetInt("g_density_granularity", densityGranularity);
+        _forwardIntegrationShader.SetShaderFlag("BILINEAR_PHOTON_DISTRIBUTION", bilinearPhotonWrites);
 
         _computeShader.SetShaderFlag("INTEGRATE_EXPLICIT", false);
         _computeShader.SetShaderFlag("INTEGRATE_IMPLICIT", false);
@@ -545,7 +550,6 @@ public class Simulation : PhotonerComponent
                 _computeShader.SetShaderFlag("INTEGRATE_EXPLICIT_BOUNDED_BOUNCE_IMPLICIT_INTERVAL", true);
                 break;
         }
-        
 
         for (int i = 0; i < _gridCellInput.Length; i++)
         {
@@ -576,6 +580,7 @@ public class Simulation : PhotonerComponent
                 */
                 energyNormPerFrame = raysPerFrame / pixelCount;
                 _computeShader.SetFloat("g_energy_norm", (float)((double)uint.MaxValue / pixelCount * energyPrecision));
+                _forwardIntegrationShader.SetFloat("g_hdr_scale", (float)((double)uint.MaxValue * framesSinceClear / pixelCount * energyPrecision));
 
                 _computeShader.SetShaderFlag("FILTER_INACTIVE_CELLS", false);
                 foreach (var light in _allLights)
@@ -584,7 +589,7 @@ public class Simulation : PhotonerComponent
                 }
                 
                 // HDR MAPPING
-                _computeShader.RunKernel("ConvertToHDR", width, height,
+                _forwardIntegrationShader.RunKernel("ConvertToHDR", width, height,
                     ("g_output_raw", SimulationPhotonsRaw),
                     ("g_output_accumulated", SimulationForwardAccumulated),
                     ("g_output_hdr", SimulationOutputHDR),
@@ -603,6 +608,7 @@ public class Simulation : PhotonerComponent
 
                 energyNormPerFrame = raysPerFrame / pixelCount;
                 _computeShader.SetFloat("g_energy_norm", (float)((double)uint.MaxValue / pixelCount * energyPrecision));
+                _forwardIntegrationShader.SetFloat("g_hdr_scale", (float)((double)uint.MaxValue * framesSinceClear / pixelCount * energyPrecision));
 
                 // Clear intermediate target
                 _computeShader.SetShaderFlag("FILTER_INACTIVE_CELLS", false);
@@ -612,7 +618,7 @@ public class Simulation : PhotonerComponent
                 }
 
                 // HDR MAPPING
-                _computeShader.RunKernel("ConvertToHDR", width, height,
+                _forwardIntegrationShader.RunKernel("ConvertToHDR", width, height,
                     ("g_output_raw", SimulationPhotonsRaw),
                     ("g_output_accumulated", SimulationForwardAccumulated),
                     ("g_output_hdr", SimulationForwardHDR),
@@ -1005,6 +1011,7 @@ public class Simulation : PhotonerComponent
         string simulateKernel = null;
         var lightToTargetSpace = worldToTargetSpace * light.WorldTransform;
         double photonEnergy = (double)uint.MaxValue / raysPerFrame * energyPrecision;
+        float emissionOutscatter = 0;
 
         string kernelFormat = "Simulate_{0}";
 
@@ -1012,7 +1019,7 @@ public class Simulation : PhotonerComponent
         {
             case RTPointLight pt:
                 simulateKernel = string.Format(kernelFormat, "PointLight");
-                _computeShader.SetFloat("g_lightEmissionOutscatter", pt.emissionOutscatter);
+                emissionOutscatter = pt.emissionOutscatter;
                 break;
             case RTSpotLight _:
                 simulateKernel = string.Format(kernelFormat, "SpotLight");
@@ -1025,21 +1032,22 @@ public class Simulation : PhotonerComponent
                 break;
             case RTFieldLight field:
                 simulateKernel = string.Format(kernelFormat, "FieldLight");
-                _computeShader.SetTexture(_computeShader.FindKernel(simulateKernel), "g_lightFieldTexture", field.lightTexture ? field.lightTexture : Texture2D.whiteTexture);
-                _computeShader.SetFloat("g_lightEmissionOutscatter", field.emissionOutscatter);
+                _forwardIntegrationShader.SetTexture(_forwardIntegrationShader.FindKernel(simulateKernel), "g_lightFieldTexture", field.lightTexture ? field.lightTexture : Texture2D.whiteTexture);
+                emissionOutscatter = field.emissionOutscatter;
                 break;
             case RTDirectionalLight dir:
                 simulateKernel = string.Format(kernelFormat, "DirectionalLight");
-                _computeShader.SetVector("g_directionalLightDirection", lightToTargetSpace.MultiplyVector(new Vector3(0, -1, 0)));
+                _forwardIntegrationShader.SetVector("g_directionalLightDirection", lightToTargetSpace.MultiplyVector(new Vector3(0, -1, 0)));
                 break;
         }
 
-        _computeShader.SetVector("g_lightEnergy", light.Energy * (float)photonEnergy);
-        _computeShader.SetInt("g_bounces", bounces);
-        _computeShader.SetMatrix("g_lightToTarget", lightToTargetSpace.transpose);
-        _computeShader.SetFloat("g_integration_interval", Mathf.Max(0.01f, integrationInterval * height));
+        _forwardIntegrationShader.SetFloat("g_lightEmissionOutscatter", emissionOutscatter);
+        _forwardIntegrationShader.SetVector("g_lightEnergy", light.Energy * (float)photonEnergy);
+        _forwardIntegrationShader.SetInt("g_bounces", bounces);
+        _forwardIntegrationShader.SetMatrix("g_lightToTarget", lightToTargetSpace.transpose);
+        _forwardIntegrationShader.SetFloat("g_integration_interval", Mathf.Max(0.01f, integrationInterval * height));
 
-        _computeShader.RunKernel(simulateKernel, raysPerFrame,
+        _forwardIntegrationShader.RunKernel(simulateKernel, raysPerFrame,
             ("g_rand", _randomBuffer),
             ("g_output_raw", outputTexture),
             ("g_photon_density_raw", PhotonDensityBuffer),

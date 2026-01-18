@@ -56,7 +56,7 @@ public class SimulationCamera : MonoBehaviour {
         
         gameObject.SetActive(false);
 
-        _computeShader = (ComputeShader)Resources.Load("Simulation");
+        _computeShader = (ComputeShader)Resources.Load("GBuffer");
     }
 
     public void Render() {

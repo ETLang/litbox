@@ -1,4 +1,4 @@
-#include "../Shaders/RayTracing2DCommon.cginc"
+#include "../Shaders/PhotonerCommon.cginc"
 
 #pragma kernel MakeTransmissibilityTensor
 #pragma kernel MakePhotonCountTensor
