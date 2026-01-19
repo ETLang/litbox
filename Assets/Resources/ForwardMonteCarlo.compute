@@ -203,7 +203,8 @@ struct ForwardMonteCarlo : BaseContext, IMonteCarloMethod
         
         emitted.Origin = mul(float4(pos, 0, 1), g_lightToTarget).xy;
         
-        float3 important_direction = ScatterImportance(emitted.Origin);
+        //float3 important_direction = ScatterImportance(emitted.Origin);
+        float3 important_direction = { rand.NextDirection(), 1.0 / (2 * PI)};
         emitted.Direction = important_direction.xy;
         emitted.Energy = g_lightEnergy * important_direction.z;
 
@@ -284,17 +285,14 @@ struct ForwardMonteCarlo : BaseContext, IMonteCarloMethod
     }
 };
 
-#define MONTE_CARLO_MODEL ForwardMonteCarlo
-#include "Integrate.template.cginc"
-
-#define SIMULATION_IMPLEMENTATION(lightType)              \
+#define SIMULATION_IMPLEMENTATION(lightType)                    \
 [numthreads(NUMTHREADS_1D)]                                     \
 void Simulate_##lightType (uint3 id : SV_DispatchThreadID) {    \
     ForwardMonteCarlo integrator;                               \
     integrator.Init(g_rand[id.x]);                              \
     Ray photon = integrator.Emit##lightType();                  \
     if(g_lightEmissionOutscatter != 0) { WritePhoton(photon.Origin, photon.Energy, g_lightEmissionOutscatter, true); } \
-    Integrate(photon, integrator);                              \
+    Integrate(photon, g_bounces, integrator);                   \
     g_rand[id.x] = integrator.rand.state;                       \
 }
 

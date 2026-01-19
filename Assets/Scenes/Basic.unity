@@ -473,7 +473,7 @@ MonoBehaviour:
   m_PrefabInstance: {fileID: 0}
   m_PrefabAsset: {fileID: 0}
   m_GameObject: {fileID: 687478585}
-  m_Enabled: 1
+  m_Enabled: 0
   m_EditorHideFlags: 0
   m_Script: {fileID: 11500000, guid: c258376cbb1fbc2b8b99d7a2de14fef0, type: 3}
   m_Name: 
@@ -1404,19 +1404,13 @@ MonoBehaviour:
   height: 512
   raysPerFrame: 64000
   photonBounces: -1
-  integrationMethod: 5
   integrationInterval: 0.2
-  densityGranularity: 10000
   transmissibilityVariationEpsilon: 0.001
   _convergenceThreshold: 0
-  framesSinceClear: 0
+  iterationsSinceClear: 0
   convergenceProgress: 0.5718811
   strategy: 1
-  gridCells:
-    x: 16
-    y: 16
   bilinearPhotonWrites: 1
-  pathSamples: 10
   hasConverged: 1
 --- !u!64 &2885319533301894557
 MeshCollider:

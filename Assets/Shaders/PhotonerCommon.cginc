@@ -4,7 +4,7 @@
 #include "UnityCG.cginc"
 //#include "Packages/com.unity.render-pipelines.universal/ShaderLibrary/Core.hlsl"
 
-#define PI 3.141592654
+#define PI (3.141592654f)
 
 // Foundation
 

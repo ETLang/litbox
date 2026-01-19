@@ -3,6 +3,20 @@ using System.Threading.Tasks;
 using UnityEngine;
 using UnityEngine.Rendering;
 
+public struct PhotonerGBuffer
+{
+    public RenderTexture AlbedoAlpha;
+    public RenderTexture Transmissibility;
+    public RenderTexture NormalRoughness;
+    public RenderTexture QuadTreeLeaves;
+
+    public bool IsValid =>
+        AlbedoAlpha != null &&
+        Transmissibility != null &&
+        NormalRoughness != null &&
+        QuadTreeLeaves != null;
+}
+
 [RequireComponent(typeof(Camera))]
 public class SimulationCamera : MonoBehaviour {
 

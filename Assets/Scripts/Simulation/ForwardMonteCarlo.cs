@@ -1,14 +1,6 @@
 using System;
 using UnityEngine;
 
-public struct PhotonerGBuffer
-{
-    public RenderTexture AlbedoAlpha;
-    public RenderTexture Transmissibility;
-    public RenderTexture NormalRoughness;
-    public RenderTexture QuadTreeLeaves;
-}
-
 public class ForwardMonteCarlo : Disposable
 {
     #region GBuffer
@@ -89,8 +81,8 @@ public class ForwardMonteCarlo : Disposable
     #endregion
 
     public Matrix4x4 WorldToTargetTransform { get; set; } = Matrix4x4.identity;
-    public int FramesSinceClear { get; set; }
-    public uint? ForcedBounceCount { get; set; }
+    public int IterationsSinceClear { get; set; }
+    public uint? OverrideBounceCount { get; set; }
     public int RaysToEmit { get; set; } = 65536;
 
 
@@ -119,7 +111,7 @@ public class ForwardMonteCarlo : Disposable
         int width = RawPhotonBuffer.width;
         int height = RawPhotonBuffer.height;
 
-        _forwardIntegrationShader.SetFloat("g_hdr_scale", (float)((double)uint.MaxValue * FramesSinceClear / (width * height)));
+        _forwardIntegrationShader.SetFloat("g_hdr_scale", (float)((double)uint.MaxValue * IterationsSinceClear / (width * height)));
 
         // TODO: Distribute the desired rays to emit across the light sources, instead of duplicating the rays emitted.
         // This currently means that more lights mean a significant performance hit.
@@ -137,7 +129,7 @@ public class ForwardMonteCarlo : Disposable
         var lightToTargetSpace = WorldToTargetTransform * light.WorldTransform;
         double photonEnergy = (double)uint.MaxValue / RaysToEmit;
         float emissionOutscatter = 0;
-        uint bounces = ForcedBounceCount ?? light.bounces;
+        uint bounces = OverrideBounceCount ?? light.bounces;
 
         string kernelFormat = "Simulate_{0}";
 
@@ -190,5 +182,8 @@ public class ForwardMonteCarlo : Disposable
     protected override void OnDispose()
     {
         base.OnDispose();
+
+        BufferManager.Release(ref _rawPhotonBuffer);
+        BufferManager.Release(ref _outputImageHDR);
     }
 }
