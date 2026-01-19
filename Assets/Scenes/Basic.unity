@@ -1185,7 +1185,7 @@ MonoBehaviour:
   m_Script: {fileID: 11500000, guid: 14a0e5c7ca6748d2da91c7d70db73a3a, type: 3}
   m_Name: 
   m_EditorClassIdentifier: 
-  intensity: 49
+  intensity: 10
   bounces: 3
 --- !u!1 &2123204530
 GameObject:
@@ -1415,7 +1415,6 @@ MonoBehaviour:
   gridCells:
     x: 16
     y: 16
-  energyPrecision: 1000
   bilinearPhotonWrites: 1
   pathSamples: 10
   hasConverged: 1

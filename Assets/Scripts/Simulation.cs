@@ -19,7 +19,6 @@ public struct SimulationProfile {
 
 [RequireComponent(typeof(MeshRenderer))]
 [RequireComponent(typeof(MeshFilter))]
-[ExecuteAlways]
 public class Simulation : PhotonerComponent
 {
     public enum IntegrationMethod
@@ -93,7 +92,6 @@ public class Simulation : PhotonerComponent
     [Header("Archaic Properties")]
     [SerializeField] private Strategy strategy = Strategy.LightTransport;
     [SerializeField] private uint2 gridCells = new uint2(8, 8);
-    [SerializeField] private int energyPrecision = 100;
     [SerializeField] private bool bilinearPhotonWrites = true;
     [SerializeField] private int pathSamples = 10;
 
@@ -101,8 +99,6 @@ public class Simulation : PhotonerComponent
     private Material _compositorMat;
     private SimulationCamera _realContentCamera;
     private ComputeShader _computeShader;
-    private ComputeShader _forwardIntegrationShader;
-    private ComputeBuffer _randomBuffer;
     private ComputeBuffer _gridCellInputBuffer;
     private ComputeBuffer _gridCellOutputBuffer;
     private List<ConvergenceCellGroup> _gridCellInputGroups = new List<ConvergenceCellGroup>();
@@ -113,9 +109,6 @@ public class Simulation : PhotonerComponent
     private ConvergenceCellState[] _gridCellState;
 
     private int _currentRenderTextureIndex = 0;
-    private Texture _mieScatteringLUT;
-    private Texture _teardropScatteringLUT;
-    private Texture _bdrfLUT;
     private bool hasValidGridTransmissibility = false;
     private bool awaitingConvergenceResult = false;
     [SerializeField, ReadOnly] public bool hasConverged = false;
@@ -135,18 +128,11 @@ public class Simulation : PhotonerComponent
     Matrix4x4 _worldToPresentation;
     MeshFilter _meshFilter;
     MeshRenderer _meshRenderer;
+    ForwardMonteCarlo _forwardIntegrator;
+    BackwardMonteCarlo _backwardIntegrator;
 
-    public RenderTexture GBufferAlbedo { get; private set; }
-    public RenderTexture GBufferTransmissibility { get; private set; }
-    public RenderTexture GBufferNormalAlignment { get; private set; }
-    public RenderTexture GBufferQuadTreeLeaves { get; private set; }
-
-    public RenderTexture SimulationPhotonsRaw { get; private set; }
-    public RenderTexture SimulationForwardHDR { get;private set; }
-    public RenderTexture SimulationForwardAccumulated { get; private set; }
-    public RenderTexture SimulationBackwardAccumulated { get; private set; }
+    public PhotonerGBuffer GBuffer { get; private set; }
     public RenderTexture SimulationOutputHDR { get; private set; }
-    public RenderTexture PhotonDensityBuffer { get; private set; }
     public Texture2D EfficiencyDiagnostic { get; private set; }
     public Texture2D CumulativePhotonsDiagnostic { get; private set; }
     public Texture2D PhotonsDiagnostic { get; private set; }
@@ -187,7 +173,7 @@ public class Simulation : PhotonerComponent
         DetectChanges(() => strategy, "dirtyFrame");
     }
 
-    protected override void OnInvalidated(string group) => _dirtyFrame |= (group == "dirtyFrame");
+    protected override void OnInvalidated(string group) => _dirtyFrame |= group == "dirtyFrame";
 
     public void LoadProfile(SimulationProfile profile)
     {
@@ -196,31 +182,6 @@ public class Simulation : PhotonerComponent
         photonBounces = profile.photonBounces;
         hasConverged = false;
         framesSinceClear = 0;
-    }
-
-    void ValidateRandomBuffer()
-    {
-        var randSeeds = Math.Max(raysPerFrame, width * height);
-
-        if (_randomBuffer == null || _randomBuffer.count < randSeeds)
-        {
-            uint4[] seeds = new uint4[randSeeds];
-
-            for (int i = 0; i < seeds.Length; i++)
-            {
-                seeds[i].x = (uint)(UnityEngine.Random.value * 1000000);
-                seeds[i].y = (uint)(UnityEngine.Random.value * 1000000);
-                seeds[i].z = (uint)(UnityEngine.Random.value * 1000000);
-                seeds[i].w = (uint)(UnityEngine.Random.value * 1000000);
-            }
-
-            if (_randomBuffer != null)
-            {
-                _randomBuffer.Release();
-            }
-
-            _randomBuffer = this.CreateStructuredBuffer(seeds);
-        }
     }
 
     void ValidateTargets()
@@ -235,7 +196,21 @@ public class Simulation : PhotonerComponent
     private void Awake()
     {
         _computeShader = (ComputeShader)Resources.Load("Simulation");
-        _forwardIntegrationShader = (ComputeShader)Resources.Load("ForwardMonteCarlo");
+        _forwardIntegrator = new ForwardMonteCarlo();
+        DisposeOnDisable(_forwardIntegrator);
+
+        _backwardIntegrator = new BackwardMonteCarlo();
+        DisposeOnDisable(_backwardIntegrator);
+
+        OnStartedPlaying();
+
+        if(strategy == Strategy.LightTransport)
+        {
+            SimulationOutputHDR = _forwardIntegrator.OutputImageHDR;
+        } else
+        {
+            SimulationOutputHDR = _backwardIntegrator.OutputImage;
+        }
 
         _meshFilter = GetComponent<MeshFilter>();
         _meshRenderer = GetComponent<MeshRenderer>();
@@ -264,10 +239,17 @@ public class Simulation : PhotonerComponent
     }
 
 #if UNITY_EDITOR
+    private bool _notPlaying;
     private void EditorApplication_playModeStateChanged(UnityEditor.PlayModeStateChange state)
     {
         if(state == UnityEditor.PlayModeStateChange.EnteredPlayMode) {
+            _notPlaying = false;
             OnStartedPlaying();
+        }
+
+        if(state == UnityEditor.PlayModeStateChange.ExitingPlayMode)
+        {
+            _notPlaying = true;
         }
     }
 #endif
@@ -310,13 +292,6 @@ public class Simulation : PhotonerComponent
         _gridCellOutputInitialValue = (ConvergenceCellOutput[])_gridCellOutput.Clone();
         _gridCellOutputBuffer = this.CreateStructuredBuffer(_gridCellOutput);
 
-        _mieScatteringLUT = LUT.CreateMieScatteringLUT().AsTexture();
-        DisposeOnDisable(() => DestroyImmediate(_mieScatteringLUT));
-        _teardropScatteringLUT = LUT.CreateTeardropScatteringLUT(10).AsTexture();
-        DisposeOnDisable(() => DestroyImmediate(_teardropScatteringLUT));
-        _bdrfLUT = LUT.CreateBDRFLUT().AsTexture();
-        DisposeOnDisable(() => DestroyImmediate(_bdrfLUT));
-
         EfficiencyDiagnostic = new Texture2D((int)gridCells.x, (int)gridCells.y, TextureFormat.RGBAFloat, false) {
             filterMode = FilterMode.Point
         };
@@ -342,32 +317,24 @@ public class Simulation : PhotonerComponent
         }
     }
 
-    private void Start()
-    {
-        if(!Application.isEditor) {
-            OnStartedPlaying();
-        }
-    }
-
     private void CreateTargetBuffers()
     {
-        SimulationPhotonsRaw = this.CreateRWTexture(width * 3, height, RenderTextureFormat.RInt);
-        SimulationForwardHDR = this.CreateRWTexture(width, height, RenderTextureFormat.ARGBFloat);
-        SimulationForwardAccumulated = this.CreateRWTexture(width, height, RenderTextureFormat.ARGBFloat);
-        SimulationBackwardAccumulated = this.CreateRWTexture(width, height, RenderTextureFormat.ARGBFloat);
-        SimulationOutputHDR = this.CreateRWTextureWithMips(width, height, RenderTextureFormat.ARGBFloat);
-        PhotonDensityBuffer = this.CreateRWTextureWithMips(width, height, RenderTextureFormat.RInt);
+        PhotonerGBuffer gBuffer = new PhotonerGBuffer
+        {
+            AlbedoAlpha = this.CreateRWTextureWithMips(width, height, RenderTextureFormat.ARGBFloat, 32),
+            Transmissibility = this.CreateRWTextureWithMips(width, height, RenderTextureFormat.ARGBFloat),
+            NormalRoughness = this.CreateRWTextureWithMips(width, height, RenderTextureFormat.ARGBFloat),
+            QuadTreeLeaves = this.CreateRWTexture(width, height, RenderTextureFormat.ARGBHalf),
+        };
 
-        GBufferAlbedo = this.CreateRWTextureWithMips(width, height, RenderTextureFormat.ARGBFloat, 32);
-        GBufferTransmissibility = this.CreateRWTextureWithMips(width, height, RenderTextureFormat.ARGBFloat);
-        GBufferNormalAlignment = this.CreateRWTextureWithMips(width, height, RenderTextureFormat.ARGBFloat);
-        GBufferQuadTreeLeaves = this.CreateRWTexture(width, height, RenderTextureFormat.ARGBHalf);
+        GBuffer = gBuffer;
+
+        _forwardIntegrator.GBuffer = GBuffer;
+        _backwardIntegrator.GBuffer = GBuffer;
+        _backwardIntegrator.InputImage = _forwardIntegrator.OutputImageHDR;
 
         if(_realContentCamera != null) {
-            _realContentCamera.GBufferAlbedo = GBufferAlbedo;
-            _realContentCamera.GBufferTransmissibility = GBufferTransmissibility;
-            _realContentCamera.GBufferNormalSlope = GBufferNormalAlignment;
-            _realContentCamera.GBufferQuadTreeLeaves = GBufferQuadTreeLeaves;
+            _realContentCamera.GBuffer = GBuffer;
             _realContentCamera.VarianceEpsilon = transmissibilityVariationEpsilon;
         }
     }
@@ -375,7 +342,6 @@ public class Simulation : PhotonerComponent
     void OnEnable()
     {
         ValidateTargets();
-        ValidateRandomBuffer();
     }
 
     protected override void OnDisable()
@@ -392,7 +358,6 @@ public class Simulation : PhotonerComponent
     protected override void Update()
     {
         ValidateTargets();
-        ValidateRandomBuffer();
 
         if (_realContentCamera == null)
         {
@@ -409,17 +374,17 @@ public class Simulation : PhotonerComponent
             OnInvalidated("dirtyFrame");
         }
 
-
         base.Update();
     }
 
     const int ConvergenceMeasurementInterval = 100;
     void LateUpdate()
     {
-        if (_realContentCamera == null)
-        {
-            return;
-        }
+#if UNITY_EDITOR
+        if(_notPlaying) { return; }
+#endif
+
+        if (_realContentCamera == null) { return; }
 
         _realContentCamera.Render();
 
@@ -483,13 +448,11 @@ public class Simulation : PhotonerComponent
             convergenceProgress = -1;
             ConvergenceStartTime = now;
 
-            SimulationPhotonsRaw.Clear(Color.clear);
-            SimulationForwardAccumulated.Clear(Color.clear);
-            PhotonDensityBuffer.Clear(Color.clear);
+            _forwardIntegrator.Clear();
 
             if(strategy == Strategy.Hybrid)
             {
-                SimulationBackwardAccumulated.Clear(Color.clear);
+                _backwardIntegrator.Clear();
             }
 
             for (int i = 0; i < _gridCellState.Length; i++)
@@ -516,40 +479,10 @@ public class Simulation : PhotonerComponent
         _computeShader.SetFloat("g_lightEmissionOutscatter", 0);
         _computeShader.SetInt("g_density_granularity", densityGranularity);
         _computeShader.SetShaderFlag("BILINEAR_PHOTON_DISTRIBUTION", bilinearPhotonWrites);
-
-        // Temporary silliness
-        _forwardIntegrationShader.SetVector("g_importance_sampling_target", ImportanceSamplingTarget);
-        //_forwardIntegrationShader.SetInt("g_density_granularity", densityGranularity);
-        _forwardIntegrationShader.SetShaderFlag("BILINEAR_PHOTON_DISTRIBUTION", bilinearPhotonWrites);
-
-        _computeShader.SetShaderFlag("INTEGRATE_EXPLICIT", false);
-        _computeShader.SetShaderFlag("INTEGRATE_IMPLICIT", false);
-        _computeShader.SetShaderFlag("INTEGRATE_IMPLICIT_INTERVAL", false);
-        _computeShader.SetShaderFlag("INTEGRATE_EXPLICIT_BOUNDED", false);
-        _computeShader.SetShaderFlag("INTEGRATE_EXPLICIT_BOUNCE_IMPLICIT_INTERVAL", false);
-        _computeShader.SetShaderFlag("INTEGRATE_EXPLICIT_BOUNDED_BOUNCE_IMPLICIT_INTERVAL", false);
-
-        switch (integrationMethod)
-        {
-            case IntegrationMethod.Explicit:
-                _computeShader.SetShaderFlag("INTEGRATE_EXPLICIT", true);
-                break;
-            case IntegrationMethod.Implicit:
-                _computeShader.SetShaderFlag("INTEGRATE_IMPLICIT", true);
-                break;
-            case IntegrationMethod.ImplicitInterval:
-                _computeShader.SetShaderFlag("INTEGRATE_IMPLICIT_INTERVAL", true);
-                break;
-            case IntegrationMethod.ExplicitBounded:
-                _computeShader.SetShaderFlag("INTEGRATE_EXPLICIT_BOUNDED", true);
-                break;
-            case IntegrationMethod.ExplicitBounceImplicitInterval:
-                _computeShader.SetShaderFlag("INTEGRATE_EXPLICIT_BOUNCE_IMPLICIT_INTERVAL", true);
-                break;
-            case IntegrationMethod.ExplicitBoundedBounceImplicitInterval:
-                _computeShader.SetShaderFlag("INTEGRATE_EXPLICIT_BOUNDED_BOUNCE_IMPLICIT_INTERVAL", true);
-                break;
-        }
+        
+        _forwardIntegrator.ImportanceSamplingTarget = ImportanceSamplingTarget;
+        _forwardIntegrator.DisableBilinearWrites = !bilinearPhotonWrites;
+        _backwardIntegrator.ImportanceSamplingTarget = ImportanceSamplingTarget;
 
         for (int i = 0; i < _gridCellInput.Length; i++)
         {
@@ -560,9 +493,6 @@ public class Simulation : PhotonerComponent
         }
         _gridCellInputBuffer.SetData(_gridCellInput);
 
-        float energyNormPerFrame = 1;
-        float pixelCount = width * height;
-
         switch (strategy)
         {
             case Strategy.LightTransport:
@@ -571,29 +501,14 @@ public class Simulation : PhotonerComponent
 
                 // At each collision point, a portion of the light's energy is "reflected" out to the viewer's eye (outscattered).
 
-                /*
-                Gridcell management:
-                For each cell group, compute center and ideal lobe size.
-                Simulate lights
-                Filter cells that have already converged.
+                _forwardIntegrator.IntegrationInterval = integrationInterval;
+                _forwardIntegrator.WorldToTargetTransform = worldToTargetSpace;
+                _forwardIntegrator.FramesSinceClear = framesSinceClear;
+                _forwardIntegrator.ForcedBounceCount = photonBounces == -1 ? null : (uint)photonBounces;
+                _forwardIntegrator.RaysToEmit = raysPerFrame;
 
-                */
-                energyNormPerFrame = raysPerFrame / pixelCount;
-                _computeShader.SetFloat("g_energy_norm", (float)((double)uint.MaxValue / pixelCount * energyPrecision));
-                _forwardIntegrationShader.SetFloat("g_hdr_scale", (float)((double)uint.MaxValue * framesSinceClear / pixelCount * energyPrecision));
-
-                _computeShader.SetShaderFlag("FILTER_INACTIVE_CELLS", false);
-                foreach (var light in _allLights)
-                {
-                    SimulateLight(light, photonBounces != -1 ? photonBounces : (int)light.bounces, worldToTargetSpace, SimulationPhotonsRaw);
-                }
-                
-                // HDR MAPPING
-                _forwardIntegrationShader.RunKernel("ConvertToHDR", width, height,
-                    ("g_output_raw", SimulationPhotonsRaw),
-                    ("g_output_accumulated", SimulationForwardAccumulated),
-                    ("g_output_hdr", SimulationOutputHDR),
-                    ("g_convergenceCellStateIn", _gridCellInputBuffer));
+                _forwardIntegrator.Integrate(_allLights);
+                SimulationOutputHDR = _forwardIntegrator.OutputImageHDR;
                 break;
             case Strategy.Hybrid:
                 // Hybrid forward/backward tracing technique
@@ -606,58 +521,30 @@ public class Simulation : PhotonerComponent
                 //    When paths intersect a pixel that has energy deposited from a previous step,
                 //    that energy is propagated to the tracing pixel.
 
-                energyNormPerFrame = raysPerFrame / pixelCount;
-                _computeShader.SetFloat("g_energy_norm", (float)((double)uint.MaxValue / pixelCount * energyPrecision));
-                _forwardIntegrationShader.SetFloat("g_hdr_scale", (float)((double)uint.MaxValue * framesSinceClear / pixelCount * energyPrecision));
+                _forwardIntegrator.IntegrationInterval = integrationInterval;
+                _forwardIntegrator.WorldToTargetTransform = worldToTargetSpace;
+                _forwardIntegrator.FramesSinceClear = framesSinceClear;
+                _forwardIntegrator.ForcedBounceCount = photonBounces == -1 ? null : (uint)photonBounces;
+                _forwardIntegrator.RaysToEmit = raysPerFrame;
 
-                // Clear intermediate target
-                _computeShader.SetShaderFlag("FILTER_INACTIVE_CELLS", false);
-                foreach (var light in _allLights)
-                {
-                    SimulateLight(light, photonBounces != -1 ? photonBounces / 2 : (int)light.bounces, worldToTargetSpace, SimulationPhotonsRaw);
-                }
+                _forwardIntegrator.Integrate(_allLights);
 
-                // HDR MAPPING
-                _forwardIntegrationShader.RunKernel("ConvertToHDR", width, height,
-                    ("g_output_raw", SimulationPhotonsRaw),
-                    ("g_output_accumulated", SimulationForwardAccumulated),
-                    ("g_output_hdr", SimulationForwardHDR),
-                    ("g_convergenceCellStateIn", _gridCellInputBuffer));
+                _backwardIntegrator.IntegrationInterval = integrationInterval;
 
-                // BACKTRACING
-                _computeShader.RunKernel("Simulate_Camera", width, height,
-                    ("g_rand", _randomBuffer),
-                    ("g_hdr", SimulationForwardHDR),
-                    ("g_output_hdr", SimulationBackwardAccumulated),
-                    ("g_albedo", GBufferAlbedo),
-                    ("g_transmissibility", GBufferTransmissibility),
-                    ("g_normalAlignment", GBufferNormalAlignment),
-                    ("g_quadTreeLeaves", GBufferQuadTreeLeaves),
-                    ("g_mieScatteringLUT", _mieScatteringLUT),
-                    ("g_teardropScatteringLUT", _teardropScatteringLUT),
-                    ("g_bdrfLUT", _bdrfLUT),
-                    ("g_convergenceCellStateIn", _gridCellInputBuffer),
-                    ("g_convergenceCellStateOut", _gridCellOutputBuffer));
+                _backwardIntegrator.Integrate();
 
-                // NORMALIZATION
-                _computeShader.RunKernel("Camera_Buffer_Divide", width, height,
-                    ("g_hdr", SimulationBackwardAccumulated),
-                    ("g_output_hdr", SimulationOutputHDR),
-                    ("g_count", framesSinceClear));
-
+                SimulationOutputHDR = _backwardIntegrator.OutputImage;
                 break;
         }
 
         // Generate photon count and HDR mip levels
-        int mipW = PhotonDensityBuffer.width;
-        int mipH = PhotonDensityBuffer.height;
-        for(int i = 1;i < PhotonDensityBuffer.mipmapCount;i++) {
+        int mipW = SimulationOutputHDR.width;
+        int mipH = SimulationOutputHDR.height;
+        for(int i = 1;i < SimulationOutputHDR.mipmapCount;i++) {
             mipW /= 2;
             mipH /= 2;
             _computeShader.RunKernel("GenerateOutputMips", mipW, mipH,
-                ("g_sourceMipLevelPhotonCount", PhotonDensityBuffer.SelectMip(i - 1)),
                 ("g_sourceMipLevelHDR", SimulationOutputHDR.SelectMip(i - 1)),
-                ("g_destMipLevelPhotonCount", PhotonDensityBuffer.SelectMip(i)),
                 ("g_destMipLevelHDR", SimulationOutputHDR.SelectMip(i)));
         }
 
@@ -729,13 +616,13 @@ public class Simulation : PhotonerComponent
         _gridCellInputBuffer.SetData(_gridCellInput);
 
         _computeShader.SetVector("g_convergenceCells", new Vector2(gridCells.x, gridCells.y));
-        _computeShader.SetFloat("g_getCellTransmissibility_lod", GBufferTransmissibility.mipmapCount
+        _computeShader.SetFloat("g_getCellTransmissibility_lod", GBuffer.Transmissibility.mipmapCount
             - Mathf.Ceil(Mathf.Log(Mathf.Max(gridCells.x, gridCells.y), 2)) - 1);
 
         if (true || !hasValidGridTransmissibility)
         {
             _computeShader.RunKernel("GetCellTransmissibility", (int)gridCells.x, (int)gridCells.y,
-                ("g_transmissibility", GBufferTransmissibility),
+                ("g_transmissibility", GBuffer.Transmissibility),
                 ("g_convergenceCellStateOut", _gridCellOutputBuffer));
             hasValidGridTransmissibility = true;
         }
@@ -793,7 +680,7 @@ public class Simulation : PhotonerComponent
             if (_gridCellInput[i].IsActive != 0)
             {
                 //_gridCellInput[i].IsActive = localHasConverged ? 0u : 1u;
-                AccumulatePhotons(i % (int)gridCells.x, i / (int)gridCells.x);
+                //AccumulatePhotons(i % (int)gridCells.x, i / (int)gridCells.x);
                 //_gridCellInput[i].IsActive = outputState.MaxValue > (1u << 31) ? 0u : 1u;
                 overallConvergence = Math.Max(overallConvergence, localConvergence);
             }
@@ -994,73 +881,17 @@ public class Simulation : PhotonerComponent
         }
     }
 
-    void AccumulatePhotons(int xCell, int yCell)
-    {
-        int w = (int)(width / gridCells.x);
-        int h = (int)(height / gridCells.y);
+    // void AccumulatePhotons(int xCell, int yCell)
+    // {
+    //     int w = (int)(width / gridCells.x);
+    //     int h = (int)(height / gridCells.y);
 
-        _computeShader.SetVector("g_accumulate_base_index", new Vector2(xCell * w, yCell * h));
-        _computeShader.RunKernel("AccumulatePhotons", w, h,
-            ("g_output_accumulated", SimulationForwardAccumulated),
-            ("g_output_raw", SimulationPhotonsRaw),
-            ("g_convergenceCellStateIn", _gridCellInputBuffer));
-    }
-
-    void SimulateLight(RTLightSource light, int bounces, Matrix4x4 worldToTargetSpace, RenderTexture outputTexture)
-    {
-        string simulateKernel = null;
-        var lightToTargetSpace = worldToTargetSpace * light.WorldTransform;
-        double photonEnergy = (double)uint.MaxValue / raysPerFrame * energyPrecision;
-        float emissionOutscatter = 0;
-
-        string kernelFormat = "Simulate_{0}";
-
-        switch (light)
-        {
-            case RTPointLight pt:
-                simulateKernel = string.Format(kernelFormat, "PointLight");
-                emissionOutscatter = pt.emissionOutscatter;
-                break;
-            case RTSpotLight _:
-                simulateKernel = string.Format(kernelFormat, "SpotLight");
-                break;
-            case RTLaserLight _:
-                simulateKernel = string.Format(kernelFormat, "LaserLight");
-                break;
-            case RTAmbientLight _:
-                simulateKernel = string.Format(kernelFormat, "AmbientLight");
-                break;
-            case RTFieldLight field:
-                simulateKernel = string.Format(kernelFormat, "FieldLight");
-                _forwardIntegrationShader.SetTexture(_forwardIntegrationShader.FindKernel(simulateKernel), "g_lightFieldTexture", field.lightTexture ? field.lightTexture : Texture2D.whiteTexture);
-                emissionOutscatter = field.emissionOutscatter;
-                break;
-            case RTDirectionalLight dir:
-                simulateKernel = string.Format(kernelFormat, "DirectionalLight");
-                _forwardIntegrationShader.SetVector("g_directionalLightDirection", lightToTargetSpace.MultiplyVector(new Vector3(0, -1, 0)));
-                break;
-        }
-
-        _forwardIntegrationShader.SetFloat("g_lightEmissionOutscatter", emissionOutscatter);
-        _forwardIntegrationShader.SetVector("g_lightEnergy", light.Energy * (float)photonEnergy);
-        _forwardIntegrationShader.SetInt("g_bounces", bounces);
-        _forwardIntegrationShader.SetMatrix("g_lightToTarget", lightToTargetSpace.transpose);
-        _forwardIntegrationShader.SetFloat("g_integration_interval", Mathf.Max(0.01f, integrationInterval * height));
-
-        _forwardIntegrationShader.RunKernel(simulateKernel, raysPerFrame,
-            ("g_rand", _randomBuffer),
-            ("g_output_raw", outputTexture),
-            ("g_photon_density_raw", PhotonDensityBuffer),
-            ("g_albedo", GBufferAlbedo),
-            ("g_transmissibility", GBufferTransmissibility),
-            ("g_normalAlignment", GBufferNormalAlignment),
-            ("g_quadTreeLeaves", GBufferQuadTreeLeaves),
-            ("g_mieScatteringLUT", _mieScatteringLUT),
-            ("g_teardropScatteringLUT", _teardropScatteringLUT),
-            ("g_bdrfLUT", _bdrfLUT),
-            ("g_convergenceCellStateIn", _gridCellInputBuffer),
-            ("g_convergenceCellStateOut", _gridCellOutputBuffer));
-    }
+    //     _computeShader.SetVector("g_accumulate_base_index", new Vector2(xCell * w, yCell * h));
+    //     _computeShader.RunKernel("AccumulatePhotons", w, h,
+    //         ("g_output_accumulated", SimulationForwardAccumulated),
+    //         ("g_output_raw", SimulationPhotonsRaw),
+    //         ("g_convergenceCellStateIn", _gridCellInputBuffer));
+    // }
 
     void IdentifyCellInputGroups()
     {

@@ -101,7 +101,7 @@ struct BaseContext {
         float2 important_direction = g_importance_sampling_target - origin;
         float lsq = dot(important_direction, important_direction);
     
-        if(false && dot(important_direction, important_direction) < 1/16.0) {
+        if(false && lsq < 1/16.0) {
             return float3(rand.NextDirection(), 1);
         } else {
             important_direction /= -sqrt(lsq);

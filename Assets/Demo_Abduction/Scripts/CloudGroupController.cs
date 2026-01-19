@@ -78,7 +78,7 @@ public class CloudGroupController : PhotonerComponent
             _gaussianBlurShader.RunKernel("CloudForegroundBlur", _foregroundSimulationTex.width, _foregroundSimulationTex.height,
                 ("blur_input", _simulation.SimulationOutputHDR),
                 ("blur_output", _intermediateSimulationTex),
-                ("transmissibility", _simulation.GBufferTransmissibility),
+                ("transmissibility", _simulation.GBuffer.Transmissibility),
                 ("transmission_depth", transmissionDepth),
                 ("kernel_lut", _weightsLUT),
                 ("sample_offset", new Vector2(sampleOffset.x, 0)),
@@ -90,7 +90,7 @@ public class CloudGroupController : PhotonerComponent
             _gaussianBlurShader.RunKernel("CloudForegroundBlur", _foregroundSimulationTex.width, _foregroundSimulationTex.height,
                 ("blur_input", _intermediateSimulationTex),
                 ("blur_output", _foregroundSimulationTex),
-                ("transmissibility", _simulation.GBufferTransmissibility),
+                ("transmissibility", _simulation.GBuffer.Transmissibility),
                 ("transmission_depth", transmissionDepth),
                 ("kernel_lut", _weightsLUT),
                 ("sample_offset", new Vector2(0, sampleOffset.y)),
@@ -172,29 +172,13 @@ public class CloudGroupController : PhotonerComponent
 
             Vector2 pixelSize = new Vector2(1.0f / _foregroundSimulationTex.width, 1.0f / _foregroundSimulationTex.height);
 
-            int sampleIndex = 0;
-            for(int i = 0;i < kernelSize;i++/*i+=2*/) {
-               // for(int j = 0;j < kernelSize;j++/*j+=2*/) {
-
-                    // float a = singleWeights[i, j];
-                    // float b = (i + 1 < kernelSize) ? singleWeights[i + 1, j] : a;
-                    // float c = (j + 1 < kernelSize) ? singleWeights[i, j + 1] : a;
-                    // float d = (i + 1 < kernelSize) ? (j + 1 < kernelSize) ? singleWeights[i + 1, j + 1] : b : c;
-                    // float combinedWeight = a + b + c + d;
-
-                    //_kernelWeights[sampleIndex] = 1.0f / (float)expectedKernelSize;// singleWeights[i, j];
-                   // _kernelSamples1[sampleIndex] = pixelSize * new Vector2(i - blurSize, j - blurSize);
-                    sampleIndex++;
-               // }
-            }
-
             _weightsLUT = _kernelWeights.AsTexture();
             _gaussianBlurShader.SetInt("kernel_sample_count", _kernelSampleCount);
             _gaussianBlurShader.SetFloats("kernel_weights", _kernelWeights);
             //_gaussianBlurShader.SetVectorArray("kernel_sample_points", _kernelSamples1);
         }
 
-        foregroundCloudMat.SetTexture("_TransmissibilityTex", _simulation.GBufferTransmissibility);
+        foregroundCloudMat.SetTexture("_TransmissibilityTex", _simulation.GBuffer.Transmissibility);
         foregroundCloudMat.SetFloat(_transmissionDepthId, transmissionDepth);
         foregroundCloudMat.SetMatrix(_foregroundSimulationUVTransformId, _simulationUVTransform);
         if(blurSize == 0) {

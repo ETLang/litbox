@@ -8,12 +8,10 @@
 
 #pragma kernel Simulate_Camera
 #pragma kernel Camera_Buffer_Divide
-#pragma kernel AccumulatePhotons
-#pragma kernel ConvertToHDR
 #pragma kernel GenerateOutputMips
 #pragma kernel GetCellTransmissibility
 #pragma kernel MeasureConvergence
-#line 17
+#line 15
 
 RWStructuredBuffer<uint4> g_rand;
 RWTexture2D<uint> g_photons_forward;
@@ -256,32 +254,14 @@ void Camera_Buffer_Divide(uint3 id : SV_DispatchThreadID) {
 // OUTPUT PROCESSING
 /////////////////////////
 
-RWTexture2D<float4> g_output_accumulated;
-uint2 g_accumulate_base_index;
-[numthreads(NUMTHREADS_2D)]
-void AccumulatePhotons(uint3 id : SV_DispatchThreadID)
-{
-    uint2 index = g_accumulate_base_index + id.xy;
-    g_output_accumulated[index] += float4(ReadPhoton_Indexed(index) / g_energy_norm, 1);
-    ClearPhoton_Indexed(index);
-}
-
-[numthreads(NUMTHREADS_2D)]
-void ConvertToHDR (uint3 id : SV_DispatchThreadID) {
-    ConvergenceCellInput cellData = g_convergenceCellStateIn[GetGridCellIndex((int2) id.xy)];
-    float frames = cellData.FrameCount;
-
-    g_output_hdr[id.xy] = float4((ReadPhoton_Indexed(id.xy) / g_energy_norm + g_output_accumulated[id.xy].rgb) / frames, 1);
-}
-
-RWTexture2D<uint> g_sourceMipLevelPhotonCount;
+//RWTexture2D<uint> g_sourceMipLevelPhotonCount;
 RWTexture2D<float4> g_sourceMipLevelHDR;
 RWTexture2D<uint> g_destMipLevelPhotonCount;
 RWTexture2D<float4> g_destMipLevelHDR;
 [numthreads(NUMTHREADS_2D)]
 void GenerateOutputMips(uint3 id : SV_DispatchThreadID) {
-    uint2 sourceSize = (uint2)TextureSize(g_sourceMipLevelPhotonCount);
-    uint2 destSize = (uint2)TextureSize(g_destMipLevelPhotonCount);
+    uint2 sourceSize = (uint2)TextureSize(g_sourceMipLevelHDR);
+    uint2 destSize = (uint2)TextureSize(g_destMipLevelHDR);
 
     if (id.x >= destSize.x || id.y >= destSize.y) {
         return;
@@ -298,16 +278,16 @@ void GenerateOutputMips(uint3 id : SV_DispatchThreadID) {
         span_y = 3;
     }
 
-    uint photons = 0;
+    //uint photons = 0;
     float4 hdr = 0;
     for(uint i = 0; i < span_x; i++) {
         for(uint j = 0; j < span_y; j++) {
-            photons += g_sourceMipLevelPhotonCount[id.xy * 2 + uint2(i,j)];
+            //photons += g_sourceMipLevelPhotonCount[id.xy * 2 + uint2(i,j)];
             hdr += g_sourceMipLevelHDR[id.xy * 2 + uint2(i,j)];
         }
     }
 
-    g_destMipLevelPhotonCount[id.xy] = photons;
+    //g_destMipLevelPhotonCount[id.xy] = photons;
     g_destMipLevelHDR[id.xy] = hdr / (span_x * span_y);
 }
 

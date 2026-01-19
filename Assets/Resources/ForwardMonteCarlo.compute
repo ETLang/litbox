@@ -13,7 +13,7 @@
 #pragma kernel Simulate_DirectionalLight
 #pragma kernel ConvertToHDR
 
-#line 17 // Dunno why Unity can't manage line numbers on its own, kinda ridiculous
+#line 17
 
 RWStructuredBuffer<uint4> g_rand;
 RWTexture2D<uint> g_output_raw;
@@ -309,6 +309,7 @@ SIMULATION_IMPLEMENTATION(DirectionalLight)
 
 // For practical purposes, the accumulation overflow buffer seems to be unnecessary.
 // TODO: Revisit if needed later.
+
 // RWTexture2D<float4> g_output_accumulated;
 // uint2 g_accumulate_base_index;
 // [numthreads(NUMTHREADS_2D)]

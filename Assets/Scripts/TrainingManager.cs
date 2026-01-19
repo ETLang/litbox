@@ -235,26 +235,26 @@ public class TrainingManager : DisposalHelperComponent {
         {
             if(!File.Exists(_albedoPathPNG))
             {
-                _simulation.GBufferAlbedo.SaveTexturePNG(_albedoPathPNG);
+                _simulation.GBuffer.AlbedoAlpha.SaveTexturePNG(_albedoPathPNG);
             }
 
             if(!File.Exists(_transmissibilityPathEXR))
             {
                 var img = GetTempEXRImage();
                 _sceneOutputPrepShader.RunKernel("MakeTransmissibilityTensor", img.width, img.height,
-                    ("in_transmissibility", _simulation.GBufferTransmissibility),
-                    ("in_photon_count", _simulation.PhotonDensityBuffer),
+                    ("in_transmissibility", _simulation.GBuffer.Transmissibility),
+                    //("in_photon_count", _simulation.PhotonDensityBuffer),
                     ("out_transmissibility", img));
                 img.SaveTextureEXR(_transmissibilityPathEXR);
             }
 
             {
-                var img = GetTempEXRImage();
-                _sceneOutputPrepShader.RunKernel("MakePhotonCountTensor", img.width, img.height,
-                    ("in_transmissibility", _simulation.GBufferTransmissibility),
-                    ("in_photon_count", _simulation.PhotonDensityBuffer),
-                    ("out_photon_count", img));
-                img.SaveTextureEXR(_photonCountPathEXR);
+                // var img = GetTempEXRImage();
+                // _sceneOutputPrepShader.RunKernel("MakePhotonCountTensor", img.width, img.height,
+                //     ("in_transmissibility", _simulation.GBuffer.Transmissibility),
+                //     ("in_photon_count", _simulation.PhotonDensityBuffer),
+                //     ("out_photon_count", img));
+                // img.SaveTextureEXR(_photonCountPathEXR);
             }
 
             _simulation.SimulationOutputHDR.SaveTextureEXR(_radiancePathEXR);

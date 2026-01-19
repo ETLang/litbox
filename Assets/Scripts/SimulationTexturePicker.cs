@@ -11,7 +11,7 @@ public class SimulationTexturePicker : MonoBehaviour {
         AI_HDR,
         Albedo,
         Transmissibility,
-        NormalSlope,
+        NormalRoughness,
         QuadTree,
         Efficiency,
         PhotonCount,
@@ -35,15 +35,15 @@ public class SimulationTexturePicker : MonoBehaviour {
         Texture value = null;
 
         switch(type) {
-        case TextureType.Photons_Forward:
-            value = simulation?.SimulationForwardHDR;
-            break;
-        case TextureType.Camera_Accum:
-            value = simulation?.SimulationBackwardAccumulated;
-            break;
-        case TextureType.Photons_Raw:
-            value = simulation?.SimulationPhotonsRaw;
-            break;
+        // case TextureType.Photons_Forward:
+        //     value = simulation?.SimulationForwardHDR;
+        //     break;
+        // case TextureType.Camera_Accum:
+        //     value = simulation?.SimulationBackwardAccumulated;
+        //     break;
+        // case TextureType.Photons_Raw:
+        //     value = simulation?.SimulationPhotonsRaw;
+        //     break;
         case TextureType.HDR:
             value = simulation?.SimulationOutputHDR;
             break;
@@ -54,16 +54,16 @@ public class SimulationTexturePicker : MonoBehaviour {
             //value = aiAccelerator?.HDROutputTexture;
             break;
         case TextureType.Albedo:
-            value = simulation?.GBufferAlbedo;
+            value = simulation?.GBuffer.AlbedoAlpha;
             break;
         case TextureType.Transmissibility:
-            value = simulation?.GBufferTransmissibility;
+            value = simulation?.GBuffer.Transmissibility;
             break;
-        case TextureType.NormalSlope:
-            value = simulation?.GBufferNormalAlignment;
+        case TextureType.NormalRoughness:
+            value = simulation?.GBuffer.NormalRoughness;
             break;
         case TextureType.QuadTree:
-            value = simulation?.GBufferQuadTreeLeaves;
+            value = simulation?.GBuffer.QuadTreeLeaves;
             break;
         case TextureType.Efficiency:
             value = simulation?.EfficiencyDiagnostic;
