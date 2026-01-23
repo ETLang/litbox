@@ -5,17 +5,15 @@ public class SimulationTexturePicker : MonoBehaviour {
     public enum TextureType {
         Photons_Forward,
         Photons_Raw,
-        HDR,
         Camera_Accum,
+        HDR,
+        Variance,
         AI_ToneMapped,
         AI_HDR,
         Albedo,
         Transmissibility,
         NormalRoughness,
         QuadTree,
-        Efficiency,
-        PhotonCount,
-        MaxCellValue
     }
 
     [SerializeField] public Simulation simulation;
@@ -65,14 +63,8 @@ public class SimulationTexturePicker : MonoBehaviour {
         case TextureType.QuadTree:
             value = simulation?.GBuffer.QuadTreeLeaves;
             break;
-        case TextureType.Efficiency:
-            value = simulation?.EfficiencyDiagnostic;
-            break;
-        case TextureType.PhotonCount:
-            value = simulation?.PhotonsDiagnostic;
-            break;
-        case TextureType.MaxCellValue:
-            value = simulation?.MaxValueDiagnostic;
+        case TextureType.Variance:
+            value = simulation?.VarianceMap;
             break;
         }
 

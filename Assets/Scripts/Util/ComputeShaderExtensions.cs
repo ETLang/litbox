@@ -53,6 +53,15 @@ public static class ComputeShaderExtensions
         shader.Dispatch(kernelID, (int)((w - 1) / sizeX + 1), (int)((h - 1) / sizeY + 1), 1);
     }
 
+    public static void DispatchAutoGroup(this ComputeShader shader, int kernelID, int threadsX, int threadsY, int threadsZ)
+    {
+        shader.GetKernelThreadGroupSizes(kernelID, out var groupSizeX, out var groupSizeY, out var groupSizeZ);
+        shader.Dispatch(kernelID, 
+            (int)((threadsX - 1) / groupSizeX + 1),
+            (int)((threadsY - 1) / groupSizeY + 1),
+            (int)((threadsZ - 1) / groupSizeZ + 1));
+    }
+
     public static void SetShaderFlag(this ComputeShader shader, string keyword, bool value) {
         var id = shader.keywordSpace.FindKeyword(keyword);
         shader.SetKeyword(id, value);

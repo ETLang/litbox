@@ -1,0 +1,219 @@
+#include "../Shaders/PhotonerCommon.cginc"
+
+//#pragma kernel GenerateOutputMips
+#pragma kernel ComputeCVAndOneMipFromSamplePair
+#pragma kernel ComputeCVAndTwoMipsFromSamplePair
+#pragma kernel ComputeCVAndThreeMipsFromSamplePair
+#pragma kernel ComputeCVAndFourMipsFromSamplePair
+#pragma kernel ComputeCVAndFiveMipsFromSamplePair
+#pragma kernel GenerateOneMip
+#pragma kernel GenerateTwoMips
+#pragma kernel GenerateThreeMips
+#pragma kernel GenerateFourMips
+#line 10
+
+void ComputeCVAndNMipsFromSamplePair(uint3 id, uint2 localID, int mipCount);
+void GenerateNMips(uint3 id, uint2 localID, int mipCount);
+
+// RWTexture2D<float4> g_sourceMipLevelHDR;
+// RWTexture2D<float4> g_destMipLevelHDR;
+
+RWTexture2D<float4> _sourceA;//      : register(t0);
+RWTexture2D<float4> _sourceB;//      : register(t1);
+
+// Coefficient of variance is 1/4 the resolution of the full image
+RWTexture2D<float>  _out_cv     : register(u0);
+RWTexture2D<float4> _out_mip0   : register(u1);
+RWTexture2D<float4> _out_mip1   : register(u2);
+RWTexture2D<float4> _out_mip2   : register(u3);
+RWTexture2D<float4> _out_mip3   : register(u4);
+RWTexture2D<float4> _out_mip4   : register(u5);
+
+groupshared float4 shared_source_mean[16][16];
+groupshared float shared_pixel_variance[16][16];
+
+[numthreads(16, 16, 1)]
+void ComputeCVAndOneMipFromSamplePair(uint3 id : SV_DispatchThreadID, uint2 localID : SV_GroupThreadID) {
+    ComputeCVAndNMipsFromSamplePair(id, localID, 1);
+}
+
+[numthreads(16, 16, 1)]
+void ComputeCVAndTwoMipsFromSamplePair(uint3 id : SV_DispatchThreadID, uint2 localID : SV_GroupThreadID) {
+    ComputeCVAndNMipsFromSamplePair(id, localID, 2);
+}
+
+[numthreads(16, 16, 1)]
+void ComputeCVAndThreeMipsFromSamplePair(uint3 id : SV_DispatchThreadID, uint2 localID : SV_GroupThreadID) {
+    ComputeCVAndNMipsFromSamplePair(id, localID, 3);
+}
+
+[numthreads(16, 16, 1)]
+void ComputeCVAndFourMipsFromSamplePair(uint3 id : SV_DispatchThreadID, uint2 localID : SV_GroupThreadID) {
+    ComputeCVAndNMipsFromSamplePair(id, localID, 4);
+}
+
+[numthreads(16, 16, 1)]
+void ComputeCVAndFiveMipsFromSamplePair(uint3 id : SV_DispatchThreadID, uint2 localID : SV_GroupThreadID) {
+    ComputeCVAndNMipsFromSamplePair(id, localID, 5);
+}
+
+[numthreads(16, 16, 1)]
+void GenerateOneMip(uint3 id : SV_DispatchThreadID, uint2 localID : SV_GroupThreadID) {
+    GenerateNMips(id, localID, 1);
+}
+
+[numthreads(16, 16, 1)]
+void GenerateTwoMips(uint3 id : SV_DispatchThreadID, uint2 localID : SV_GroupThreadID) {
+    GenerateNMips(id, localID, 2);
+}
+
+[numthreads(16, 16, 1)]
+void GenerateThreeMips(uint3 id : SV_DispatchThreadID, uint2 localID : SV_GroupThreadID) {
+    GenerateNMips(id, localID, 3);
+}
+
+[numthreads(16, 16, 1)]
+void GenerateFourMips(uint3 id : SV_DispatchThreadID, uint2 localID : SV_GroupThreadID) {
+    GenerateNMips(id, localID, 4);
+}
+
+void ComputeCVAndNMipsFromSamplePair(uint3 id, uint2 localID, int mipCount) {
+    float4 a = _sourceA[id.xy];
+    float4 b = _sourceB[id.xy];
+    float4 mean = (a + b) / 2;
+    
+    // Write Mip 0 immediately (try writing after the sync to compare perf)
+    _out_mip0[id.xy] = mean;
+    
+    shared_source_mean[localID.x][localID.y] = mean;
+    shared_pixel_variance[localID.x][localID.y] = dot(((a - b) * (a - b)).rgb, 1/3.0);
+    
+    // CANDIDATE A: Relative variance. A bit heavy on bright areas but seems to get things about right.
+    //shared_pixel_variance[localID.x][localID.y] = dot(((a - b) * (a - b)).rgb, 1/3.0);
+    
+    GroupMemoryBarrierWithGroupSync();
+
+    if (((localID.x | localID.y) & 1) == 0) {
+        mean = (shared_source_mean[localID.x][localID.y] + 
+            shared_source_mean[localID.x+1][localID.y] + 
+            shared_source_mean[localID.x][localID.y+1] + 
+            shared_source_mean[localID.x+1][localID.y+1]) / 4;
+
+        shared_source_mean[localID.x][localID.y] = mean;
+        if(mipCount >= 2) {
+            _out_mip1[id.xy / 2] = mean;
+        }
+    }
+
+    GroupMemoryBarrierWithGroupSync();
+
+    if (((localID.x | localID.y) & 3) == 0) {
+        mean = (shared_source_mean[localID.x][localID.y] + 
+                shared_source_mean[localID.x+2][localID.y] + 
+                shared_source_mean[localID.x][localID.y+2] + 
+                shared_source_mean[localID.x+2][localID.y+2]) / 4;
+
+        // Calculate mean temporal variance across 4x4 tile
+        float variance_accum = 0;
+        for(int y = 0; y < 4; y++) {
+            for(int x = 0; x < 4; x++) {
+                variance_accum += shared_pixel_variance[localID.x + x][localID.y + y];
+            }
+        }
+        float mean_variance = variance_accum / 16.0f;
+        float std_dev = sqrt(mean_variance);
+        float relative_var = mean_variance / ((mean + 0.005) * (mean + 0.005));
+        float relative_std_dev = std_dev / (mean + 0.01);// log10(1 + std_dev);// / (mean + 0.05));
+        _out_cv[id.xy / 4] = relative_var;
+        
+        // CANDIDATE A
+        //float relative_var = mean_variance / ((mean + 0.01) * (mean + 0.01));
+        //_out_cv[id.xy / 4] = relative_var;
+
+        if(mipCount >= 3) {
+            _out_mip2[id.xy / 4] = mean;
+            shared_source_mean[localID.x][localID.y] = mean;
+        }
+    }
+
+    if(mipCount >= 4) {
+        GroupMemoryBarrierWithGroupSync();
+
+        if (((localID.x | localID.y) & 7) == 0) {
+            mean = (shared_source_mean[localID.x][localID.y] + 
+                    shared_source_mean[localID.x+4][localID.y] + 
+                    shared_source_mean[localID.x][localID.y+4] + 
+                    shared_source_mean[localID.x+4][localID.y+4]) / 4;
+            _out_mip3[id.xy / 8] = mean;
+            shared_source_mean[localID.x][localID.y] = mean;
+        }
+    }
+
+    if(mipCount >= 5) {
+        GroupMemoryBarrierWithGroupSync();
+
+        if (((localID.x | localID.y) & 15) == 0) {
+            mean = (shared_source_mean[localID.x][localID.y] + 
+                    shared_source_mean[localID.x+8][localID.y] + 
+                    shared_source_mean[localID.x][localID.y+8] + 
+                    shared_source_mean[localID.x+8][localID.y+8]) / 4;
+            _out_mip4[id.xy / 16] = mean;
+            shared_source_mean[localID.x][localID.y] = mean;
+        }
+    }
+}
+
+void GenerateNMips(uint3 id, uint2 localID, int mipCount) {
+    float4 mean;
+    shared_source_mean[localID.x][localID.y] = _sourceA[id.xy];
+    
+    GroupMemoryBarrierWithGroupSync();
+
+    if (((localID.x | localID.y) & 1) == 0) {
+        mean = (shared_source_mean[localID.x][localID.y] + 
+                shared_source_mean[localID.x+1][localID.y] + 
+                shared_source_mean[localID.x][localID.y+1] + 
+                shared_source_mean[localID.x+1][localID.y+1]) / 4;
+        _out_mip1[id.xy / 2] = mean;
+        shared_source_mean[localID.x][localID.y] = mean;
+    }
+
+    if(mipCount >= 2) {
+        GroupMemoryBarrierWithGroupSync();
+
+        if (((localID.x | localID.y) & 3) == 0) {
+            mean = (shared_source_mean[localID.x][localID.y] + 
+                    shared_source_mean[localID.x+2][localID.y] + 
+                    shared_source_mean[localID.x][localID.y+2] + 
+                    shared_source_mean[localID.x+2][localID.y+2]) / 4;
+            _out_mip2[id.xy / 4] = mean;
+            shared_source_mean[localID.x][localID.y] = mean;
+        }
+    }
+
+    if(mipCount >= 3) {
+        GroupMemoryBarrierWithGroupSync();
+
+        if (((localID.x | localID.y) & 7) == 0) {
+            mean = (shared_source_mean[localID.x][localID.y] + 
+                    shared_source_mean[localID.x+4][localID.y] + 
+                    shared_source_mean[localID.x][localID.y+4] + 
+                    shared_source_mean[localID.x+4][localID.y+4]) / 4;
+            _out_mip3[id.xy / 8] = mean;
+            shared_source_mean[localID.x][localID.y] = mean;
+        }
+    }
+
+    if(mipCount >= 4) {
+        GroupMemoryBarrierWithGroupSync();
+
+        if (((localID.x | localID.y) & 15) == 0) {
+            mean = (shared_source_mean[localID.x][localID.y] + 
+                    shared_source_mean[localID.x+8][localID.y] + 
+                    shared_source_mean[localID.x][localID.y+8] + 
+                    shared_source_mean[localID.x+8][localID.y+8]) / 4;
+            _out_mip4[id.xy / 16] = mean;
+            shared_source_mean[localID.x][localID.y] = mean;
+        }
+    }
+}

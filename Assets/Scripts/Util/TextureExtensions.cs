@@ -303,7 +303,7 @@ public static class TextureExtensions {
         image.ReadPixels(new Rect(0, 0, image.width, image.height), 0, 0);
         image.Apply();
 
-        byte[] bytes = image.EncodeToEXR(Texture2D.EXRFlags.CompressZIP);
+        byte[] bytes = image.EncodeToEXR(Texture2D.EXRFlags.CompressZIP | Texture2D.EXRFlags.OutputAsFloat);
         System.IO.File.WriteAllBytes(path, bytes);
     }
 

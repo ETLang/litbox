@@ -36,6 +36,7 @@ public class Simulation : PhotonerComponent
     [SerializeField] private float transmissibilityVariationEpsilon = 1e-3f;
 
     [Header("Convergence Information")]
+    [SerializeField, Min(1)] int _measurementInterval = 100;
     [SerializeField] private float _convergenceThreshold = -1;
     [SerializeField] private int iterationsSinceClear = 0;
     [SerializeField, ReadOnly] private float convergenceProgress = 100000;
@@ -47,18 +48,14 @@ public class Simulation : PhotonerComponent
     private static int _MainTexID = Shader.PropertyToID("_MainTex");
     private Material _compositorMat;
     private SimulationCamera _realContentCamera;
-    private ComputeShader _computeShader;
+    private ComputeShader _postProcessingShader;
 
-    private int _currentRenderTextureIndex = 0;
-    private bool awaitingConvergenceResult = false;
     [SerializeField, ReadOnly] public bool hasConverged = false;
 
     private SortedDictionary<float, uint> performanceCounter = new SortedDictionary<float, uint>();
 
     public uint TraversalsPerSecond { get; private set; }
     public uint PhotonWritesPerSecond { get; private set; }
-    private ulong _previousCumulativePhotons;
-    private float _previousConvergenceFeedbackTime;
 
     int _sceneId;
     bool _validationFailed = false;
@@ -68,10 +65,15 @@ public class Simulation : PhotonerComponent
     Matrix4x4 _worldToPresentation;
     MeshFilter _meshFilter;
     MeshRenderer _meshRenderer;
-    ITracer _activeTracer;
+    ITracer[] _activeTracer = new ITracer[2]; // Two parallel tracers allow easy computation of variance
+    TracerPostProcessor _postProcessor;
+    ConvergenceMeasurement _convergenceMeasurement;
 
     public PhotonerGBuffer GBuffer { get; private set; }
-    public RenderTexture SimulationOutputHDR => _activeTracer?.TracerOutput;
+    public RenderTexture SimulationOutputHDR { get; private set; }
+    public RenderTexture VarianceMap { get; private set; }
+
+
     public Texture2D EfficiencyDiagnostic { get; private set; }
     public Texture2D CumulativePhotonsDiagnostic { get; private set; }
     public Texture2D PhotonsDiagnostic { get; private set; }
@@ -131,27 +133,70 @@ public class Simulation : PhotonerComponent
         }
     }
 
+    void TracerTask(Action<ITracer> task)
+    {
+        for(int i = 0;i < 2;i++)
+        {
+            if(_activeTracer[i] != null) {
+                task(_activeTracer[i]);
+            }
+        }
+    }
+
+    private Action _updateTracerProperties;
+
     void ValidateTracer()
     {
-        var lightTransport = _activeTracer as LightTransportTracer;
-        var hybrid = _activeTracer as HybridTracer;
+        if(strategy == Strategy.LightTransport && !(_activeTracer[0] is LightTransportTracer))
+        {
+            var lightTracers = new LightTransportTracer[2];
 
-        if(strategy == Strategy.LightTransport && lightTransport == null)
+            for(int i = 0;i < 2;i++) {
+                _activeTracer[i]?.Dispose();
+                _activeTracer[i] = lightTracers[i] = new LightTransportTracer();
+            }
+
+            _updateTracerProperties = () => {
+                for(int i = 0;i < 2;i++)
+                {
+                    lightTracers[i].DisableBilinearWrites = !bilinearPhotonWrites;
+                    lightTracers[i].IntegrationInterval = integrationInterval;
+                    lightTracers[i].OverrideBounceCount = photonBounces == -1 ? null : (uint)photonBounces;
+                    lightTracers[i].RaysToEmit = raysPerFrame;
+                }
+            };
+        } else if(strategy == Strategy.Hybrid && !(_activeTracer[0] is HybridTracer))
         {
-            _activeTracer?.Dispose();
-            _activeTracer = lightTransport = new LightTransportTracer();
-        } else if(strategy == Strategy.Hybrid && hybrid == null)
-        {
-            _activeTracer?.Dispose();
-            _activeTracer = hybrid = new HybridTracer();
+            var hybridTracers = new HybridTracer[2];
+
+            for(int i = 0;i < 2;i++) {
+                _activeTracer[i]?.Dispose();
+                _activeTracer[i] = hybridTracers[i] = new HybridTracer();
+            }
+
+            _updateTracerProperties = () =>
+            {
+                for(int i = 0;i < 2;i++) {
+                    hybridTracers[i].DisableBilinearWrites = !bilinearPhotonWrites;
+                    hybridTracers[i].ForwardIntegrationInterval = integrationInterval;
+                    hybridTracers[i].BackwardIntegrationInterval = integrationInterval;
+                    hybridTracers[i].OverrideBounceCount = photonBounces == -1 ? null : (uint)photonBounces;
+                    hybridTracers[i].RaysToEmit = raysPerFrame;
+                }
+            };
         }
 
-        _activeTracer.GBuffer = GBuffer;
+        TracerTask(t => t.GBuffer = GBuffer);
     }
 
     private void Awake()
     {
-        _computeShader = (ComputeShader)Resources.Load("Simulation");
+        _postProcessingShader = (ComputeShader)Resources.Load("TracerPostProcessing");
+        _postProcessor = new TracerPostProcessor();
+        DisposeOnDisable(_postProcessor);
+
+        _convergenceMeasurement = new ConvergenceMeasurement();
+        DisposeOnDisable(_convergenceMeasurement);
 
         OnStartedPlaying();
 
@@ -176,8 +221,10 @@ public class Simulation : PhotonerComponent
 
     protected override void OnDestroy()
     {
-        _activeTracer?.Dispose();
-        _activeTracer = null;
+        for(int i = 0;i < 2;i++) {
+            _activeTracer[i]?.Dispose();
+            _activeTracer[i] = null;
+        }
         
 #if UNITY_EDITOR
         UnityEditor.EditorApplication.playModeStateChanged -= EditorApplication_playModeStateChanged;
@@ -225,9 +272,10 @@ public class Simulation : PhotonerComponent
             _realContentCamera.VarianceEpsilon = transmissibilityVariationEpsilon;
         }
 
-        if(_activeTracer != null) {
-            _activeTracer.GBuffer = gBuffer;
-        }
+        TracerTask(t => t.GBuffer = GBuffer);
+
+        SimulationOutputHDR = this.CreateRWTextureWithMips(GBuffer.AlbedoAlpha.width, GBuffer.AlbedoAlpha.height, RenderTextureFormat.ARGBFloat);
+        VarianceMap = this.CreateRWTexture(GBuffer.AlbedoAlpha.width / 4, GBuffer.AlbedoAlpha.height / 4, RenderTextureFormat.RFloat);
     }
 
     void OnEnable()
@@ -267,7 +315,6 @@ public class Simulation : PhotonerComponent
         base.Update();
     }
 
-    const int ConvergenceMeasurementInterval = 100;
     void LateUpdate()
     {
 #if UNITY_EDITOR
@@ -323,45 +370,24 @@ public class Simulation : PhotonerComponent
         // CLEAR TARGET
         if (iterationsSinceClear == 0)
         {
-            awaitingConvergenceResult = false;
             convergenceProgress = -1;
             ConvergenceStartTime = now;
 
-            _activeTracer?.NewScene();
+            TracerTask(t => t?.NewScene());
         }
 
         iterationsSinceClear++;
 
-        if(_activeTracer is LightTransportTracer lightTracer)
+        _updateTracerProperties();
+
+        TracerTask(t =>
         {
-            lightTracer.DisableBilinearWrites = !bilinearPhotonWrites;
-            lightTracer.IntegrationInterval = integrationInterval;
-            lightTracer.OverrideBounceCount = photonBounces == -1 ? null : (uint)photonBounces;
-            lightTracer.RaysToEmit = raysPerFrame;
-        }
+            t.WorldToTargetTransform = worldToTargetSpace;
+            t.Trace(_allLights);
+        });
 
-        if(_activeTracer is HybridTracer hybridTracer)
-        {
-            hybridTracer.DisableBilinearWrites = !bilinearPhotonWrites;
-            hybridTracer.ForwardIntegrationInterval = integrationInterval;
-            hybridTracer.BackwardIntegrationInterval = integrationInterval;
-            hybridTracer.OverrideBounceCount = photonBounces == -1 ? null : (uint)photonBounces;
-            hybridTracer.RaysToEmit = raysPerFrame;
-        }
-
-        _activeTracer.WorldToTargetTransform = worldToTargetSpace;
-        _activeTracer.Trace(_allLights);
-
-        // Generate mip levels (todo: this can be much faster)
-        int mipW = SimulationOutputHDR.width;
-        int mipH = SimulationOutputHDR.height;
-        for(int i = 1;i < SimulationOutputHDR.mipmapCount;i++) {
-            mipW /= 2;
-            mipH /= 2;
-            _computeShader.RunKernel("GenerateOutputMips", mipW, mipH,
-                ("g_sourceMipLevelHDR", SimulationOutputHDR.SelectMip(i - 1)),
-                ("g_destMipLevelHDR", SimulationOutputHDR.SelectMip(i)));
-        }
+        // TODO: Perfom variance computation and mipmap production
+        _postProcessor.ComputeCVAndMips(_activeTracer[0].TracerOutput, _activeTracer[1].TracerOutput, SimulationOutputHDR, VarianceMap);
 
         _compositorMat.SetTexture(_MainTexID, SimulationOutputHDR);
         OnStep?.Invoke(iterationsSinceClear);
@@ -379,10 +405,10 @@ public class Simulation : PhotonerComponent
             fireConvergedEvent = true;
         }
 
-        if (ConvergenceMeasurementInterval != 0 && iterationsSinceClear % ConvergenceMeasurementInterval == 0 ||
+        if (_measurementInterval != 0 && iterationsSinceClear % _measurementInterval == 0 ||
             iterationsSinceClear == 1 && _convergenceThreshold > 0)
         {
-           // MeasureConvergence(iterationsSinceClear == 1);
+           MeasureConvergence(iterationsSinceClear == 1);
         }
 
         if (fireConvergedEvent)
@@ -391,65 +417,23 @@ public class Simulation : PhotonerComponent
         }
     }
 
-    //async void MeasureConvergence(bool initial)
-    void MeasureConvergence(bool initial)
+    async void MeasureConvergence(bool initial)
     {
-        // Convergence: The change in output image approaches zero.
-        // There's two ways to measure change:
-        //    A. Pixel difference per frame
-        //    B. Pixel difference per photon
-        // The challenge with A is that some gridcells receive very few photons per frame.
-        // This means their delta per frame is very small, but only because there's nowhere near
-        // enough information to tell how it's converging.
-        //
-        // The challenge with B is that some situations aren't supposed to receive very many photons,
-        // so you can't rely on simply firing a lot of photons into a space and expecting many results.
-        //
-        // Different scenarios to consider:
-        //  1. Low density cells (little photon interaction expected)
-        //  2. Obscured cells (little photon interaction without targeted sampling)
-        //  3. High variance cells
-        //
-        // Expected interaction rate can be read from G buffer.
-        // This allows us to measure how well a cell is being sampled.
-        // Sample Efficiency E = P / ((1 - T) * A)
-        // T: Transmissibility
-        // P: Photon Count
-        // A: Cell Area (# of pixels)
-        //
-        // if E is large enough, then we can assume that the cell is converging.
-        // If E is too small, it is not converging and it doesn't matter if the change rate is small.
-        // If E is large and Pixel delta is small, we're converging!
-        // 
-
 #if UNITY_EDITOR
         if (!UnityEditor.EditorApplication.isPlaying) return;
 #endif
-        if (awaitingConvergenceResult) return;
-        awaitingConvergenceResult = true;
         if (hasConverged) return;
 
-        // TODO: Measure convergence via variance map
-        // _computeShader.RunKernel("MeasureConvergence", width, height,
-        //     ("g_output_raw", SimulationPhotonsRaw),
-        //     ("g_output_tonemapped", _renderTexture[_currentRenderTextureIndex]),
-        //     ("g_previousResult", _renderTexture[1 - _currentRenderTextureIndex]),
-        //     ("g_convergenceCellStateIn", _gridCellInputBuffer),
-        //     ("g_convergenceCellStateOut", _gridCellOutputBuffer));
-        _currentRenderTextureIndex = 1 - _currentRenderTextureIndex;
-
         int recentSceneId = _sceneId;
-       // var r = await AsyncGPUReadback.RequestAsync(_gridCellOutputBuffer);
+        var variance = await _convergenceMeasurement.GetVarianceAsync(VarianceMap);
 
         if (recentSceneId != _sceneId) return;
-        awaitingConvergenceResult = false;
-        //if (!r.done || r.hasError) return;
 
 #if UNITY_EDITOR
         if (!UnityEditor.EditorApplication.isPlaying) return;
 #endif
 
-        //convergenceProgress = overallConvergence / cellArea;
+        convergenceProgress = variance;
         OnConvergenceUpdate?.Invoke(convergenceProgress);
 
         if (!initial && convergenceProgress < _convergenceThreshold)

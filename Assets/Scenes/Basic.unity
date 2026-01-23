@@ -420,7 +420,7 @@ MonoBehaviour:
   m_PrefabInstance: {fileID: 0}
   m_PrefabAsset: {fileID: 0}
   m_GameObject: {fileID: 687478585}
-  m_Enabled: 1
+  m_Enabled: 0
   m_EditorHideFlags: 0
   m_Script: {fileID: 11500000, guid: c258376cbb1fbc2b8b99d7a2de14fef0, type: 3}
   m_Name: 
@@ -1404,9 +1404,10 @@ MonoBehaviour:
   height: 512
   raysPerFrame: 64000
   photonBounces: -1
-  integrationInterval: 0.2
+  integrationInterval: 0.1
   transmissibilityVariationEpsilon: 0.001
-  _convergenceThreshold: 0
+  _measurementInterval: 20
+  _convergenceThreshold: 0.002
   iterationsSinceClear: 0
   convergenceProgress: 0.5718811
   strategy: 1
@@ -1447,7 +1448,7 @@ MonoBehaviour:
   m_Name: 
   m_EditorClassIdentifier: 
   simulation: {fileID: 2408986526842077597}
-  type: 10
+  type: 9
 --- !u!4 &4185717351858822417
 Transform:
   m_ObjectHideFlags: 0
@@ -1812,7 +1813,7 @@ MonoBehaviour:
   m_Name: 
   m_EditorClassIdentifier: 
   simulation: {fileID: 2408986526842077597}
-  type: 11
+  type: 4
 --- !u!1660057539 &9223372036854775807
 SceneRoots:
   m_ObjectHideFlags: 0

@@ -1,0 +1,31 @@
+#include "../Shaders/PhotonerCommon.cginc"
+
+#pragma kernel ComputeConvergence;
+#line 5
+
+RWTexture2D<float> _variance;
+RWStructuredBuffer<uint> _totalVariance;
+
+groupshared uint shared_variance;
+[numthreads(16, 16, 1)]
+void ComputeConvergence(
+    uint3 id : SV_DispatchThreadID,
+    uint groupIndex : SV_GroupIndex) {
+
+    uint2 size = TextureSize(_variance);
+
+    if (groupIndex == 0) shared_variance = 0;
+    
+    GroupMemoryBarrierWithGroupSync();
+
+    if (all(id.xy < size)) {
+        uint variance_int = (uint)(_variance[id.xy] * 10000.0f);
+        InterlockedAdd(shared_variance, variance_int); 
+    }
+
+    GroupMemoryBarrierWithGroupSync();
+
+    if (groupIndex == 0) {
+        InterlockedAdd(_totalVariance[0], shared_variance);
+    }
+}

@@ -100,6 +100,10 @@ float ExponentialInterpolation(float u, float d_left, float d_right) {
     return (1-u) - pow(1-u, d_left+1) + pow(u, d_right+1);
 }
 
+float Luminance(float3 rgb) {
+    return dot(rgb, float3(0.2126, 0.7152, 0.0722));
+}
+
 // Utilities
 
 #define DECLARE_LUT(type, name) \
@@ -130,6 +134,7 @@ float2 lut_slice_window_##name;
     dot(float2(1,uvw.z),lut_slice_window_##name)), 0)
 
 #define NUMTHREADS_2D 8,8,1
+#define NUMTHREADS_2D_BIG 16,16,1
 #define NUMTHREADS_1D 64,1,1
 
 SamplerState sampler_point_clamp;
