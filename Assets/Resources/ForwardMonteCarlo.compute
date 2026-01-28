@@ -175,7 +175,7 @@ struct ForwardMonteCarlo : BaseContext, IMonteCarloMethod
     bool Bounce(inout IntegrationContext ctx, float3 albedo)
     {
         if(!searchingPhase) {
-            //float3 important_direction = ScatterImportance(ctx.photon.Origin);
+            //float3 important_direction = ScatterImportanceLobed(ctx.photon.Origin);
             float4 important_direction = ScatterMaterially(ctx.photon.Origin, ctx.testUV, ctx.photon.Direction);
 
             ctx.photon.Energy *= albedo * quantumScale * important_direction.z;
@@ -203,7 +203,7 @@ struct ForwardMonteCarlo : BaseContext, IMonteCarloMethod
         
         emitted.Origin = mul(float4(pos, 0, 1), g_lightToTarget).xy;
         
-        //float3 important_direction = ScatterImportance(emitted.Origin);
+        //float3 important_direction = ScatterImportanceLobed(emitted.Origin);
         float3 important_direction = { rand.NextDirection(), 1.0 / (2 * PI)};
         emitted.Direction = important_direction.xy;
         emitted.Energy = g_lightEnergy * important_direction.z;

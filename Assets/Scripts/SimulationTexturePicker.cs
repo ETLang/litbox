@@ -8,6 +8,7 @@ public class SimulationTexturePicker : MonoBehaviour {
         Camera_Accum,
         HDR,
         Variance,
+        Importance,
         AI_ToneMapped,
         AI_HDR,
         Albedo,
@@ -65,6 +66,9 @@ public class SimulationTexturePicker : MonoBehaviour {
             break;
         case TextureType.Variance:
             value = simulation?.VarianceMap;
+            break;
+        case TextureType.Importance:
+            value = simulation?.ImportanceMap;
             break;
         }
 

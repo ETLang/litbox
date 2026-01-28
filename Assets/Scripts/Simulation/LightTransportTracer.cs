@@ -3,8 +3,8 @@ using UnityEngine;
 public class LightTransportTracer : Disposable, ITracer
 {
     private ForwardMonteCarlo _forwardIntegrator;
-
     public RenderTexture TracerOutput => _forwardIntegrator.OutputImageHDR;
+    RenderTexture ITracer.EarlyRadianceForImportanceSampling => null;
 
     public PhotonerGBuffer GBuffer
     {
@@ -56,9 +56,13 @@ public class LightTransportTracer : Disposable, ITracer
         _forwardIntegrator.Clear();
     }
 
-    public void Trace(params RTLightSource[] lights)
+    public void BeginTrace(params RTLightSource[] lights)
     {
         _forwardIntegrator.IterationsSinceClear++;
         _forwardIntegrator.Integrate(lights);
+    }
+
+    public void EndTrace(RenderTexture importanceMap)
+    {
     }
 }

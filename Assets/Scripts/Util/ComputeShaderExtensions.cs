@@ -12,6 +12,8 @@ public static class ComputeShaderExtensions
 
         foreach(var tuple in args) {
             switch(tuple.Item2) {
+            case null:
+                break;
             case Texture texture:
                 shader.SetTexture(kernelID, tuple.Item1, texture);
                 shader.SetVector($"lut_window_{tuple.Item1}", new Vector4(
@@ -45,7 +47,7 @@ public static class ComputeShaderExtensions
                 shader.SetVector(tuple.Item1, v4);
                 break;
             default:
-                throw new Exception("What is " + tuple.Item1.GetType().Name + "?");
+                throw new Exception("What is " + tuple.Item2.GetType().Name + "?");
             }
         }
 

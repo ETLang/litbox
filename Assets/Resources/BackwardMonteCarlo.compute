@@ -17,8 +17,6 @@ int g_frame_count;
 
 struct BackwardMonteCarlo : BaseContext, IMonteCarloMethod
 {
-   // const float backward_integration_interval = 2;
-    
     float transmitPotential;
     float quantumScale;
     float currentSample;
@@ -47,7 +45,7 @@ struct BackwardMonteCarlo : BaseContext, IMonteCarloMethod
 
     void BeginTraversal(inout IntegrationContext ctx)
     {
-        uMax = min(ctx.uEscape, 30);
+        uMax = ctx.uEscape;// min(ctx.uEscape, 30);
         currentSample = 0;
         uSampleTarget = rand.Next() * g_integration_interval;
         transmissibility = 1;
@@ -70,7 +68,7 @@ struct BackwardMonteCarlo : BaseContext, IMonteCarloMethod
             uSampleRandomOffset = rand.Next();
             float4 sample = g_hdr.SampleLevel(samplerg_hdr, ctx.testUV, 0);
             // TODO in the future, a geometry term will be necessary here.
-            ctx.photon.Energy += sample.rgb * transmissibility * g_integration_interval / (2 * 3.141592654f * (1 + ctx.uHitCurrent) * (1 + ctx.uHitCurrent));
+            ctx.photon.Energy += sample.rgb * transmissibility * g_integration_interval / ((1 + ctx.uHitCurrent) * (1 + ctx.uHitCurrent));
             uSampleTarget = (currentSample + uSampleRandomOffset) * g_integration_interval; 
         }
 
@@ -97,8 +95,10 @@ void Simulate_Camera (uint3 id : SV_DispatchThreadID) {
     sim.Init(g_rand[randContext]);
 
     float2 origin = id.xy + sim.rand.Next2();
-    //float2 direction = sim.ScatterImportance(origin);
-    float2 direction = sim.rand.NextDirection(); // TODO importance sample
+    //float3 directionWeight = float3(normalize(float2(1,1)),1 / (2 * PI));
+   // float3 directionWeight = sim.ScatterImportanceLobed(origin);
+    float3 directionWeight = sim.ScatterImportanceGuided_Test((origin + 0.5) / targetSize);
+    //float2 direction = sim.rand.NextDirection(); // TODO importance sample
     float directional_weight = 1.0;
 
     float2 uv = origin / targetSize;
@@ -108,14 +108,15 @@ void Simulate_Camera (uint3 id : SV_DispatchThreadID) {
 
     Ray accumulated_photon = {
         origin,
-        direction,
+        directionWeight.xy,
         float3(0,0,0)
     };
 
     Integrate(accumulated_photon, 1, sim);
 
-    float3 accumulated_sample = accumulated_photon.Energy * localAlbedo /* (1 - pow(localTransmissibility, g_view_thickness))*/ + directLight;
-    g_output_hdr[id.xy] += float4(accumulated_sample, 0);
+    float3 accumulated_sample = accumulated_photon.Energy * localAlbedo * directionWeight.z;
+    //float3 accumulated_sample = accumulated_photon.Energy * localAlbedo * directionWeight.z/* (1 - pow(localTransmissibility, g_view_thickness))*/ + directLight;
+    g_output_hdr[id.xy] += float4(accumulated_sample, 0);   
 
     g_rand[randContext] = sim.rand.state;
 }

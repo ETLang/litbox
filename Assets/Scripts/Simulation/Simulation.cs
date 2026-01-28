@@ -24,12 +24,20 @@ public class Simulation : PhotonerComponent
         Hybrid
     }
 
+    public enum Priority
+    {
+        Realtime,
+        RapidConvergence,
+        Accuracy
+    }
+
     [SerializeField] private LayerMask rayTracedLayers;
 
     [SerializeField] private int frameLimit = -1;
     [SerializeField] public int width = 256;
     [SerializeField] public int height = 256;
 
+    [SerializeField] public Priority priority = Priority.Realtime;
     [SerializeField] private int raysPerFrame = 64000;
     [SerializeField] private int photonBounces = -1;
     [SerializeField] private float integrationInterval = 0.1f;
@@ -48,7 +56,6 @@ public class Simulation : PhotonerComponent
     private static int _MainTexID = Shader.PropertyToID("_MainTex");
     private Material _compositorMat;
     private SimulationCamera _realContentCamera;
-    private ComputeShader _postProcessingShader;
 
     [SerializeField, ReadOnly] public bool hasConverged = false;
 
@@ -66,13 +73,14 @@ public class Simulation : PhotonerComponent
     MeshFilter _meshFilter;
     MeshRenderer _meshRenderer;
     ITracer[] _activeTracer = new ITracer[2]; // Two parallel tracers allow easy computation of variance
-    TracerPostProcessor _postProcessor;
     ConvergenceMeasurement _convergenceMeasurement;
+    ImportanceMap _importanceMap;
+    Action _updateTracerProperties;
 
     public PhotonerGBuffer GBuffer { get; private set; }
     public RenderTexture SimulationOutputHDR { get; private set; }
     public RenderTexture VarianceMap { get; private set; }
-
+    public RenderTexture ImportanceMap => _importanceMap?.Map;
 
     public Texture2D EfficiencyDiagnostic { get; private set; }
     public Texture2D CumulativePhotonsDiagnostic { get; private set; }
@@ -143,8 +151,6 @@ public class Simulation : PhotonerComponent
         }
     }
 
-    private Action _updateTracerProperties;
-
     void ValidateTracer()
     {
         if(strategy == Strategy.LightTransport && !(_activeTracer[0] is LightTransportTracer))
@@ -191,13 +197,9 @@ public class Simulation : PhotonerComponent
 
     private void Awake()
     {
-        _postProcessingShader = (ComputeShader)Resources.Load("TracerPostProcessing");
-        _postProcessor = new TracerPostProcessor();
-        DisposeOnDisable(_postProcessor);
-
-        _convergenceMeasurement = new ConvergenceMeasurement();
-        DisposeOnDisable(_convergenceMeasurement);
-
+#if UNITY_EDITOR
+        _notPlaying = false;
+#endif
         OnStartedPlaying();
 
         _meshFilter = GetComponent<MeshFilter>();
@@ -235,7 +237,7 @@ public class Simulation : PhotonerComponent
     private bool _notPlaying;
     private void EditorApplication_playModeStateChanged(UnityEditor.PlayModeStateChange state)
     {
-        if(state == UnityEditor.PlayModeStateChange.EnteredPlayMode) {
+        if(state == UnityEditor.PlayModeStateChange.EnteredPlayMode && _notPlaying) {
             _notPlaying = false;
             OnStartedPlaying();
         }
@@ -249,6 +251,12 @@ public class Simulation : PhotonerComponent
 
     private void OnStartedPlaying()
     {
+        _convergenceMeasurement     = new ConvergenceMeasurement();
+        DisposeOnDisable(_convergenceMeasurement);
+
+        _importanceMap = new ImportanceMap();
+        DisposeOnDisable(_importanceMap);
+
         _realContentCamera = new GameObject("__Simulation_Camera", typeof(SimulationCamera)).GetComponent<SimulationCamera>();
         _realContentCamera.Initialize(transform, rayTracedLayers.value);
 
@@ -313,6 +321,13 @@ public class Simulation : PhotonerComponent
         }
 
         base.Update();
+    }
+
+    bool ShouldUpdateImportanceMap()
+    {
+        if(iterationsSinceClear == 0) { return priority != Priority.Realtime; }
+        else if(iterationsSinceClear < 100) { return iterationsSinceClear % 10 == 0; }
+        else { return iterationsSinceClear % 100 == 0; }
     }
 
     void LateUpdate()
@@ -383,16 +398,25 @@ public class Simulation : PhotonerComponent
         TracerTask(t =>
         {
             t.WorldToTargetTransform = worldToTargetSpace;
-            t.Trace(_allLights);
+            t.BeginTrace(_allLights);
         });
 
-        // TODO: Perfom variance computation and mipmap production
-        _postProcessor.ComputeCVAndMips(_activeTracer[0].TracerOutput, _activeTracer[1].TracerOutput, SimulationOutputHDR, VarianceMap);
+        if (_activeTracer[0].EarlyRadianceForImportanceSampling != null && 
+            _activeTracer[1].EarlyRadianceForImportanceSampling != null &&
+            ShouldUpdateImportanceMap())
+        {
+            _importanceMap.Generate(
+                _activeTracer[0].EarlyRadianceForImportanceSampling,
+                _activeTracer[1].EarlyRadianceForImportanceSampling);
+        }
+
+        TracerTask(t => t.EndTrace(_importanceMap.Map));
+
+        TracerPostProcessor.Instance.ComputeCVAndMips(_activeTracer[0].TracerOutput, _activeTracer[1].TracerOutput, SimulationOutputHDR, VarianceMap);
 
         _compositorMat.SetTexture(_MainTexID, SimulationOutputHDR);
         OnStep?.Invoke(iterationsSinceClear);
 
-        // CONVERGENCE TESTING (todo: Overhaul entirely)
         bool fireConvergedEvent = false;
         if (frameLimit != -1 && iterationsSinceClear >= frameLimit)
         {

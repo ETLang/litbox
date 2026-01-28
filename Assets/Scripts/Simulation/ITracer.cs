@@ -4,9 +4,15 @@ using UnityEngine;
 public interface ITracer : IDisposable
 {
     PhotonerGBuffer GBuffer { get; set; }
+    RenderTexture EarlyRadianceForImportanceSampling { get; }
     RenderTexture TracerOutput { get; }
     Matrix4x4 WorldToTargetTransform { get; set; }
 
     void NewScene();
-    void Trace(params RTLightSource[] lights);
+
+    // Run tracing as much as required to generate a radiance map usable for importance sampling.
+    void BeginTrace(params RTLightSource[] lights);
+
+    // Finish tracing, optionally with an importance map for importance sampling
+    void EndTrace(RenderTexture importanceMap = null);
 }

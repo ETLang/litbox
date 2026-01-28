@@ -62,7 +62,7 @@ struct ImplicitIntegrator : BaseContext, IMonteCarloMethod
     {
         ctx.photon.Energy *= albedo;
 
-        //float3 important_direction = ScatterImportance(ctx.photon.Origin);
+        //float3 important_direction = ScatterImportanceLobed(ctx.photon.Origin);
         float4 important_direction = ScatterMaterially(ctx.photon.Origin, ctx.photon.Direction);
         ctx.photon.Direction = important_direction.xy;
         ctx.photon.Energy *= important_direction.z;
@@ -150,7 +150,7 @@ struct ImplicitIntervalIntegrator : BaseContext, IMonteCarloMethod
     {
         ctx.photon.Energy *= albedo;
 
-        //float3 important_direction = ScatterImportance(photon.Origin);
+        //float3 important_direction = ScatterImportanceLobed(photon.Origin);
         float4 important_direction = ScatterMaterially(ctx.photon.Origin, ctx.photon.Direction);
         ctx.photon.Direction = important_direction.xy;
         ctx.photon.Energy *= important_direction.z * ctx.uEscape / 256.0;
@@ -208,7 +208,7 @@ struct ExplicitIntegrator : BaseContext, IMonteCarloMethod
     {
         ctx.photon.Energy *= albedo * quantumScale;
 
-        //float3 important_direction = ScatterImportance(photon.Origin);
+        //float3 important_direction = ScatterImportanceLobed(photon.Origin);
         float4 important_direction = ScatterMaterially(ctx.photon.Origin, ctx.photon.Direction);
         ctx.photon.Direction = important_direction.xy;
         ctx.photon.Energy *= important_direction.z;
@@ -278,7 +278,7 @@ struct ExplicitBoundedIntegrator : BaseContext, IMonteCarloMethod
         if(!searchingPhase) {
             ctx.photon.Energy *= albedo * quantumScale;
 
-            //float3 important_direction = ScatterImportance(photon.Origin);
+            //float3 important_direction = ScatterImportanceLobed(photon.Origin);
             float4 important_direction = ScatterMaterially(ctx.photon.Origin, ctx.photon.Direction);
             ctx.photon.Direction = important_direction.xy;
             ctx.photon.Energy *= important_direction.z;
@@ -371,7 +371,7 @@ struct ExplicitBounceImplicitInvervalIntegrator : BaseContext, IMonteCarloMethod
     {
         ctx.photon.Energy *= albedo * quantumScale;
 
-        //float3 important_direction = ScatterImportance(ctx.photon.Origin);
+        //float3 important_direction = ScatterImportanceLobed(ctx.photon.Origin);
         float4 important_direction = ScatterMaterially(ctx.photon.Origin, ctx.photon.Direction);
         ctx.photon.Direction = important_direction.xy;
         ctx.photon.Energy *= important_direction.z;

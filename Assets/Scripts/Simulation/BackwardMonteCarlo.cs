@@ -34,18 +34,7 @@ public class BackwardMonteCarlo : Disposable
     public RenderTexture OutputImage => _outputImage; 
     private RenderTexture _outputImage;
 
-    #region ImportanceSamplingTarget
-    public Vector2 ImportanceSamplingTarget
-    {
-        get => _importanceSamplingTarget;
-        set
-        {
-            _importanceSamplingTarget = value;
-            _backwardIntegrationShader.SetVector("g_importance_sampling_target", value);
-        }
-    }
-    private Vector2 _importanceSamplingTarget = new Vector2(0.5f, 0.5f);
-    #endregion
+    public RenderTexture ImportanceMap { get; set; }
 
     #region IntegrationInterval
     public float IntegrationInterval
@@ -86,7 +75,8 @@ public class BackwardMonteCarlo : Disposable
     public void Integrate()
     {
         if(InputImage == null) return;
-
+        if(ImportanceMap == null) return;
+        
         var albedo = (Texture)GBuffer.AlbedoAlpha ?? Texture2D.whiteTexture;
         var transmissibility = (Texture)GBuffer.Transmissibility ?? Texture2D.whiteTexture;
 
@@ -100,6 +90,7 @@ public class BackwardMonteCarlo : Disposable
             ("g_output_hdr", AccumulationImage),
             ("g_albedo", albedo),
             ("g_transmissibility", transmissibility),
+            ("g_importanceMap", ImportanceMap),
             ("g_mieScatteringLUT", BufferManager.MieScatteringLUT),
             ("g_teardropScatteringLUT", BufferManager.TeardropScatteringLUT),
             ("g_bdrfLUT", BufferManager.BRDFLUT));
@@ -109,7 +100,6 @@ public class BackwardMonteCarlo : Disposable
             ("g_hdr", AccumulationImage),
             ("g_output_hdr", OutputImage),
             ("g_count", _frameCount),
-            ("g_frame_count", _frameCount),
-            ("g_importance_sampling_target", ImportanceSamplingTarget * new Vector2(width, height)));
+            ("g_frame_count", _frameCount));
     }
 }

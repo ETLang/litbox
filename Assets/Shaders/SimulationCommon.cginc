@@ -15,6 +15,7 @@ Texture2D<float4> g_normalAlignment;
 SamplerState samplerg_normalAlignment;
 Texture2D<float4> g_quadTreeLeaves;
 
+Texture2D<float> g_importanceMap;
 float2 g_importance_sampling_target;
 
 struct Ray {
@@ -97,18 +98,158 @@ struct BaseContext {
         return scatter.x * incomingDirection + scatter.y * perp;
     }
     
-    float3 ScatterImportance(float2 origin) {
+    float3 ScatterImportanceLobed(float2 origin) {
         float2 important_direction = g_importance_sampling_target - origin;
+        //float2 important_direction = float2(1,0);
         float lsq = dot(important_direction, important_direction);
     
         if(false && lsq < 1/16.0) {
             return float3(rand.NextDirection(), 1);
         } else {
             important_direction /= -sqrt(lsq);
+            //important_direction = abs(important_direction);
             float2 perp = float2(-important_direction.y, important_direction.x);
             float3 sample = SampleLUT(g_teardropScatteringLUT, rand.Next());
             return float3(important_direction * sample.x + perp * sample.y, sample.z);
+            //return float3(important_direction * sample.x + perp * sample.y, sample.z);
         }
+    }
+
+    float3 Test_Square_PDF() {
+        float2 square = { rand.Next() - 0.5, rand.Next() - 0.5 };
+
+        float picker = rand.Next();
+
+        float4 odds = { 0.05, 0.8, 0.13, 0.02 };
+        float weight = 1;
+
+        if(picker < odds.x) {
+            weight = odds.x;
+            square = square / 2 + float2(-0.25, 0.25);
+        } else if (picker < odds.x + odds.y) {
+            weight = odds.y;
+            square = square / 2 + float2(0.25, 0.25);
+        } else if (picker < odds.x + odds.y + odds.z) {
+            weight = odds.z;
+            square = square / 2 + float2(-0.25, -0.25);
+        } else {
+            weight = odds.w;
+            square = square / 2 + float2(0.25, -0.25);
+        }
+
+        return float3(square, 1.0 / weight);
+    }
+
+    float3 TestImportanceMapPDF(float2 origin_uv) {
+        float2 uv = origin_uv;
+        float randSelector = rand.Next();
+        float2 pixelSize = 1.0f / TextureSize(g_importanceMap);
+        float2 uvShift = 4 * pixelSize;
+        float2 jitter = rand.Next2() - 0.5f;
+        float totalEnergy = 1;
+        float selectedEnergy = 0;
+
+        // m0 shift distance: pixelSize / 2
+        // m1: pixelSize
+        // m2: pixelSize * 2
+        // m3: pixelSize * 4
+
+        [unroll]
+        for (int m = 3; m >= 3; m--) {
+            float4 weights = g_importanceMap.Gather(sampler_point_clamp, uv, m);
+            
+            // quadrants are returned in a specific order: 
+            // W=Top-Left (-,+), Z=Top-Right (+,+), X=Bottom-Left (-,-), Y=Bottom-Right (+,-)
+            float total = weights.x + weights.y + weights.z + weights.w;
+
+            if(m == 3) {
+                totalEnergy = total;
+            }
+            
+            if (total <= 0) { break; }
+
+            float4 p = weights / total;
+            
+            if (randSelector < p.w) {
+                uv += float2(-uvShift.x, uvShift.y);
+                selectedEnergy = p.w;
+                randSelector /= p.w;
+            } else if (randSelector < p.w + p.z) {
+                uv += float2(uvShift.x, uvShift.y);
+                selectedEnergy = p.z;
+                randSelector = (randSelector - p.w) / p.z;
+            } else if (randSelector < p.w + p.z + p.x) {
+                uv += float2(-uvShift.x, -uvShift.y);
+                selectedEnergy = p.x;
+                randSelector = (randSelector - p.w - p.z) / p.x;
+            } else {
+                uv += float2(uvShift.x, -uvShift.y);
+                selectedEnergy = p.y;
+                randSelector = (randSelector - p.w - p.z - p.x) / p.y;
+            }
+            
+            uvShift *= 0.5f;
+        }
+
+        float2 n = normalize(uv - origin_uv);
+        float2 check = normalize(float2(1,1));
+        return float3(uv - origin_uv + jitter * 4 * uvShift, 1.0 / selectedEnergy);
+    }
+
+    float3 ScatterImportanceGuided_Test(float2 origin_uv) {
+        float3 squareWeighted = TestImportanceMapPDF(origin_uv);
+        //float3 squareWeighted = Test_Square_PDF();
+        float2 dir = normalize(squareWeighted.xy);
+
+        // Properly weight the corners of the square to balance the projection onto a circle and still be a proper PDF.
+        float2 c = abs(dir);
+        float r = rsqrt((c.x + c.y) / max(c.x, c.y));
+        return float3(dir, squareWeighted.z * r * r * r / (2 * PI));
+    }
+
+    float3 ScatterImportanceGuided(float2 origin_uv) {
+        float2 uv = origin_uv;
+        float randSelector = rand.Next();
+        float2 pixelSize = 1.0f / TextureSize(g_importanceMap);
+        float2 uvShift = 4 * pixelSize;
+        float2 jitter = rand.Next2() - 0.5f;
+
+        // m0 shift distance: pixelSize / 2
+        // m1: pixelSize
+        // m2: pixelSize * 2
+        // m3: pixelSize * 4
+
+        [unroll]
+        for (int m = 3; m >= 0; m--) {
+            float4 weights = g_importanceMap.Gather(sampler_point_clamp, uv, m);
+            
+            // quadrants are returned in a specific order: 
+            // W=Top-Left (-,+), Z=Top-Right (+,+), X=Bottom-Left (-,-), Y=Bottom-Right (+,-)
+            float total = weights.x + weights.y + weights.z + weights.w;
+            
+            if (total <= 0) { break; }
+
+            float4 p = weights / total;
+            
+            if (randSelector < p.w) {
+                uv += float2(-uvShift.x, uvShift.y);
+                randSelector /= p.w;
+            } else if (randSelector < p.w + p.z) {
+                uv += float2(uvShift.x, uvShift.y);
+                randSelector = (randSelector - p.w) / p.z;
+            } else if (randSelector < p.w + p.z + p.x) {
+                uv += float2(-uvShift.x, -uvShift.y);
+                randSelector = (randSelector - p.w - p.z) / p.x;
+            } else {
+                uv += float2(uvShift.x, -uvShift.y);
+                randSelector = (randSelector - p.w - p.z - p.x) / p.y;
+            }
+            
+            uvShift *= 0.5f;
+        }
+
+        return 0;
+        //return saturate(uv);
     }
 
     float4 CubicWeights(float u) {
@@ -237,7 +378,7 @@ struct BaseContext {
 
     float4 ScatterMaterially(inout float2 origin, float2 incoming)
     {
-        return ScatterMaterially(origin, origin / TextureSize(g_normalAlignment), incoming);
+        return ScatterMaterially(origin, (origin + 0.5) / TextureSize(g_normalAlignment), incoming);
     }
 };
 

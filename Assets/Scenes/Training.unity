@@ -1142,7 +1142,7 @@ MonoBehaviour:
   m_Script: {fileID: 11500000, guid: c24462d0e0c7579bba204567fe131285, type: 3}
   m_Name: 
   m_EditorClassIdentifier: 
-  _train: 1
+  _train: 0
   _continuePreviousSession: 0
   outputFolder: ./training_data
   _samplesToGenerate: 30000
@@ -1231,27 +1231,16 @@ MonoBehaviour:
   frameLimit: -1
   width: 256
   height: 256
-  viewThicknessLog: 3
   raysPerFrame: 128000
   photonBounces: -1
-  integrationMethod: 5
   integrationInterval: 0.2
-  densityGranularity: 10000
   transmissibilityVariationEpsilon: 0.001
-  enableToneMapping: 0
-  exposure: 0
-  whitePointLog: {x: 2, y: 2, z: 2}
-  blackPointLog: {x: -4, y: -4, z: -5}
-  _convergenceThreshold: 0.5
-  framesSinceClear: 0
+  _measurementInterval: 100
+  _convergenceThreshold: 0.002
+  iterationsSinceClear: 0
   convergenceProgress: 100000
-  strategy: 0
-  gridCells:
-    x: 8
-    y: 8
-  energyPrecision: 1
+  strategy: 1
   bilinearPhotonWrites: 1
-  pathSamples: 10
   hasConverged: 0
 --- !u!64 &923172387
 MeshCollider:

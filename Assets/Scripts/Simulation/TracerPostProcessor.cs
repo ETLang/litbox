@@ -8,6 +8,10 @@ public class TracerPostProcessor : Disposable
     private int[] _computeCVAndMipsKernel;
     private int[] _generateMipsKernel;
 
+    private static TracerPostProcessor _Instance;
+    public static TracerPostProcessor Instance =>
+        _Instance ?? (_Instance = new TracerPostProcessor());
+
     private static int _SourceAId = Shader.PropertyToID("_sourceA");
     private static int _SourceBId = Shader.PropertyToID("_sourceB");
     private static int _OutCVId = Shader.PropertyToID("_out_cv");
@@ -20,7 +24,7 @@ public class TracerPostProcessor : Disposable
         Shader.PropertyToID("_out_mip4")
     };
 
-    public TracerPostProcessor()
+    private TracerPostProcessor()
     {
         _postProcessingShader = (ComputeShader)Resources.Load("TracerPostProcessing");
 
@@ -42,6 +46,12 @@ public class TracerPostProcessor : Disposable
         };
     }
 
+    protected override void OnDispose()
+    {
+        _Instance = null;
+        base.OnDispose();
+    }
+
     public void ComputeCVAndMips(RenderTexture sourceA, RenderTexture sourceB, RenderTexture destMean, RenderTexture destCV)
     {
         int totalMips = destMean.mipmapCount;
@@ -58,20 +68,30 @@ public class TracerPostProcessor : Disposable
         }
         _postProcessingShader.Dispatch(firstDispatchKernel, (destMean.width - 1) / 16 + 1, (destMean.height - 1) / 16 + 1, 1);
 
-        int generatedMips = firstDispatchMipCount;
-        while(generatedMips < totalMips)
+        GenerateMips(destMean, firstDispatchMipCount - 1);
+    }
+
+    public void GenerateMips(RenderTexture texture, int detailLevel = 0, int mipCount = 0)
+    {
+        if(mipCount == 0)
         {
-            int nextDispatchMipCount = Mathf.Min(totalMips - generatedMips, 4);
+            mipCount = texture.mipmapCount - 1 - detailLevel;
+        }
+
+        int lastMip = detailLevel + mipCount;
+        while(detailLevel < lastMip)
+        {
+            int nextDispatchMipCount = Mathf.Min(lastMip - detailLevel, 4);
             int nextDispatchKernel = _generateMipsKernel[nextDispatchMipCount - 1];
 
-            _postProcessingShader.SetTexture(nextDispatchKernel, _SourceAId, destMean, generatedMips - 1);
+            _postProcessingShader.SetTexture(nextDispatchKernel, _SourceAId, texture, detailLevel);
 
-            for(int i = 0;i < nextDispatchMipCount;i++) {
-                _postProcessingShader.SetTexture(nextDispatchKernel, _OutMipId[i + 1], destMean, generatedMips + i);
+            for(int i = 1;i <= nextDispatchMipCount;i++) {
+                _postProcessingShader.SetTexture(nextDispatchKernel, _OutMipId[i], texture, detailLevel + i);
             }
-            _postProcessingShader.Dispatch(nextDispatchKernel, (destMean.MipWidth(generatedMips - 1) - 1) / 16 + 1, (destMean.MipHeight(generatedMips - 1) - 1) / 16 + 1, 1);
+            _postProcessingShader.Dispatch(nextDispatchKernel, (texture.MipWidth(detailLevel) - 1) / 16 + 1, (texture.MipHeight(detailLevel) - 1) / 16 + 1, 1);
 
-            generatedMips += nextDispatchMipCount;
+            detailLevel += nextDispatchMipCount;
         }
     }
 }

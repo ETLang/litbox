@@ -16,6 +16,7 @@ public class HybridTracer : Disposable, ITracer
         }
     }
 
+    public RenderTexture EarlyRadianceForImportanceSampling => _forwardIntegrator.OutputImageHDR;
     public RenderTexture TracerOutput => _backwardIntegrator.OutputImage;
 
     public bool DisableBilinearWrites
@@ -71,10 +72,15 @@ public class HybridTracer : Disposable, ITracer
         _backwardIntegrator.Clear();
     }
 
-    public void Trace(params RTLightSource[] lights)
+    public void BeginTrace(params RTLightSource[] lights)
     {
         _forwardIntegrator.IterationsSinceClear++;
         _forwardIntegrator.Integrate(lights);
+    }
+
+    public void EndTrace(RenderTexture importanceMap)
+    {
+        _backwardIntegrator.ImportanceMap = importanceMap;
         _backwardIntegrator.Integrate();
     }
 }

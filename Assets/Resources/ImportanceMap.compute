@@ -1,0 +1,64 @@
+#include "../Shaders/PhotonerCommon.cginc"
+
+#pragma kernel GenerateImportanceMap
+#line 5
+
+Texture2D<float4> _forwardRadianceA;
+Texture2D<float4> _forwardRadianceB;
+
+RWTexture2D<float> _out_importance0; // Ideally 1/2 resolution of forward radiance
+RWTexture2D<float> _out_importance1;
+RWTexture2D<float> _out_importance2;
+RWTexture2D<float> _out_importance3;
+
+groupshared float shared_luminance[8][8];
+
+[numthreads(8, 8, 1)] 
+void GenerateImportanceMap(uint3 id : SV_DispatchThreadID, uint2 localID : SV_GroupThreadID) {
+    uint2 size = TextureSize(_out_importance0);
+
+    // Sampling the pixel center would require adding 0.5 to id.xy, but we
+    // don't want to sample the center. We want it offset by half a texel
+    // to improve the quality of the sampling strategy in ScatterImportanceGuided
+    //float2 uv = (float2)(id.xy + 0.5) / size;
+    float2 uv = (float2)id.xy / size;
+    float4 radianceA = _forwardRadianceA.SampleLevel(sampler_linear_clamp, uv, 0);
+    float4 radianceB = _forwardRadianceB.SampleLevel(sampler_linear_clamp, uv, 0);
+    float sum;
+
+    shared_luminance[localID.x][localID.y] = Luminance(radianceA.rgb + radianceB.rgb);
+    _out_importance0[id.xy] = shared_luminance[localID.x][localID.y];
+
+    GroupMemoryBarrierWithGroupSync();
+
+    if (((localID.x | localID.y) & 1) == 0) {
+        sum = (shared_luminance[localID.x][localID.y] + 
+                shared_luminance[localID.x+1][localID.y] + 
+                shared_luminance[localID.x][localID.y+1] + 
+                shared_luminance[localID.x+1][localID.y+1]);
+        _out_importance1[id.xy / 2] = sum;
+        shared_luminance[localID.x][localID.y] = sum;
+    }
+
+    GroupMemoryBarrierWithGroupSync();
+
+    if (((localID.x | localID.y) & 3) == 0) {
+        sum = (shared_luminance[localID.x][localID.y] + 
+                shared_luminance[localID.x+2][localID.y] + 
+                shared_luminance[localID.x][localID.y+2] + 
+                shared_luminance[localID.x+2][localID.y+2]);
+        _out_importance2[id.xy / 4] = sum;
+        shared_luminance[localID.x][localID.y] = sum;
+    }
+
+    GroupMemoryBarrierWithGroupSync();
+
+    if (((localID.x | localID.y) & 7) == 0) {
+        sum = (shared_luminance[localID.x][localID.y] + 
+                shared_luminance[localID.x+4][localID.y] + 
+                shared_luminance[localID.x][localID.y+4] + 
+                shared_luminance[localID.x+4][localID.y+4]);
+        _out_importance3[id.xy / 8] = sum;
+        shared_luminance[localID.x][localID.y] = sum;
+    }
+}

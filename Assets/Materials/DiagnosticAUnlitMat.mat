@@ -78,7 +78,7 @@ Material:
     - _SrcBlend: 1
     - _UVSec: 0
     - _ZWrite: 1
-    - _high: 0.3
+    - _high: 0.2
     - _low: 0
     - _mapping: 0
     - _showAlpha: 0

@@ -1402,12 +1402,13 @@ MonoBehaviour:
   frameLimit: -1
   width: 512
   height: 512
+  priority: 0
   raysPerFrame: 64000
   photonBounces: -1
-  integrationInterval: 0.1
+  integrationInterval: 0.2
   transmissibilityVariationEpsilon: 0.001
   _measurementInterval: 20
-  _convergenceThreshold: 0.002
+  _convergenceThreshold: 0.001
   iterationsSinceClear: 0
   convergenceProgress: 0.5718811
   strategy: 1
@@ -1448,7 +1449,7 @@ MonoBehaviour:
   m_Name: 
   m_EditorClassIdentifier: 
   simulation: {fileID: 2408986526842077597}
-  type: 9
+  type: 5
 --- !u!4 &4185717351858822417
 Transform:
   m_ObjectHideFlags: 0
