@@ -100,6 +100,12 @@ public class ForwardMonteCarlo : Disposable
         RawPhotonBuffer.Clear(Color.clear);
     }
 
+    private static Vector4 _LuminanceWeight = new Vector4(0.2126f, 0.7152f, 0.0722f, 0);
+    private static float Luminance(Vector4 energy)
+    {
+        return Vector4.Dot(_LuminanceWeight, energy);
+    }
+
     public void Integrate(params RTLightSource[] lights)
     {
         if(_gBuffer.AlbedoAlpha == null)
@@ -113,21 +119,33 @@ public class ForwardMonteCarlo : Disposable
 
         _forwardIntegrationShader.SetFloat("g_hdr_scale", (float)((double)uint.MaxValue * IterationsSinceClear / (width * height)));
 
-        // TODO: Distribute the desired rays to emit across the light sources, instead of duplicating the rays emitted.
-        // This currently means that more lights mean a significant performance hit.
+        float totalLuma = 0;
         foreach (var light in lights)
-            SimulateLight(light);
+        {
+            totalLuma += Luminance(light.Energy);
+        }
+
+        if(totalLuma == 0) { return; }
+
+        foreach (var light in lights)
+        {
+            int rays = (int)(Luminance(light.Energy) / totalLuma * RaysToEmit);
+            SimulateLight(light, rays);
+        }
         
         _forwardIntegrationShader.RunKernel("ConvertToHDR", width, height,
             ("g_output_raw", RawPhotonBuffer),
             ("g_output_hdr", OutputImageHDR));
     }
 
-    void SimulateLight(RTLightSource light)
+    void SimulateLight(RTLightSource light, int rays)
     {
+        // Round up to the next multiple of 64 rays for good thread grouping
+        rays = ((rays - 1) / 64 + 1) * 64;
+
         string simulateKernel = null;
         var lightToTargetSpace = WorldToTargetTransform * light.WorldTransform;
-        double photonEnergy = (double)uint.MaxValue / RaysToEmit;
+        double photonEnergy = (double)uint.MaxValue / rays;
         float emissionOutscatter = 0;
         uint bounces = OverrideBounceCount ?? light.bounces;
 
@@ -167,8 +185,8 @@ public class ForwardMonteCarlo : Disposable
         // TODO: Try making IntegrationInterval a pixel length, rather than a ratio.
         _forwardIntegrationShader.SetFloat("g_integration_interval", Mathf.Max(0.01f, IntegrationInterval * OutputImageHDR.height));
 
-        _forwardIntegrationShader.RunKernel(simulateKernel, RaysToEmit,
-            ("g_rand", BufferManager.GetRandomSeedBuffer(RaysToEmit)),
+        _forwardIntegrationShader.RunKernel(simulateKernel, rays,
+            ("g_rand", BufferManager.GetRandomSeedBuffer(rays)),
             ("g_output_raw", RawPhotonBuffer),
             ("g_albedo", _gBuffer.AlbedoAlpha),
             ("g_transmissibility", _gBuffer.Transmissibility),
