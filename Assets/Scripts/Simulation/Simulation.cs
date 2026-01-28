@@ -278,6 +278,9 @@ public class Simulation : PhotonerComponent
         if(_realContentCamera != null) {
             _realContentCamera.GBuffer = GBuffer;
             _realContentCamera.VarianceEpsilon = transmissibilityVariationEpsilon;
+
+            // Important to "prime" everything related to the camera
+            _realContentCamera.GetComponent<Camera>().Render();
         }
 
         TracerTask(t => t.GBuffer = GBuffer);
@@ -303,6 +306,8 @@ public class Simulation : PhotonerComponent
         base.OnDisable();
     }
 
+    bool _needsToUpdate = false;
+
     protected override void Update()
     {
         ValidateTracer();
@@ -319,6 +324,25 @@ public class Simulation : PhotonerComponent
         {
             OnInvalidated("dirtyFrame");
         }
+
+        if (_dirtyFrame || _validationFailed)
+        {
+            hasConverged = false;
+            _dirtyFrame = false;
+            _validationFailed = false;
+            iterationsSinceClear = 0;
+            _sceneId++;
+        }
+
+        _needsToUpdate = true;
+        if (frameLimit != -1)
+        {
+            if (iterationsSinceClear >= frameLimit) { _needsToUpdate = false; }
+            hasConverged = false;
+        }
+        else if (hasConverged) { _needsToUpdate = false; }
+
+        _realContentCamera.gameObject.SetActive(_needsToUpdate);
 
         base.Update();
     }
@@ -338,8 +362,6 @@ public class Simulation : PhotonerComponent
 
         if (_realContentCamera == null) { return; }
         if (!GBuffer.IsValid) { return; }
-
-        _realContentCamera.Render();
 
         var presentationToTargetSpace = Matrix4x4.Scale(new Vector3(width, height, 1)) * Matrix4x4.Translate(new Vector3(0.5f, 0.5f, 0));
         var worldToTargetSpace = presentationToTargetSpace * _worldToPresentation;
@@ -365,22 +387,7 @@ public class Simulation : PhotonerComponent
 
         TraversalsPerSecond = total;
 
-        // CHANGE DETECTION
-        if (_dirtyFrame || _validationFailed)
-        {
-            hasConverged = false;
-            _dirtyFrame = false;
-            _validationFailed = false;
-            iterationsSinceClear = 0;
-            _sceneId++;
-        }
-
-        if (frameLimit != -1)
-        {
-            if (iterationsSinceClear >= frameLimit) { return; }
-            hasConverged = false;
-        }
-        else if (hasConverged) { return; }
+        if(!_needsToUpdate) { return; }
 
         // CLEAR TARGET
         if (iterationsSinceClear == 0)

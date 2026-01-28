@@ -67,14 +67,9 @@ public class SimulationCamera : MonoBehaviour {
         _cam.AddCommandBuffer(CameraEvent.BeforeForwardOpaque, _preRenderCommands);
         
         gameObject.SetActive(false);
+        _cam.depth = -1;
 
         _computeShader = (ComputeShader)Resources.Load("GBuffer");
-    }
-
-    public void Render() {
-        _cam.aspect = transform.parent.lossyScale.x / transform.parent.lossyScale.y;
-        _cam.orthographicSize = _cam.transform.parent.lossyScale.y / 2;
-        _cam.Render();
     }
 
     public void ClearTargets() {
@@ -82,6 +77,9 @@ public class SimulationCamera : MonoBehaviour {
     }
 
     void OnPreRender() {
+        _cam.aspect = transform.parent.lossyScale.x / transform.parent.lossyScale.y;
+        _cam.orthographicSize = _cam.transform.parent.lossyScale.y / 2;
+
         var gBuffer = new RenderBuffer[]
         {
             GBuffer.AlbedoAlpha.colorBuffer,
