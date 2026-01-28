@@ -177,13 +177,15 @@ public class ForwardMonteCarlo : Disposable
                 break;
         }
 
+        float integrationInterval = Mathf.Max(1, IntegrationInterval * OutputImageHDR.height);
+        float integrationIntervalEnergyAdjustment = 1.0f / integrationInterval;
         _forwardIntegrationShader.SetFloat("g_lightEmissionOutscatter", emissionOutscatter);
-        _forwardIntegrationShader.SetVector("g_lightEnergy", light.Energy * (float)photonEnergy);
+        _forwardIntegrationShader.SetVector("g_lightEnergy", light.Energy * (float)photonEnergy * integrationIntervalEnergyAdjustment);
         _forwardIntegrationShader.SetInt("g_bounces", (int)bounces);
         _forwardIntegrationShader.SetMatrix("g_lightToTarget", lightToTargetSpace.transpose);
 
         // TODO: Try making IntegrationInterval a pixel length, rather than a ratio.
-        _forwardIntegrationShader.SetFloat("g_integration_interval", Mathf.Max(0.01f, IntegrationInterval * OutputImageHDR.height));
+        _forwardIntegrationShader.SetFloat("g_integration_interval", integrationInterval);
 
         _forwardIntegrationShader.RunKernel(simulateKernel, rays,
             ("g_rand", BufferManager.GetRandomSeedBuffer(rays)),

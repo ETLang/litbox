@@ -40,7 +40,7 @@ public class Simulation : PhotonerComponent
     [SerializeField] public Priority priority = Priority.Realtime;
     [SerializeField] private int raysPerFrame = 64000;
     [SerializeField] private int photonBounces = -1;
-    [SerializeField] private float integrationInterval = 0.1f;
+    [SerializeField, Min(0.01f)] private float integrationInterval = 0.1f;
     [SerializeField] private float transmissibilityVariationEpsilon = 1e-3f;
 
     [Header("Convergence Information")]
