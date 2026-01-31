@@ -307,7 +307,8 @@ public static class TextureExtensions {
         System.IO.File.WriteAllBytes(path, bytes);
     }
 
-    public static void SaveTexturePNG(this RenderTexture target, string path)
+    static Material _ToneMapper = null;
+    public static void SaveTexturePNG(this RenderTexture target, string path, float exposure = float.NaN)
     {
         if(!target.sRGB) {
             var descriptor = target.descriptor;
@@ -319,8 +320,20 @@ public static class TextureExtensions {
             srgbTarget.Create();
 
             var current = RenderTexture.active;
-            Graphics.Blit(target, srgbTarget);
+            if(!float.IsNaN(exposure)) {
+                if(_ToneMapper == null) {
+                    _ToneMapper = new Material(Shader.Find("Hidden/PhotonerToneMapping_UE5"));
+                    _ToneMapper.SetFloat("_Exposure", exposure);
+                    _ToneMapper.SetVector("_WhitePointLog", new Vector3(2, 2, 2));
+                    _ToneMapper.SetVector("_BlackPointLog", new Vector3(-3, -3, -3));
+                }
+
+                Graphics.Blit(target, srgbTarget, _ToneMapper);
+            } else {
+                Graphics.Blit(target, srgbTarget);
+            }
             RenderTexture.active = current;
+
             target = srgbTarget;
         }
 
