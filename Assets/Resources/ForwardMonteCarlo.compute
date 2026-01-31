@@ -1,0 +1,330 @@
+#include "../Shaders/PhotonerCommon.cginc"
+#include "../Shaders/Random.cginc"
+#include "../Shaders/SimulationCommon.cginc"
+
+#pragma multi_compile __ BILINEAR_PHOTON_DISTRIBUTION
+
+#pragma kernel Simulate_DefaultLight
+#pragma kernel Simulate_PointLight
+#pragma kernel Simulate_SpotLight
+#pragma kernel Simulate_LaserLight
+#pragma kernel Simulate_AmbientLight
+#pragma kernel Simulate_FieldLight
+#pragma kernel Simulate_DirectionalLight
+#pragma kernel ConvertToHDR
+
+#line 17
+
+RWStructuredBuffer<uint4> g_rand;
+RWTexture2D<uint> g_output_raw;
+
+uint g_bounces;
+float g_integration_interval;
+
+// Light Emission Data
+Texture2D<float4> g_lightFieldTexture;
+
+float4x4 g_lightToTarget;
+float3 g_lightEnergy;
+float g_lightEmissionOutscatter;
+float2 g_directionalLightDirection;
+
+
+// HDR Conversion
+float g_hdr_scale;
+
+uint3 ReadPhoton_Indexed(uint2 pixel) {
+    uint3 output;
+    pixel.x *= 3;
+    output.r = g_output_raw[pixel];
+    pixel.x++;
+    output.g = g_output_raw[pixel];
+    pixel.x++;
+    output.b = g_output_raw[pixel];
+    return output;
+}
+
+void WritePhoton_Indexed(int2 pixel, uint3 energy, float density, bool suppressPhoton=false) {
+    const uint EnergyMax = (1 << 31);
+
+    // if(!suppressPhoton) {
+    //     if(g_photon_density_raw[pixel] < EnergyMax)
+    //         InterlockedAdd(g_photon_density_raw[pixel], density * g_density_granularity);
+    // }
+
+    energy *= density;
+
+    pixel.x *= 3;
+    if(g_output_raw[pixel] < EnergyMax)
+        InterlockedAdd(g_output_raw[pixel], energy.r);
+    pixel.x++;
+    if(g_output_raw[pixel] < EnergyMax)
+        InterlockedAdd(g_output_raw[pixel], energy.g);
+    pixel.x++;
+    if(g_output_raw[pixel] < EnergyMax)
+        InterlockedAdd(g_output_raw[pixel], energy.b);
+}
+
+void WritePhoton_Bilinear(float2 location, uint3 energy, float density, bool suppressPhoton=false) {
+    if(any(location < 0)) return;
+
+    float2 pixel = location - 0.5f;
+    int2 pixelFloor = (int2)floor(pixel);
+    float2 pixelFrac = pixel - pixelFloor;
+
+    WritePhoton_Indexed(pixelFloor, energy, density * (1 - pixelFrac.x) * (1 - pixelFrac.y), suppressPhoton);
+    WritePhoton_Indexed(pixelFloor + int2(1, 0), energy, density * pixelFrac.x * (1 - pixelFrac.y), true /*suppressPhoton*/);
+    WritePhoton_Indexed(pixelFloor + int2(0, 1), energy, density * (1 - pixelFrac.x) * pixelFrac.y, true /*suppressPhoton*/);
+    WritePhoton_Indexed(pixelFloor + int2(1, 1), energy, density * pixelFrac.x * pixelFrac.y, true /*suppressPhoton*/);
+}
+
+void WritePhoton(float2 location, uint3 energy, float density, bool suppressPhoton=false) {
+#if BILINEAR_PHOTON_DISTRIBUTION
+    WritePhoton_Bilinear(location, energy, density, suppressPhoton);
+#else
+    WritePhoton_Indexed(location, energy, density, suppressPhoton);
+#endif
+}
+
+struct ForwardMonteCarlo : BaseContext, IMonteCarloMethod
+{
+    bool searchingPhase;
+    float transmitPotential;
+    float quantumScale;
+    float currentSample;
+    float hitIntensity;
+    float uSampleTarget;
+    float transmissibility;
+    float uSampleRandomOffset;
+
+    float tested_transmissibility;
+    float tested_u;
+
+    void WriteSample(inout Ray photon, float u, int lod)
+    {
+        float2 pSample = photon.Origin + photon.Direction * u;
+        float2 uv = pSample / targetSize;
+        float4 normal_alignment = g_normalAlignment.SampleLevel(samplerg_normalAlignment, uv, 0);
+
+        float3 albedo = g_albedo.SampleLevel(sampler_point_clamp, uv, 0).rgb;
+        float outScatterDensity = g_integration_interval * transmissibility * (1 - pow(tested_transmissibility, 1.0/(1 << lod)));
+        WritePhoton(pSample, photon.Energy * albedo, outScatterDensity, false);//bounce == 0);
+    }
+
+    void Init(uint4 seed)
+    {
+        Init_BaseContext(seed);
+        searchingPhase = true;
+
+        hitIntensity = 0;
+        transmissibility = 1;
+
+        transmitPotential = 1;
+        quantumScale = 1;
+        currentSample = 0;
+        uSampleTarget = 0;
+        uSampleRandomOffset = rand.Next();
+    }
+
+    void BeginTraversal(inout IntegrationContext ctx)
+    {
+        currentSample = 0;
+        uSampleTarget = rand.Next() * g_integration_interval;
+        transmissibility = 1;
+    }
+    
+    bool Test(inout IntegrationContext ctx)
+    {
+        tested_u = ctx.uHitNext;
+        tested_transmissibility = ctx.transmissibilityNext.x;
+
+        if(searchingPhase) {
+            return tested_u > ctx.uEscape; 
+        } else {
+            float minimumTransmissibility = ctx.transmissibilityNext.y;
+            return ctx.uHitNext > ctx.uEscape || minimumTransmissibility * transmissibility < transmitPotential;
+        }
+    }
+    
+    bool Propagate(inout IntegrationContext ctx)
+    {
+        transmissibility *= tested_transmissibility;
+
+        while(searchingPhase && tested_u > uSampleTarget) {
+            currentSample += 1;
+            uSampleRandomOffset = rand.Next();
+            WriteSample(ctx.photon, uSampleTarget, ctx.lod);
+            uSampleTarget = (currentSample + uSampleRandomOffset) * g_integration_interval; 
+        }
+
+        // If the density of the substrate is too high, consider this the new endpoint.
+        //THIS CONDITION WILL BREAK REFLECTION WHEN DENSITY APPROACHES 1
+        return true; //ctx.uHitNext < ctx.uEscape && transmissibility > 1e-9;
+    }
+    
+    bool EndTraversal(inout IntegrationContext ctx)
+    {
+        if(!searchingPhase) {
+            ctx.uHitCurrent = tested_u + log2(transmitPotential / transmissibility) / (log2(tested_transmissibility.x) - 1e-5);
+        } else {
+            ctx.uHitCurrent = 0;
+        }
+        return true;//probability > 1e-7;
+    }
+
+    bool Bounce(inout IntegrationContext ctx, float3 albedo)
+    {
+        if(!searchingPhase) {
+            //float3 important_direction = ScatterImportanceLobed(ctx.photon.Origin);
+            float4 important_direction = ScatterMaterially(ctx.photon.Origin, ctx.testUV, ctx.photon.Direction);
+
+            ctx.photon.Energy *= albedo * quantumScale * important_direction.z;
+            ctx.photon.Direction = important_direction.xy;
+            ctx.photon.Origin += ctx.photon.Direction;
+
+            if(important_direction.w < 0.5) {
+                searchingPhase = true;
+            } else { // otherwise it's a false bounce. Return to propagating.
+                transmissibility /= tested_transmissibility;
+            }
+        } else {
+            float u = rand.Next(transmissibility, 1);
+            transmitPotential = u;
+            quantumScale = 1-transmissibility;
+            searchingPhase = false;
+        }
+        return searchingPhase;
+    }
+
+    Ray EmitPointLight() {
+        Ray emitted;
+        
+        float2 pos = rand.NextCircle();
+        
+        emitted.Origin = mul(float4(pos, 0, 1), g_lightToTarget).xy;
+        
+        //float3 important_direction = ScatterImportanceLobed(emitted.Origin);
+        float3 important_direction = { rand.NextDirection(), 1.0 / (2 * PI)};
+        emitted.Direction = important_direction.xy;
+        emitted.Energy = g_lightEnergy * important_direction.z;
+
+        return emitted;
+    } 
+
+    Ray EmitSpotLight() {
+        Ray emitted;
+
+        emitted.Origin = mul(float4(rand.Next()-0.5, rand.Next()-0.5, 0, 1), g_lightToTarget).xy;
+        emitted.Direction = normalize(mul(float4(2*rand.Next()-1, -1, 0, 0), g_lightToTarget).xy);
+        emitted.Energy = g_lightEnergy;
+
+        return emitted;
+    }
+
+    Ray EmitLaserLight() {
+        Ray emitted;
+
+        emitted.Origin = mul(float4(rand.Next()-0.5, rand.Next(), 0, 1), g_lightToTarget).xy;
+        emitted.Direction = normalize(mul(float4(0,-1,0,0), g_lightToTarget).xy);
+        emitted.Energy = g_lightEnergy;
+
+        return emitted;
+    }
+
+    Ray EmitAmbientLight() {
+        Ray emitted;
+
+        float2 nOrigin = rand.Next2();
+        emitted.Origin = nOrigin * targetSize;
+        emitted.Direction = normalize(rand.NextDirection() - (nOrigin * 2 - 1) / 1.44);
+        emitted.Energy = g_lightEnergy;
+
+        return emitted;
+    }
+
+    Ray EmitFieldLight() {
+        Ray emitted;
+
+        float2 uv = rand.Next2();
+        float2 pos = uv*2-1;
+
+        float2 _ddx = ddx(g_lightToTarget._m00_m01);
+        float2 _ddy = ddy(g_lightToTarget._m10_m11);
+
+        emitted.Origin = mul(float4(pos, 0, 1), g_lightToTarget).xy;
+        emitted.Direction = rand.NextDirection();
+        float4 texValue = g_lightFieldTexture.SampleGrad(sampler_linear_clamp, uv, _ddx, _ddy);
+        texValue.rgb *= (texValue.a - 0.08);
+        emitted.Energy = g_lightEnergy * texValue.rgb;
+
+        return emitted;
+    }
+
+    Ray EmitDirectionalLight() {
+        Ray emitted;
+
+        float2 perp = g_directionalLightDirection.yx;
+        perp.y *= -1;
+        emitted.Direction = g_directionalLightDirection;
+
+        emitted.Origin = 0.5 - g_directionalLightDirection + perp * (rand.Next() * 1.415 - 0.7075);
+        emitted.Origin *= targetSize;
+        emitted.Energy = g_lightEnergy;
+
+        return emitted;
+    }
+
+    Ray EmitDefaultLight() {
+        Ray emitted;
+
+        emitted.Origin = float2(rand.Next(), 0) * targetSize;
+        emitted.Direction = float2(0,1);
+        emitted.Energy = float3(0,1000,0);
+
+        return emitted;
+    }
+};
+
+#define SIMULATION_IMPLEMENTATION(lightType)                    \
+[numthreads(NUMTHREADS_1D)]                                     \
+void Simulate_##lightType (uint3 id : SV_DispatchThreadID) {    \
+    ForwardMonteCarlo integrator;                               \
+    integrator.Init(g_rand[id.x]);                              \
+    Ray photon = integrator.Emit##lightType();                  \
+    if(g_lightEmissionOutscatter != 0) { WritePhoton(photon.Origin, photon.Energy, g_lightEmissionOutscatter, true); } \
+    Integrate(photon, g_bounces, integrator);                   \
+    g_rand[id.x] = integrator.rand.state;                       \
+}
+
+SIMULATION_IMPLEMENTATION(DefaultLight)
+SIMULATION_IMPLEMENTATION(PointLight)
+SIMULATION_IMPLEMENTATION(SpotLight)
+SIMULATION_IMPLEMENTATION(LaserLight)
+SIMULATION_IMPLEMENTATION(AmbientLight)
+SIMULATION_IMPLEMENTATION(FieldLight)
+SIMULATION_IMPLEMENTATION(DirectionalLight)
+
+
+// For practical purposes, the accumulation overflow buffer seems to be unnecessary.
+// TODO: Revisit if needed later.
+
+// RWTexture2D<float4> g_output_accumulated;
+// uint2 g_accumulate_base_index;
+// [numthreads(NUMTHREADS_2D)]
+// void AccumulatePhotons(uint3 id : SV_DispatchThreadID)
+// {
+//     uint2 index = g_accumulate_base_index + id.xy;
+//     g_output_accumulated[index] += float4(ReadPhoton_Indexed(index) / g_energy_norm, 1);
+//     ClearPhoton_Indexed(index);
+// }
+
+// TODO: Treat ConvertToHDR as a material being rendered to a render target, so that it works on GLES3
+RWTexture2D<float4> g_output_hdr;
+[numthreads(NUMTHREADS_2D)]
+void ConvertToHDR (uint3 id : SV_DispatchThreadID) {
+    // ConvergenceCellInput cellData = g_convergenceCellStateIn[GetGridCellIndex((int2) id.xy)];
+    // float frames = cellData.FrameCount;
+
+    //g_output_hdr[id.xy] = float4((ReadPhoton_Indexed(id.xy) / g_energy_norm + g_output_accumulated[id.xy].rgb) / frames, 1);
+    g_output_hdr[id.xy] = float4(ReadPhoton_Indexed(id.xy) / g_hdr_scale, 1);
+}

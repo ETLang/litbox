@@ -1,0 +1,46 @@
+#include "../Shaders/PhotonerCommon.cginc"
+
+#pragma kernel ComputeConvergence
+#line 5
+
+RWTexture2D<float> _variance;
+RWStructuredBuffer<uint> _totalVariance;
+
+groupshared uint shared_variance;
+[numthreads(16, 16, 1)]
+void ComputeConvergence(
+    uint3 id : SV_DispatchThreadID,
+    uint groupIndex : SV_GroupIndex) {
+
+    uint2 size = TextureSize(_variance);
+
+    if (groupIndex == 0) shared_variance = 0;
+    
+    GroupMemoryBarrierWithGroupSync();
+
+    if (all(id.xy < size)) {
+        uint variance_int = (uint)(_variance[id.xy] * 10000.0f);
+        InterlockedAdd(shared_variance, variance_int); 
+    }
+
+    GroupMemoryBarrierWithGroupSync();
+
+    if (groupIndex == 0) {
+        InterlockedAdd(_totalVariance[0], shared_variance);
+    }
+}
+
+float GetPerceptualWeight(float luma) {
+    // 1. Kill the ultra-dark noise (Black Crush)
+    float lowEnd = smoothstep(0.001, 0.05, luma);
+    
+    // 2. Kill the ultra-bright noise (Weber's Law)
+    // As luma goes up, the weight drops off
+    float highEnd = 1.0 / (1.0 + luma * 2.0); 
+    
+    return lowEnd * highEnd;
+}
+
+// Inside your local sum logic:
+// float weight = GetPerceptualWeight(localLuma);
+// uint weightedError = (uint)(cv * weight * 10000.0f);

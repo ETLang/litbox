@@ -1,0 +1,9 @@
+--- UFO model ---
+https://sketchfab.com/3d-models/retro-ufo-40f17f9487724044bd40bdd5d13de160
+
+--- (Potential) Background ---
+https://assetstore.unity.com/packages/2d/environments/grassland-hills-seamless-background-296542
+
+--- Title Screen UFO Graphic ---
+AI
+

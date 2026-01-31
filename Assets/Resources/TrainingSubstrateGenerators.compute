@@ -1,4 +1,4 @@
-#include "../Shaders/RayTracing2DCommon.cginc"
+#include "../Shaders/PhotonerCommon.cginc"
 #include "../Shaders/Noise2D.cginc"
 #include "../Shaders/Random.cginc"
 
@@ -8,6 +8,7 @@
 #pragma kernel GenerateTrainingSubstrate_AddNoise
 #pragma kernel GenerateTrainingSubstrate_Gradient
 #pragma kernel GenerateTrainingSubstrate_Hardness
+#line 12
 
 RWTexture2D<float4> g_trainingSubstrate_textureDest;
 RWTexture2D<float4> g_trainingSubstrate_textureRef;
@@ -24,7 +25,7 @@ float3 g_trainingSubstrate_gradientColorA;
 float3 g_trainingSubstrate_gradientColorB;
 float g_trainingSubstrate_hardness;
 
-[numthreads(8,8,1)]
+[numthreads(8,8,1)] 
 void GenerateTrainingSubstrate_MakeShapes(uint3 id : SV_DispatchThreadID) {
     int totalRects = g_trainingSubstrate_ShapeCounts.x;
     int totalEllipses = g_trainingSubstrate_ShapeCounts.y;

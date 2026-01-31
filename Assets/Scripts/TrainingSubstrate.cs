@@ -113,8 +113,8 @@ public class TrainingSubstrate : MonoBehaviour {
         noiseFloor = rand.NextRange(0, 0.6f, 0.75f);
         noiseCeiling = rand.NextRange(0.6f, 1);
 
-        colorA = Color.HSVToRGB(rand.NextSingle(), rand.NextSingle(), 1);
-        colorB = Color.HSVToRGB(rand.NextSingle(), rand.NextSingle(), 1);
+        colorA = Color.HSVToRGB(rand.NextSingle(), rand.NextRange(0,1,0.75f), rand.NextRange(0.25f, 1, 0.75f));
+        colorB = Color.HSVToRGB(rand.NextSingle(), rand.NextRange(0,1,0.75f), rand.NextRange(0.25f, 1, 0.75f));
         densityA = Mathf.Min(Mathf.Pow(10, rand.NextRange(-3, 0)), 0.9f);
         densityB = Mathf.Min(Mathf.Pow(10, rand.NextRange(-3, 0)), 0.9f);
         
@@ -201,7 +201,7 @@ public class TrainingSubstrate : MonoBehaviour {
 
         if(changed) {
             ForceCreateTexture();
-            GetComponent<RTObject>().Invalidate();
+           // GetComponent<RTObject>().Invalidate();
         }
     }
 
@@ -313,8 +313,10 @@ public class TrainingSubstrate : MonoBehaviour {
         shader.Dispatch(kernel, Math.Max(1, textureSize / 8), Math.Max(1, textureSize / 8), 1);
 
         generated = _target[destTarget];
+#if UNITY_EDITOR
         if(EditorApplication.isPlaying)
-             GetComponent<Renderer>().material.SetTexture("_MainTex", _target[destTarget]);
+             GetComponent<RTObject>().texture = _target[destTarget];
+#endif
 
         return _target[1-destTarget];
     }

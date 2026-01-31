@@ -1,3 +1,6 @@
+#ifndef _RANDOM_
+#define _RANDOM_
+
 // https://developer.nvidia.com/gpugems/gpugems3/part-vi-gpu-computing/chapter-37-efficient-random-number-generation-and-application
 
 struct Random
@@ -27,7 +30,7 @@ struct Random
     float4 Next4() { return float4(Next(), Next(), Next(), Next()); }
     
     float2 NextDirection() {
-        float theta = Next() * 2 * PI;
+        float theta = Next() * 2 * 3.141592654f;
         float2 dir;
         sincos(theta, dir.x, dir.y);
         return dir;
@@ -56,3 +59,5 @@ Random CreateRandom(uint4 seed)
     ret.Init(seed);
     return ret;
 }
+
+#endif // _RANDOM_

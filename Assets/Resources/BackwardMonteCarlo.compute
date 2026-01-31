@@ -1,0 +1,124 @@
+#include "../Shaders/PhotonerCommon.cginc"
+#include "../Shaders/Random.cginc"
+#include "../Shaders/SimulationCommon.cginc"
+
+#pragma kernel Simulate_Camera
+#pragma kernel Camera_Buffer_Divide
+
+#line 9
+
+RWStructuredBuffer<uint4> g_rand;
+Texture2D<float4> g_hdr;
+SamplerState samplerg_hdr;
+RWTexture2D<float4> g_output_hdr;
+
+float g_integration_interval;
+int g_frame_count;
+
+struct BackwardMonteCarlo : BaseContext, IMonteCarloMethod
+{
+    float transmitPotential;
+    float quantumScale;
+    float currentSample;
+    float hitIntensity;
+    float uSampleTarget;
+    float transmissibility;
+    float uSampleRandomOffset;
+    float uMax;
+
+    float tested_transmissibility;
+    float tested_u;
+
+    void Init(uint4 seed)
+    {
+        Init_BaseContext(seed);
+
+        hitIntensity = 0;
+        transmissibility = 1;
+
+        transmitPotential = 1;
+        quantumScale = 1;
+        currentSample = 0;
+        uSampleTarget = 0;
+        uSampleRandomOffset = rand.Next();
+    }
+
+    void BeginTraversal(inout IntegrationContext ctx)
+    {
+        uMax = ctx.uEscape;// min(ctx.uEscape, 30);
+        currentSample = 0;
+        uSampleTarget = rand.Next() * g_integration_interval;
+        transmissibility = 1;
+    }
+    
+    bool Test(inout IntegrationContext ctx)
+    {
+        tested_u = ctx.uHitNext;
+        tested_transmissibility = ctx.transmissibilityNext.x;
+
+        return tested_u > uMax;
+    }
+    
+    bool Propagate(inout IntegrationContext ctx)
+    {
+        transmissibility *= tested_transmissibility;
+
+        while(tested_u > uSampleTarget) {
+            currentSample += 1;
+            uSampleRandomOffset = rand.Next();
+            float4 sample = g_hdr.SampleLevel(samplerg_hdr, ctx.testUV, 0);
+            // TODO in the future, a geometry term will be necessary here.
+            ctx.photon.Energy += sample.rgb * transmissibility * g_integration_interval / ((1 + ctx.uHitCurrent) * (1 + ctx.uHitCurrent));
+            uSampleTarget = (currentSample + uSampleRandomOffset) * g_integration_interval; 
+        }
+
+        return true;
+    }
+    
+    bool EndTraversal(inout IntegrationContext ctx)
+    {
+        return false;
+    }
+
+    bool Bounce(inout IntegrationContext ctx, float3 albedo)
+    {
+        // Never gets called since EndTraversal always returns false.
+        return true;
+    }
+};
+
+[numthreads(NUMTHREADS_2D)]
+void Simulate_Camera (uint3 id : SV_DispatchThreadID) {
+    float2 targetSize = TextureSize(g_albedo);
+    uint randContext = id.x + targetSize.x * id.y;
+    BackwardMonteCarlo sim;
+    sim.Init(g_rand[randContext]);
+
+    float2 origin = id.xy + sim.rand.Next2();
+    float3 directionWeight = sim.ScatterImportanceLobed(origin);
+    //float3 directionWeight = sim.ScatterImportanceGuided_Test((origin + 0.5) / targetSize);
+    //float3 directionWeight = { sim.rand.NextDirection(), 1 / (2 * PI) };
+
+    float2 uv = origin / targetSize;
+    float3 directLight = g_hdr.SampleLevel(samplerg_hdr, uv, 0).rgb;
+    float3 localAlbedo = g_albedo.SampleLevel(sampler_point_clamp, uv, 0).rgb;
+    float localTransmissibility = g_transmissibility.SampleLevel(samplerg_transmissibility, origin, 0).x;
+
+    Ray accumulated_photon = {
+        origin,
+        directionWeight.xy,
+        float3(0,0,0)
+    };
+
+    Integrate(accumulated_photon, 1, sim);
+
+    float3 accumulated_sample = accumulated_photon.Energy * localAlbedo * directionWeight.z/* (1 - pow(localTransmissibility, g_view_thickness))*/ + directLight;
+    g_output_hdr[id.xy] += float4(accumulated_sample, 0);   
+
+    g_rand[randContext] = sim.rand.state;
+}
+
+[numthreads(NUMTHREADS_2D)]
+void Camera_Buffer_Divide(uint3 id : SV_DispatchThreadID) {
+    g_output_hdr[id.xy] = g_hdr[id.xy] / g_frame_count;
+}

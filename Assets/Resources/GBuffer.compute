@@ -1,0 +1,120 @@
+#include "../Shaders/PhotonerCommon.cginc"
+
+#pragma kernel GenerateGBufferMips
+#pragma kernel ComputeGBufferVariance
+#pragma kernel GenerateGBufferQuadTree
+
+
+Texture2D<float4> g_transmissibility;
+SamplerState samplerg_transmissibility;
+
+RWTexture2D<float4> g_sourceMipLevelAlbedo;
+RWTexture2D<float4> g_sourceMipLevelNormalSlope;
+RWTexture2D<float4> g_sourceMipLevelTransmissibility;
+RWTexture2D<float4> g_destMipLevelAlbedo;
+RWTexture2D<float4> g_destMipLevelNormalSlope;
+RWTexture2D<float4> g_destMipLevelTransmissibility;
+RWTexture2D<float4> g_destQuadTreeLeaves;
+
+uint g_lowest_lod;
+float g_TransmissibilityVariationEpsilon;
+
+float4 DownsampleAlbedo(uint2 id) {
+    float4 a = g_sourceMipLevelAlbedo[id + uint2(0,0)];
+    float4 b = g_sourceMipLevelAlbedo[id + uint2(1,0)];
+    float4 c = g_sourceMipLevelAlbedo[id + uint2(0,1)];
+    float4 d = g_sourceMipLevelAlbedo[id + uint2(1,1)];
+
+    return (a+b+c+d)/4;
+}
+
+float4 DownsampleTransmissibility(uint2 id) {
+    float4 a = g_sourceMipLevelTransmissibility[id + uint2(0,0)];
+    float4 b = g_sourceMipLevelTransmissibility[id + uint2(1,0)];
+    float4 c = g_sourceMipLevelTransmissibility[id + uint2(0,1)];
+    float4 d = g_sourceMipLevelTransmissibility[id + uint2(1,1)];
+
+    float at = 1 / (a.x + 1);
+    float bt = 1 / (b.x + 1);
+    float ct = 1 / (c.x + 1);
+    float dt = 1 / (d.x + 1);
+
+    float average = (a.x*b.x + c.x*d.x + a.x*c.x + b.x*d.x) / 4;
+    float minimum = min(min(a.y*b.y, c.y*d.y), min(a.y*c.y, b.y*d.y));
+
+    float sr_avg = sqrt(average);
+    float4 variances = float4(a.x,b.x,c.x,d.x) - sr_avg;
+    variances *= variances;
+    float variance = dot(variances, 0.25);
+    float leaf = (variance < g_TransmissibilityVariationEpsilon) ? 1 : 0;
+
+    return float4(average, minimum, leaf, 1);
+}
+
+float4 DownsampleNormalSlope(uint2 id) {
+    float4 a = g_sourceMipLevelNormalSlope[id + uint2(0,0)];
+    float4 b = g_sourceMipLevelNormalSlope[id + uint2(1,0)];
+    float4 c = g_sourceMipLevelNormalSlope[id + uint2(0,1)];
+    float4 d = g_sourceMipLevelNormalSlope[id + uint2(1,1)];
+
+    return float4(normalize(a.xy + b.xy + c.xy + d.xy), (a.zw + b.zw + c.zw + d.zw) / 4);
+}
+
+[numthreads(NUMTHREADS_2D)]
+void GenerateGBufferMips (uint3 id : SV_DispatchThreadID) {
+    g_destMipLevelAlbedo[id.xy] = DownsampleAlbedo(id.xy * 2);
+    g_destMipLevelTransmissibility[id.xy] = DownsampleTransmissibility(id.xy * 2);
+    g_destMipLevelNormalSlope[id.xy] = DownsampleNormalSlope(id.xy * 2);
+}
+
+void ComputeTransmissibilityVariance(uint2 id) {
+
+    float3 r1 = float3(
+        g_sourceMipLevelTransmissibility[id + uint2(-1,-1)].x,
+        g_sourceMipLevelTransmissibility[id + uint2( 0,-1)].x,
+        g_sourceMipLevelTransmissibility[id + uint2( 1,-1)].x
+    );
+    float3 r2 = float3(
+        g_sourceMipLevelTransmissibility[id + uint2(-1, 0)].x,
+        g_sourceMipLevelTransmissibility[id + uint2( 0, 0)].x,
+        g_sourceMipLevelTransmissibility[id + uint2( 1, 0)].x
+    );
+    float3 r3 = float3(
+        g_sourceMipLevelTransmissibility[id + uint2(-1, 1)].x,
+        g_sourceMipLevelTransmissibility[id + uint2( 0, 1)].x,
+        g_sourceMipLevelTransmissibility[id + uint2( 1, 1)].x
+    );
+
+    
+    float mean = dot(r1, 1/9.0) + dot(r2, 1/9.0) + dot(r3, 1/9.0);
+    
+    float3 d1 = r1 - mean;
+    float3 d2 = r2 - mean;
+    float3 d3 = r3 - mean;
+
+    float variance = sqrt(dot(d1,d1) + dot(d2,d2) + dot(d3,d3)) / 3.0;
+    float leaf = (variance < g_TransmissibilityVariationEpsilon) ? 1 : 0;
+
+    float4 newValue = g_sourceMipLevelTransmissibility[id];
+    newValue.z = variance;
+    newValue.w = leaf;
+    g_sourceMipLevelTransmissibility[id] = newValue;
+}
+
+[numthreads(NUMTHREADS_2D)]
+void ComputeGBufferVariance (uint3 id : SV_DispatchThreadID) {
+    ComputeTransmissibilityVariance(id.xy);
+}
+
+[numthreads(NUMTHREADS_2D)]
+void GenerateGBufferQuadTree (uint3 id : SV_DispatchThreadID) {
+    float2 uv = (id.xy + 0.5) / TextureSize(g_transmissibility);
+    for(int i = g_lowest_lod;i >= 0;i--) {
+        float4 leaf = g_transmissibility.SampleLevel(samplerg_transmissibility, uv, i);
+
+        if(leaf.w == 1) {
+            g_destQuadTreeLeaves[id.xy] = float4(i,0,0,1);
+           break;
+        }
+  }
+}
