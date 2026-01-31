@@ -1,4 +1,5 @@
 using System;
+using Unity.Mathematics;
 using UnityEngine;
 
 public static class ComputeShaderExtensions
@@ -7,9 +8,16 @@ public static class ComputeShaderExtensions
         RunKernel(shader, kernel, n, 1, args);
     }
 
-    public static void RunKernel(this ComputeShader shader, string kernel, int w, int h, params (string,object)[] args) {
-        var kernelID = shader.FindKernel(kernel);
+    public static void RunKernel(this ComputeShader shader, int kernelID, int n, params (string,object)[] args) {
+        RunKernel(shader, kernelID, n, 1, args);
+    }
 
+    public static void RunKernel(this ComputeShader shader, string kernel, int w, int h, params (string,object)[] args)
+    {
+        RunKernel(shader, shader.FindKernel(kernel), w, h, args);
+    }
+
+    public static void RunKernel(this ComputeShader shader, int kernelID, int w, int h, params (string,object)[] args) {
         foreach(var tuple in args) {
             switch(tuple.Item2) {
             case null:

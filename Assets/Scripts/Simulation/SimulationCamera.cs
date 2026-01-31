@@ -1,5 +1,6 @@
 using System;
 using System.Threading.Tasks;
+using Unity.IO.LowLevel.Unsafe;
 using UnityEngine;
 using UnityEngine.Rendering;
 
@@ -44,7 +45,7 @@ public class SimulationCamera : MonoBehaviour {
     private CommandBuffer _postRenderCommands;
     private Camera _cam;
 
-    public void Initialize(Transform parent, int layers) {
+    public void Initialize(Transform parent, int layers, SimulationMode mode) {
         _preRenderCommands = new CommandBuffer();
         _preRenderCommands.name = "Simulation Global Properties";
         _preRenderCommands.SetGlobalInt(Shader.PropertyToID("_isRayTracing"), 1);
@@ -67,9 +68,16 @@ public class SimulationCamera : MonoBehaviour {
         _cam.AddCommandBuffer(CameraEvent.BeforeForwardOpaque, _preRenderCommands);
         
         gameObject.SetActive(false);
-        _cam.depth = -1;
+
+        if(mode == SimulationMode.Realtime) {
+            _cam.depth = -1;
+        }
 
         _computeShader = (ComputeShader)Resources.Load("GBuffer");
+    }
+
+    public void Render() {
+        _cam.Render();
     }
 
     public void ClearTargets() {
@@ -157,7 +165,6 @@ public class SimulationCamera : MonoBehaviour {
                 "g_destQuadTreeLeaves", GBuffer.QuadTreeLeaves, 0);
             _postRenderCommands.DispatchCompute(_computeShader, generateQuadTreeKernel,
                 Math.Max(1, GBuffer.QuadTreeLeaves.width / 8), Math.Max(1, GBuffer.QuadTreeLeaves.height / 8), 1);
-
         }
 
         Graphics.ExecuteCommandBuffer(_postRenderCommands);

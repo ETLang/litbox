@@ -1,3 +1,4 @@
+using Unity.Mathematics;
 using UnityEngine;
 
 public class BackwardMonteCarlo : Disposable
@@ -36,6 +37,22 @@ public class BackwardMonteCarlo : Disposable
 
     public RenderTexture ImportanceMap { get; set; }
 
+    #region ImportanceSamplingTarget
+    public Vector2 ImportanceSamplingTarget
+    {
+        get => _importanceSamplingTarget;
+        set
+        {
+            _importanceSamplingTarget = value;
+
+            if(GBuffer.AlbedoAlpha) {
+                _backwardIntegrationShader.SetVector("g_importance_sampling_target", value * new Vector2(GBuffer.AlbedoAlpha.width, GBuffer.AlbedoAlpha.height));
+            }
+        }
+    }
+    private Vector2 _importanceSamplingTarget = new Vector2(0.5f, 0.5f);
+    #endregion
+
     #region IntegrationInterval
     public float IntegrationInterval
     {
@@ -63,7 +80,6 @@ public class BackwardMonteCarlo : Disposable
     public BackwardMonteCarlo()
     {
         _backwardIntegrationShader = (ComputeShader)Resources.Load("BackwardMonteCarlo");
-       // _backwardIntegrationShader.SetVector("g_importance_sampling_target", ImportanceSamplingTarget);
     }
 
     public void Clear()

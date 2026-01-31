@@ -11,7 +11,14 @@ public delegate void SimulationConvergedEvent();
 public struct SimulationProfile {
     public int frameLimit;
     public int raysPerFrame;
+    public float integrationInterval;
     public int photonBounces;
+}
+
+public enum SimulationMode
+{
+    Realtime,
+    Reference
 }
 
 [RequireComponent(typeof(MeshRenderer))]
@@ -24,20 +31,13 @@ public class Simulation : PhotonerComponent
         Hybrid
     }
 
-    public enum Priority
-    {
-        Realtime,
-        RapidConvergence,
-        Accuracy
-    }
-
     [SerializeField] private LayerMask rayTracedLayers;
 
     [SerializeField] private int frameLimit = -1;
     [SerializeField] public int width = 256;
     [SerializeField] public int height = 256;
 
-    [SerializeField] public Priority priority = Priority.Realtime;
+    [SerializeField] public SimulationMode priority = SimulationMode.Realtime;
     [SerializeField] private int raysPerFrame = 64000;
     [SerializeField] private int photonBounces = -1;
     [SerializeField, Min(0.01f)] private float integrationInterval = 0.1f;
@@ -56,6 +56,7 @@ public class Simulation : PhotonerComponent
     private static int _MainTexID = Shader.PropertyToID("_MainTex");
     private Material _compositorMat;
     private SimulationCamera _realContentCamera;
+    private bool _freshContentCamera = true;
 
     [SerializeField, ReadOnly] public bool hasConverged = false;
 
@@ -81,6 +82,9 @@ public class Simulation : PhotonerComponent
     public RenderTexture SimulationOutputHDR { get; private set; }
     public RenderTexture VarianceMap { get; private set; }
     public RenderTexture ImportanceMap => _importanceMap?.Map;
+
+    public ITracer TracerA => _activeTracer[0];
+    public ITracer TracerB => _activeTracer[1];
 
     public Texture2D EfficiencyDiagnostic { get; private set; }
     public Texture2D CumulativePhotonsDiagnostic { get; private set; }
@@ -127,6 +131,7 @@ public class Simulation : PhotonerComponent
     {
         frameLimit = profile.frameLimit;
         raysPerFrame = profile.raysPerFrame;
+        integrationInterval = profile.integrationInterval;
         photonBounces = profile.photonBounces;
         hasConverged = false;
         iterationsSinceClear = 0;
@@ -251,14 +256,14 @@ public class Simulation : PhotonerComponent
 
     private void OnStartedPlaying()
     {
-        _convergenceMeasurement     = new ConvergenceMeasurement();
+        _convergenceMeasurement = new ConvergenceMeasurement();
         DisposeOnDisable(_convergenceMeasurement);
 
         _importanceMap = new ImportanceMap();
         DisposeOnDisable(_importanceMap);
 
         _realContentCamera = new GameObject("__Simulation_Camera", typeof(SimulationCamera)).GetComponent<SimulationCamera>();
-        _realContentCamera.Initialize(transform, rayTracedLayers.value);
+        _realContentCamera.Initialize(transform, rayTracedLayers.value, priority);
 
         CreateTargetBuffers();
     }
@@ -325,11 +330,13 @@ public class Simulation : PhotonerComponent
             OnInvalidated("dirtyFrame");
         }
 
+        bool dirtyGBuffer = false;
         if (_dirtyFrame || _validationFailed)
         {
             hasConverged = false;
             _dirtyFrame = false;
             _validationFailed = false;
+            dirtyGBuffer = true;
             iterationsSinceClear = 0;
             _sceneId++;
         }
@@ -342,14 +349,18 @@ public class Simulation : PhotonerComponent
         }
         else if (hasConverged) { _needsToUpdate = false; }
 
-        _realContentCamera.gameObject.SetActive(_needsToUpdate);
+        if(priority == SimulationMode.Realtime) {
+            _realContentCamera.gameObject.SetActive(dirtyGBuffer);
+        } else if(_needsToUpdate) {
+            _realContentCamera.Render();
+        }
 
         base.Update();
     }
 
     bool ShouldUpdateImportanceMap()
     {
-        if(iterationsSinceClear == 0) { return priority != Priority.Realtime; }
+        if(iterationsSinceClear == 0) { return priority != SimulationMode.Realtime; }
         else if(iterationsSinceClear < 100) { return iterationsSinceClear % 10 == 0; }
         else { return iterationsSinceClear % 100 == 0; }
     }

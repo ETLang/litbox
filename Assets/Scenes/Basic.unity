@@ -500,7 +500,7 @@ MonoBehaviour:
   m_EditorClassIdentifier: Assembly-CSharp::RTObject
   texture: {fileID: 0}
   normal: {fileID: 0}
-  color: {r: 0.043137256, g: 0.09803922, b: 0.8, a: 1}
+  color: {r: 0.047058824, g: 0.105882354, b: 0.8, a: 1}
   substrateLogDensity: -2.5
   particleAlignment: 0
   heightScale: 1
@@ -663,7 +663,7 @@ MonoBehaviour:
   m_Script: {fileID: 11500000, guid: 58f9e6f458e034bb4a5fe51c97b6d54a, type: 3}
   m_Name: 
   m_EditorClassIdentifier: 
-  intensity: 80
+  intensity: 10
   bounces: 4
 --- !u!1 &1038391232
 GameObject:
@@ -1376,7 +1376,6 @@ GameObject:
   - component: {fileID: 5404051132636357084}
   - component: {fileID: 2885319533301894557}
   - component: {fileID: 2408986526842077597}
-  - component: {fileID: 7122395569609824316}
   m_Layer: 0
   m_Name: Simulation
   m_TagString: Untagged
@@ -1400,18 +1399,18 @@ MonoBehaviour:
     serializedVersion: 2
     m_Bits: 768
   frameLimit: -1
-  width: 512
-  height: 512
+  width: 256
+  height: 256
   priority: 0
-  raysPerFrame: 64000
+  raysPerFrame: 16000
   photonBounces: -1
-  integrationInterval: 0.2
+  integrationInterval: 0.01
   transmissibilityVariationEpsilon: 0.001
   _measurementInterval: 20
-  _convergenceThreshold: 0.001
+  _convergenceThreshold: 0.0001
   iterationsSinceClear: 0
   convergenceProgress: 0.5718811
-  strategy: 1
+  strategy: 0
   bilinearPhotonWrites: 1
   hasConverged: 1
 --- !u!64 &2885319533301894557
@@ -1448,8 +1447,10 @@ MonoBehaviour:
   m_Script: {fileID: 11500000, guid: d03468ac19c7764bc86a37b5521090fd, type: 3}
   m_Name: 
   m_EditorClassIdentifier: 
+  brightnessThreshold: 0.02
+  varianceThreshold: 1
   simulation: {fileID: 2408986526842077597}
-  type: 5
+  type: 9
 --- !u!4 &4185717351858822417
 Transform:
   m_ObjectHideFlags: 0
@@ -1768,8 +1769,8 @@ Transform:
   m_LocalScale: {x: 10, y: 10, z: 1}
   m_ConstrainProportionsScale: 0
   m_Children:
-  - {fileID: 7046779350545214439}
   - {fileID: 4185717351858822417}
+  - {fileID: 7046779350545214439}
   m_Father: {fileID: 0}
   m_LocalEulerAnglesHint: {x: 0, y: 0, z: 0}
 --- !u!4 &7046779350545214439
@@ -1787,20 +1788,6 @@ Transform:
   m_Children: []
   m_Father: {fileID: 6567741710732077499}
   m_LocalEulerAnglesHint: {x: 0, y: 0, z: 0}
---- !u!114 &7122395569609824316
-MonoBehaviour:
-  m_ObjectHideFlags: 0
-  m_CorrespondingSourceObject: {fileID: 0}
-  m_PrefabInstance: {fileID: 0}
-  m_PrefabAsset: {fileID: 0}
-  m_GameObject: {fileID: 2218171819048626328}
-  m_Enabled: 0
-  m_EditorHideFlags: 0
-  m_Script: {fileID: 11500000, guid: d03468ac19c7764bc86a37b5521090fd, type: 3}
-  m_Name: 
-  m_EditorClassIdentifier: 
-  simulation: {fileID: 2408986526842077597}
-  type: 3
 --- !u!114 &8043991272733889010
 MonoBehaviour:
   m_ObjectHideFlags: 0
@@ -1813,8 +1800,10 @@ MonoBehaviour:
   m_Script: {fileID: 11500000, guid: d03468ac19c7764bc86a37b5521090fd, type: 3}
   m_Name: 
   m_EditorClassIdentifier: 
+  brightnessThreshold: 1
+  varianceThreshold: 1
   simulation: {fileID: 2408986526842077597}
-  type: 4
+  type: 1
 --- !u!1660057539 &9223372036854775807
 SceneRoots:
   m_ObjectHideFlags: 0

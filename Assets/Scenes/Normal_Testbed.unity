@@ -244,27 +244,17 @@ MonoBehaviour:
   frameLimit: -1
   width: 512
   height: 512
-  viewThicknessLog: 3
+  priority: 0
   raysPerFrame: 128000
   photonBounces: -1
-  integrationMethod: 5
   integrationInterval: 0.1
-  densityGranularity: 10000
   transmissibilityVariationEpsilon: 0.001
-  enableToneMapping: 0
-  exposure: 0
-  whitePointLog: {x: 2, y: 2, z: 2}
-  blackPointLog: {x: -4, y: -4, z: -5}
+  _measurementInterval: 100
   _convergenceThreshold: -1
-  framesSinceClear: 0
+  iterationsSinceClear: 0
   convergenceProgress: 100000
   strategy: 0
-  gridCells:
-    x: 8
-    y: 8
-  energyPrecision: 1000
   bilinearPhotonWrites: 1
-  pathSamples: 10
   hasConverged: 0
 --- !u!33 &443151170
 MeshFilter:
@@ -330,7 +320,7 @@ Material:
   m_PrefabInstance: {fileID: 0}
   m_PrefabAsset: {fileID: 0}
   m_Name: Photoner/SimulationCompositor
-  m_Shader: {fileID: 4800000, guid: e067f5a79ed36e44bab3edc8dd2195c8, type: 3}
+  m_Shader: {fileID: 10752, guid: 0000000000000000f000000000000000, type: 0}
   m_Parent: {fileID: 0}
   m_ModifiedSerializedProperties: 0
   m_ValidKeywords: []

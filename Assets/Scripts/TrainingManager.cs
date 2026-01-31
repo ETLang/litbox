@@ -5,6 +5,7 @@ using System.Collections.Generic;
 using UnityEngine;
 using System.Linq;
 using Random=System.Random;
+using Unity.VisualScripting;
 
 [Serializable]
 public struct JsonSceneData {
@@ -37,6 +38,7 @@ public class TrainingManager : DisposalHelperComponent {
     [SerializeField] SimulationProfile convergenceProfile;
 
     [SerializeField] Simulation _simulation;
+    [SerializeField] ForceHDR_UE5 _exposureController;
     [SerializeField] TrainingSubstrate _substrateA;
     [SerializeField] TrainingSubstrate _substrateB;
     [SerializeField] TrainingSubstrate _substrateC;
@@ -66,15 +68,17 @@ public class TrainingManager : DisposalHelperComponent {
     float _estimatedConvergenceTime = 0;
 
     int _activeProfile;
+    string _radianceAPathEXR;
+    string _radianceBPathEXR;
     string _previewPathPNG;
-    string _radiancePathEXR;
+    string _referencePathEXR;
     string _albedoPathPNG;
     string _transmissibilityPathEXR;
-    string _photonCountPathEXR;
 
     RenderTexture[] profileSamples;
     ComputeShader _sceneOutputPrepShader;
 
+    public static TrainingManager Instance { get; private set; }
     public bool IsGenerating { get; private set; }
 
     int FindNextAvailableSampleID()
@@ -89,11 +93,12 @@ public class TrainingManager : DisposalHelperComponent {
         while(_generatedSamples < _samplesToGenerateThisSession) {
             int sampleId;
             if(_activeProfile == inputProfiles.Length) {
+                _radianceAPathEXR = null;
+                _radianceBPathEXR = null;
                 _previewPathPNG = null;
-                _radiancePathEXR = null;
+                _referencePathEXR = null;
                 _albedoPathPNG = null;
                 _transmissibilityPathEXR = null;
-                _photonCountPathEXR = null;
                 _generatedSamples++;
                 if(profileSamples != null) {
                     foreach(var sample in profileSamples) {
@@ -129,15 +134,19 @@ public class TrainingManager : DisposalHelperComponent {
             _transmissibilityPathEXR = Path.Combine(_datasetPath, $"Transmissibility_{sampleId:00000}.exr");
             if(_activeProfile == inputProfiles.Length) {
                 _previewPathPNG = Path.Combine(_datasetPath, $"Output_Preview_{sampleId:00000}.png");
-                _radiancePathEXR = Path.Combine(_datasetPath, $"Output_Radiance_{sampleId:00000}.exr");
-                _photonCountPathEXR = Path.Combine(_datasetPath, $"Output_PhotonCount_{sampleId:00000}.exr");
+                _referencePathEXR = Path.Combine(_datasetPath, $"Output_Reference_{sampleId:00000}.exr");
+                _radianceAPathEXR = null;
+                _radianceBPathEXR = null;
             } else {
-                _previewPathPNG = Path.Combine(_datasetPath, $"Input{_activeProfile}_Preview_{sampleId:00000}.png");
-                _radiancePathEXR = Path.Combine(_datasetPath, $"Input{_activeProfile}_Radiance_{sampleId:00000}.exr");
-                _photonCountPathEXR = Path.Combine(_datasetPath, $"PhotonCount{_activeProfile}_{sampleId:00000}.exr");
+                _previewPathPNG = null;
+                _referencePathEXR = null;
+                _radianceAPathEXR = Path.Combine(_datasetPath, $"Input{_activeProfile}_Radiance_A_{sampleId:00000}.exr");
+                _radianceBPathEXR = Path.Combine(_datasetPath, $"Input{_activeProfile}_Radiance_B_{sampleId:00000}.exr");
             }
 
-            if(File.Exists(_previewPathPNG) && File.Exists(_radiancePathEXR)) {
+            var hasFile = (Func<string,bool>)(path => string.IsNullOrEmpty(path) || File.Exists(path));
+
+            if(hasFile(_previewPathPNG) && hasFile(_referencePathEXR) && hasFile(_radianceAPathEXR) && hasFile(_radianceBPathEXR)) {
                 continue;
             }
 
@@ -150,6 +159,7 @@ public class TrainingManager : DisposalHelperComponent {
     }
 
     void Start() {
+        Instance = this;
         _rand = new Random(Environment.TickCount);
         _sceneOutputPrepShader = (ComputeShader)Resources.Load("TrainingSceneOutputPrep");
 
@@ -233,51 +243,60 @@ public class TrainingManager : DisposalHelperComponent {
     void OnSimulationConverged() {
         if (IsGenerating)
         {
-            if(!File.Exists(_albedoPathPNG))
-            {
-                _simulation.GBuffer.AlbedoAlpha.SaveTexturePNG(_albedoPathPNG);
-            }
-
-            if(!File.Exists(_transmissibilityPathEXR))
-            {
-                var img = GetTempEXRImage();
-                _sceneOutputPrepShader.RunKernel("MakeTransmissibilityTensor", img.width, img.height,
-                    ("in_transmissibility", _simulation.GBuffer.Transmissibility),
-                    //("in_photon_count", _simulation.PhotonDensityBuffer),
-                    ("out_transmissibility", img));
-                img.SaveTextureEXR(_transmissibilityPathEXR);
-            }
-
-            {
-                // var img = GetTempEXRImage();
-                // _sceneOutputPrepShader.RunKernel("MakePhotonCountTensor", img.width, img.height,
-                //     ("in_transmissibility", _simulation.GBuffer.Transmissibility),
-                //     ("in_photon_count", _simulation.PhotonDensityBuffer),
-                //     ("out_photon_count", img));
-                // img.SaveTextureEXR(_photonCountPathEXR);
-            }
-
-            _simulation.SimulationOutputHDR.SaveTextureEXR(_radiancePathEXR);
-            if (_activeProfile == inputProfiles.Length)
-            {
-                Debug.Log("[TODO] Use UE5 shader to save tone mapped preview PNG");
-                //_simulation.SimulationOutputToneMapped.SaveTexturePNG(_previewPathPNG);
-                _simulation.SimulationOutputHDR.SaveTexturePNG(_previewPathPNG);
-                Debug.Log($"Completed Scene {_generatedSamples:00000}");
-            }
-            else
-            {
-                var sample = new RenderTexture(_simulation.SimulationOutputHDR);
-                var tmp = RenderTexture.active;
-                Graphics.Blit(_simulation.SimulationOutputHDR, sample);
-                RenderTexture.active = tmp;
-                profileSamples[_activeProfile] = sample;
-            }
-
-            AdvanceTrainingState();
+            StartCoroutine(WriteResultsAndAdvanceTrainingState());
         }
 
         _estimatedConvergenceTime = 0;
+    }
+
+    IEnumerator WriteResultsAndAdvanceTrainingState()
+    {
+        yield return new WaitForEndOfFrame();
+
+        if(!File.Exists(_albedoPathPNG)) {
+            _simulation.GBuffer.AlbedoAlpha.SaveTexturePNG(_albedoPathPNG);
+        }
+
+        if(!File.Exists(_transmissibilityPathEXR)) {
+            var img = GetTempEXRImage();
+            _sceneOutputPrepShader.RunKernel("MakeTransmissibilityTensor", img.width, img.height,
+                ("in_transmissibility", _simulation.GBuffer.Transmissibility),
+                //("in_photon_count", _simulation.PhotonDensityBuffer),
+                ("out_transmissibility", img));
+            //img.SaveTextureEXR(_transmissibilityPathEXR);
+            _simulation.GBuffer.Transmissibility.SaveTextureEXR(_transmissibilityPathEXR);
+        }
+
+        if(_radianceAPathEXR != null) {
+            _simulation.TracerA.TracerOutput.SaveTextureEXR(_radianceAPathEXR);
+        }
+
+        if(_radianceBPathEXR != null) {
+            _simulation.TracerB.TracerOutput.SaveTextureEXR(_radianceBPathEXR);
+        }   
+
+        if(_referencePathEXR != null) {
+            _simulation.SimulationOutputHDR.SaveTextureEXR(_referencePathEXR);
+        }
+
+        if(_previewPathPNG != null) {
+            _simulation.SimulationOutputHDR.SaveTexturePNG(_previewPathPNG, _exposureController.exposure);
+        }
+
+        if (_activeProfile == inputProfiles.Length)
+        {
+            Debug.Log($"Completed Scene {_generatedSamples:00000}");
+        }
+        else
+        {
+            var sample = new RenderTexture(_simulation.SimulationOutputHDR);
+            var tmp = RenderTexture.active;
+            Graphics.Blit(_simulation.SimulationOutputHDR, sample);
+            RenderTexture.active = tmp;
+            profileSamples[_activeProfile] = sample;
+        }
+
+        AdvanceTrainingState();
     }
 
     void OnSimulationConvergenceUpdate(float convergence) {
@@ -456,6 +475,15 @@ public class TrainingManager : DisposalHelperComponent {
         if(_substrateC.gameObject.activeSelf) {
             _substrateC.GenerateRandom(seeds[2], version);
             _substrateC.ValidateAndApply();
+        }
+
+        if(_exposureController)
+        {
+            var luminosity = data.lights.Sum(l => l.intensity * l.intensity);
+
+            var logLum = Mathf.Log10(luminosity);
+            
+            _exposureController.exposure = -logLum;
         }
     }
 

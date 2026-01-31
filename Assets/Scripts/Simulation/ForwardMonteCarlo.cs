@@ -40,7 +40,10 @@ public class ForwardMonteCarlo : Disposable
         set
         {
             _importanceSamplingTarget = value;
-            _forwardIntegrationShader.SetVector("g_importance_sampling_target", value);
+
+            if(GBuffer.AlbedoAlpha) {
+                _forwardIntegrationShader.SetVector("g_importance_sampling_target", value * new Vector2(GBuffer.AlbedoAlpha.width, GBuffer.AlbedoAlpha.height));
+            }
         }
     }
     private Vector2 _importanceSamplingTarget = new Vector2(0.5f, 0.5f);

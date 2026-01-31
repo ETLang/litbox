@@ -155,7 +155,7 @@ struct BaseContext {
         // m3: pixelSize * 4
 
         [unroll]
-        for (int m = 3; m >= 3; m--) {
+        for (int m = 2; m >= 2; m--) {
             float4 weights = g_importanceMap.Gather(sampler_point_clamp, uv, m);
             
             // quadrants are returned in a specific order: 

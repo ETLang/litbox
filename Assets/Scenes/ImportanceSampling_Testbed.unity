@@ -247,13 +247,13 @@ MonoBehaviour:
   priority: 0
   raysPerFrame: 64000
   photonBounces: -1
-  integrationInterval: 0.05
+  integrationInterval: 0.1
   transmissibilityVariationEpsilon: 0.001
   _measurementInterval: 100
   _convergenceThreshold: 0.00001
   iterationsSinceClear: 0
   convergenceProgress: 100000
-  strategy: 1
+  strategy: 0
   bilinearPhotonWrites: 1
   hasConverged: 0
 --- !u!33 &443151170
@@ -1066,7 +1066,7 @@ PrefabInstance:
     m_Modifications:
     - target: {fileID: 2669810852864359309, guid: c3d56f37c3f415ece864f182721d4c20, type: 3}
       propertyPath: bounces
-      value: 1
+      value: 3
       objectReference: {fileID: 0}
     - target: {fileID: 2669810852864359309, guid: c3d56f37c3f415ece864f182721d4c20, type: 3}
       propertyPath: intensity

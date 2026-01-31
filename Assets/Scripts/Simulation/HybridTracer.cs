@@ -75,12 +75,14 @@ public class HybridTracer : Disposable, ITracer
     public void BeginTrace(params RTLightSource[] lights)
     {
         _forwardIntegrator.IterationsSinceClear++;
+        _forwardIntegrator.ImportanceSamplingTarget = new Vector2(0.5f, 0.5f);
         _forwardIntegrator.Integrate(lights);
     }
 
     public void EndTrace(RenderTexture importanceMap)
     {
         _backwardIntegrator.ImportanceMap = importanceMap;
+        _backwardIntegrator.ImportanceSamplingTarget = new Vector2(0.5f, 0.5f);
         _backwardIntegrator.Integrate();
     }
 }

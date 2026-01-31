@@ -95,11 +95,9 @@ void Simulate_Camera (uint3 id : SV_DispatchThreadID) {
     sim.Init(g_rand[randContext]);
 
     float2 origin = id.xy + sim.rand.Next2();
-    //float3 directionWeight = float3(normalize(float2(1,1)),1 / (2 * PI));
-   // float3 directionWeight = sim.ScatterImportanceLobed(origin);
-    float3 directionWeight = sim.ScatterImportanceGuided_Test((origin + 0.5) / targetSize);
-    //float2 direction = sim.rand.NextDirection(); // TODO importance sample
-    float directional_weight = 1.0;
+    float3 directionWeight = sim.ScatterImportanceLobed(origin);
+    //float3 directionWeight = sim.ScatterImportanceGuided_Test((origin + 0.5) / targetSize);
+    //float3 directionWeight = { sim.rand.NextDirection(), 1 / (2 * PI) };
 
     float2 uv = origin / targetSize;
     float3 directLight = g_hdr.SampleLevel(samplerg_hdr, uv, 0).rgb;
@@ -114,8 +112,7 @@ void Simulate_Camera (uint3 id : SV_DispatchThreadID) {
 
     Integrate(accumulated_photon, 1, sim);
 
-    float3 accumulated_sample = accumulated_photon.Energy * localAlbedo * directionWeight.z;
-    //float3 accumulated_sample = accumulated_photon.Energy * localAlbedo * directionWeight.z/* (1 - pow(localTransmissibility, g_view_thickness))*/ + directLight;
+    float3 accumulated_sample = accumulated_photon.Energy * localAlbedo * directionWeight.z/* (1 - pow(localTransmissibility, g_view_thickness))*/ + directLight;
     g_output_hdr[id.xy] += float4(accumulated_sample, 0);   
 
     g_rand[randContext] = sim.rand.state;
