@@ -10,7 +10,7 @@
 #pragma kernel GenerateTwoMips
 #pragma kernel GenerateThreeMips
 #pragma kernel GenerateFourMips
-#line 10
+#line 14
 
 void ComputeCVAndNMipsFromSamplePair(uint3 id, uint2 localID, int mipCount);
 void GenerateNMips(uint3 id, uint2 localID, int mipCount);
@@ -86,7 +86,7 @@ void ComputeCVAndNMipsFromSamplePair(uint3 id, uint2 localID, int mipCount) {
     _out_mip0[id.xy] = mean;
     
     shared_source_mean[localID.x][localID.y] = mean;
-    shared_pixel_variance[localID.x][localID.y] = dot(((a - b) * (a - b)).rgb, 1/3.0);
+    shared_pixel_variance[localID.x][localID.y] = dot(((a - b) * (a - b) / (mean * mean + 1e-5)).rgb, 1/3.0);
     
     // CANDIDATE A: Relative variance. A bit heavy on bright areas but seems to get things about right.
     //shared_pixel_variance[localID.x][localID.y] = dot(((a - b) * (a - b)).rgb, 1/3.0);
@@ -121,15 +121,11 @@ void ComputeCVAndNMipsFromSamplePair(uint3 id, uint2 localID, int mipCount) {
             }
         }
         float mean_variance = variance_accum / 16.0f;
-        float std_dev = sqrt(mean_variance);
-        float relative_var = mean_variance / ((mean + 0.005) * (mean + 0.005));
-        float relative_std_dev = std_dev / (mean + 0.01);// log10(1 + std_dev);// / (mean + 0.05));
-        _out_cv[id.xy / 4] = relative_var;
+        // float std_dev = sqrt(mean_variance);
+        // float relative_var = mean_variance / ((mean + 0.005) * (mean + 0.005));
+        // float relative_std_dev = std_dev / (mean + 1e-7);
+        _out_cv[id.xy / 4] = mean_variance;
         
-        // CANDIDATE A
-        //float relative_var = mean_variance / ((mean + 0.01) * (mean + 0.01));
-        //_out_cv[id.xy / 4] = relative_var;
-
         if(mipCount >= 3) {
             _out_mip2[id.xy / 4] = mean;
             shared_source_mean[localID.x][localID.y] = mean;
