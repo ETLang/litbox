@@ -8,6 +8,9 @@ public interface ITracer : IDisposable
     RenderTexture TracerOutput { get; }
     Matrix4x4 WorldToTargetTransform { get; set; }
 
+    long ForwardWritesPerSecond { get; }
+    long BackwardReadsPerSecond { get; }
+
     void NewScene();
 
     // Run tracing as much as required to generate a radiance map usable for importance sampling.
@@ -15,4 +18,6 @@ public interface ITracer : IDisposable
 
     // Finish tracing, optionally with an importance map for importance sampling
     void EndTrace(RenderTexture importanceMap = null);
+
+    void UpdatePerformanceMetrics();
 }

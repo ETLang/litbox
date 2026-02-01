@@ -3,6 +3,9 @@ using UnityEngine;
 public class LightTransportTracer : Disposable, ITracer
 {
     private ForwardMonteCarlo _forwardIntegrator;
+    long _lastForwardWriteCount = 0;
+    float _lastPerformanceUpdateTime = 0;
+
     public RenderTexture TracerOutput => _forwardIntegrator.OutputImageHDR;
     RenderTexture ITracer.EarlyRadianceForImportanceSampling => null;
 
@@ -42,6 +45,9 @@ public class LightTransportTracer : Disposable, ITracer
         set => _forwardIntegrator.RaysToEmit = value;
     }
 
+    public long ForwardWritesPerSecond { get; private set; }
+    public long BackwardReadsPerSecond => 0;
+
     public LightTransportTracer()
     {
         _forwardIntegrator = new ForwardMonteCarlo();
@@ -64,5 +70,21 @@ public class LightTransportTracer : Disposable, ITracer
 
     public void EndTrace(RenderTexture importanceMap)
     {
+    }
+
+    public async void UpdatePerformanceMetrics()
+    {
+        var currentWriteCount = await _forwardIntegrator.GetCurrentWriteCountAsync();
+        var currentTime = Time.time;
+
+        if(_lastPerformanceUpdateTime > 0)
+        {
+            var deltaWrites = currentWriteCount - _lastForwardWriteCount;
+            var deltaTime = currentTime - _lastPerformanceUpdateTime;
+            ForwardWritesPerSecond = (long)(deltaWrites / deltaTime);
+        }
+
+        _lastForwardWriteCount = currentWriteCount;
+        _lastPerformanceUpdateTime = currentTime;
     }
 }

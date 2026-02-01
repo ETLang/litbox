@@ -41,9 +41,7 @@ public class ConvergenceMeasurement : Disposable
         _totalVariance.SetData(_clearValue);
         _convergenceShader.SetTexture(_computeConvergenceKernel, _VarianceId, varianceMap);
         _convergenceShader.DispatchAutoGroup(_computeConvergenceKernel, varianceMap.width, varianceMap.height, 1);
-        var feedback = await AsyncGPUReadback.RequestAsync(_totalVariance);
-        var dataBlock = feedback.GetData<uint>();
-        var rawValue = dataBlock[0];
+        var rawValue = (await _totalVariance.ReadbackAsync<uint>())[0];
 
         _existingRequest = null;
 

@@ -1,6 +1,8 @@
 using System;
-using System.Runtime.InteropServices;
+using System.Threading.Tasks;
+using Unity.Collections;
 using UnityEngine;
+using UnityEngine.Rendering;
 
 public static class ResourceExtensions
 {
@@ -46,5 +48,15 @@ public static class ResourceExtensions
 
     public static int MipHeight(this Texture _this, int mipLevel) {
         return Mathf.Max(1, _this.height >> mipLevel);
+    }
+
+    public static async Task<NativeArray<T>> ReadbackAsync<T>(this ComputeBuffer _this) where T : struct
+    {
+        var result = await AsyncGPUReadback.RequestAsync(_this);
+        if(result.hasError)
+        {
+            throw new Exception("GPU Readback Error");
+        }
+        return result.GetData<T>();
     }
 }

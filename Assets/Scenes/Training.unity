@@ -664,109 +664,6 @@ Transform:
   m_CorrespondingSourceObject: {fileID: 7876814041424374406, guid: 6a50d69d76eca14f99a3a4adbf059f94, type: 3}
   m_PrefabInstance: {fileID: 1749118431}
   m_PrefabAsset: {fileID: 0}
---- !u!1 &368087402
-GameObject:
-  m_ObjectHideFlags: 0
-  m_CorrespondingSourceObject: {fileID: 0}
-  m_PrefabInstance: {fileID: 0}
-  m_PrefabAsset: {fileID: 0}
-  serializedVersion: 6
-  m_Component:
-  - component: {fileID: 368087404}
-  - component: {fileID: 368087403}
-  - component: {fileID: 368087407}
-  - component: {fileID: 368087406}
-  - component: {fileID: 368087405}
-  m_Layer: 5
-  m_Name: UIDocument
-  m_TagString: Untagged
-  m_Icon: {fileID: 0}
-  m_NavMeshLayer: 0
-  m_StaticEditorFlags: 0
-  m_IsActive: 1
---- !u!114 &368087403
-MonoBehaviour:
-  m_ObjectHideFlags: 0
-  m_CorrespondingSourceObject: {fileID: 0}
-  m_PrefabInstance: {fileID: 0}
-  m_PrefabAsset: {fileID: 0}
-  m_GameObject: {fileID: 368087402}
-  m_Enabled: 1
-  m_EditorHideFlags: 0
-  m_Script: {fileID: 19102, guid: 0000000000000000e000000000000000, type: 0}
-  m_Name: 
-  m_EditorClassIdentifier: 
-  m_PanelSettings: {fileID: 11400000, guid: 8bd40d87071029049a14afeeb1629aed, type: 2}
-  m_ParentUI: {fileID: 0}
-  sourceAsset: {fileID: 9197481963319205126, guid: c68a2326cb0cf0740a1e6190524b0d1d, type: 3}
-  m_SortingOrder: 0
-  m_Position: 0
-  m_WorldSpaceSizeMode: 1
-  m_WorldSpaceWidth: 1920
-  m_WorldSpaceHeight: 1080
-  m_PivotReferenceSize: 0
-  m_Pivot: 0
-  m_WorldSpaceCollider: {fileID: 0}
---- !u!4 &368087404
-Transform:
-  m_ObjectHideFlags: 0
-  m_CorrespondingSourceObject: {fileID: 0}
-  m_PrefabInstance: {fileID: 0}
-  m_PrefabAsset: {fileID: 0}
-  m_GameObject: {fileID: 368087402}
-  serializedVersion: 2
-  m_LocalRotation: {x: 0, y: 0, z: 0, w: 1}
-  m_LocalPosition: {x: 0, y: 0, z: 0}
-  m_LocalScale: {x: 1, y: 1, z: 1}
-  m_ConstrainProportionsScale: 0
-  m_Children: []
-  m_Father: {fileID: 0}
-  m_LocalEulerAnglesHint: {x: 0, y: 0, z: 0}
---- !u!114 &368087405
-MonoBehaviour:
-  m_ObjectHideFlags: 0
-  m_CorrespondingSourceObject: {fileID: 0}
-  m_PrefabInstance: {fileID: 0}
-  m_PrefabAsset: {fileID: 0}
-  m_GameObject: {fileID: 368087402}
-  m_Enabled: 1
-  m_EditorHideFlags: 0
-  m_Script: {fileID: 11500000, guid: c258376cbb1fbc2b8b99d7a2de14fef0, type: 3}
-  m_Name: 
-  m_EditorClassIdentifier: 
-  simulation: {fileID: 923172386}
-  displayData: 1
-  labelName: ConvergenceDisplay
---- !u!114 &368087406
-MonoBehaviour:
-  m_ObjectHideFlags: 0
-  m_CorrespondingSourceObject: {fileID: 0}
-  m_PrefabInstance: {fileID: 0}
-  m_PrefabAsset: {fileID: 0}
-  m_GameObject: {fileID: 368087402}
-  m_Enabled: 1
-  m_EditorHideFlags: 0
-  m_Script: {fileID: 11500000, guid: c258376cbb1fbc2b8b99d7a2de14fef0, type: 3}
-  m_Name: 
-  m_EditorClassIdentifier: 
-  simulation: {fileID: 923172386}
-  displayData: 2
-  labelName: ConvergenceClock
---- !u!114 &368087407
-MonoBehaviour:
-  m_ObjectHideFlags: 0
-  m_CorrespondingSourceObject: {fileID: 0}
-  m_PrefabInstance: {fileID: 0}
-  m_PrefabAsset: {fileID: 0}
-  m_GameObject: {fileID: 368087402}
-  m_Enabled: 1
-  m_EditorHideFlags: 0
-  m_Script: {fileID: 11500000, guid: c258376cbb1fbc2b8b99d7a2de14fef0, type: 3}
-  m_Name: 
-  m_EditorClassIdentifier: 
-  simulation: {fileID: 923172386}
-  displayData: 0
-  labelName: TPSDisplay
 --- !u!1 &503795289
 GameObject:
   m_ObjectHideFlags: 0
@@ -1235,24 +1132,25 @@ MonoBehaviour:
   m_Script: {fileID: 11500000, guid: 28dc00e08ae073370b033ca94fb47443, type: 3}
   m_Name: 
   m_EditorClassIdentifier: 
+  width: 256
+  height: 256
+  strategy: 1
+  priority: 0
   rayTracedLayers:
     serializedVersion: 2
     m_Bits: 768
-  frameLimit: -1
-  width: 256
-  height: 256
-  priority: 0
   raysPerFrame: 16000
   photonBounces: -1
   integrationInterval: 0.01
   transmissibilityVariationEpsilon: 0.001
   _measurementInterval: 100
+  frameLimit: -1
   _convergenceThreshold: 0.001
   iterationsSinceClear: 0
   convergenceProgress: 100000
-  strategy: 1
-  bilinearPhotonWrites: 1
   hasConverged: 0
+  _perfUpdateInterval: 0
+  _perfDisplay: {fileID: 0}
 --- !u!64 &923172387
 MeshCollider:
   m_ObjectHideFlags: 0
@@ -2494,5 +2392,4 @@ SceneRoots:
   - {fileID: 923172390}
   - {fileID: 906946635}
   - {fileID: 1313813224220063961}
-  - {fileID: 368087404}
   - {fileID: 2019802811}

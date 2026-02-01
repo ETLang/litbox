@@ -1,4 +1,6 @@
 using System;
+using System.Threading.Tasks;
+using Unity.Mathematics;
 using UnityEngine;
 
 public class ForwardMonteCarlo : Disposable
@@ -90,9 +92,13 @@ public class ForwardMonteCarlo : Disposable
 
 
     private ComputeShader _forwardIntegrationShader;
+    private ComputeBuffer _forwardWriteCounterBuffer;
+    uint4[] _forwardWriteCounterInitialValue = new uint4[] { new uint4(0, 0, 0, 0) };
 
     public ForwardMonteCarlo()
     {
+        _forwardWriteCounterBuffer = this.CreateStructuredBuffer(_forwardWriteCounterInitialValue);
+
         _forwardIntegrationShader = (ComputeShader)Resources.Load("ForwardMonteCarlo");
         _forwardIntegrationShader.SetVector("g_importance_sampling_target", ImportanceSamplingTarget);
         _forwardIntegrationShader.SetShaderFlag("BILINEAR_PHOTON_DISTRIBUTION", !_disableBilinearWrites);
@@ -139,6 +145,12 @@ public class ForwardMonteCarlo : Disposable
         _forwardIntegrationShader.RunKernel("ConvertToHDR", width, height,
             ("g_output_raw", RawPhotonBuffer),
             ("g_output_hdr", OutputImageHDR));
+    }
+
+    public async Task<long> GetCurrentWriteCountAsync()
+    {
+        var data = await _forwardWriteCounterBuffer.ReadbackAsync<uint>();
+        return ((long)data[1] << 32) | data[0];
     }
 
     void SimulateLight(RTLightSource light, int rays)
@@ -192,6 +204,7 @@ public class ForwardMonteCarlo : Disposable
 
         _forwardIntegrationShader.RunKernel(simulateKernel, rays,
             ("g_rand", BufferManager.GetRandomSeedBuffer(rays)),
+            ("g_write_counter", _forwardWriteCounterBuffer),
             ("g_output_raw", RawPhotonBuffer),
             ("g_albedo", _gBuffer.AlbedoAlpha),
             ("g_transmissibility", _gBuffer.Transmissibility),

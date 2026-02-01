@@ -16,6 +16,7 @@
 #line 17
 
 RWStructuredBuffer<uint4> g_rand;
+RWStructuredBuffer<uint> g_write_counter;
 RWTexture2D<uint> g_output_raw;
 
 uint g_bounces;
@@ -33,6 +34,10 @@ float2 g_directionalLightDirection;
 // HDR Conversion
 float g_hdr_scale;
 
+// Write Counter
+groupshared uint shared_write_counter;
+groupshared int shared_live_threads;
+
 uint3 ReadPhoton_Indexed(uint2 pixel) {
     uint3 output;
     pixel.x *= 3;
@@ -47,10 +52,9 @@ uint3 ReadPhoton_Indexed(uint2 pixel) {
 void WritePhoton_Indexed(int2 pixel, uint3 energy, float density, bool suppressPhoton=false) {
     const uint EnergyMax = (1 << 31);
 
-    // if(!suppressPhoton) {
-    //     if(g_photon_density_raw[pixel] < EnergyMax)
-    //         InterlockedAdd(g_photon_density_raw[pixel], density * g_density_granularity);
-    // }
+    if(!suppressPhoton) {
+        InterlockedAdd(shared_write_counter, 1);
+    }
 
     energy *= density;
 
@@ -285,15 +289,36 @@ struct ForwardMonteCarlo : BaseContext, IMonteCarloMethod
     }
 };
 
-#define SIMULATION_IMPLEMENTATION(lightType)                    \
-[numthreads(NUMTHREADS_1D)]                                     \
-void Simulate_##lightType (uint3 id : SV_DispatchThreadID) {    \
-    ForwardMonteCarlo integrator;                               \
-    integrator.Init(g_rand[id.x]);                              \
-    Ray photon = integrator.Emit##lightType();                  \
-    if(g_lightEmissionOutscatter != 0) { WritePhoton(photon.Origin, photon.Energy, g_lightEmissionOutscatter, true); } \
-    Integrate(photon, g_bounces, integrator);                   \
-    g_rand[id.x] = integrator.rand.state;                       \
+ForwardMonteCarlo BeginSimulation(uint3 id, uint localID) {
+    if(localID == 0) {
+        shared_write_counter = 0;
+        shared_live_threads = uint3(NUMTHREADS_1D).x;
+    }
+    ForwardMonteCarlo integrator;
+    integrator.Init(g_rand[id.x]);
+    return integrator;
+}
+
+void EndSimulation(uint3 id, inout ForwardMonteCarlo integrator, Ray photon) {
+    Integrate(photon, g_bounces, integrator);
+    g_rand[id.x] = integrator.rand.state;
+    int previous_threads;
+    InterlockedAdd(shared_live_threads, -1, previous_threads);
+    if(previous_threads == 1) {
+        uint global_write_counter;
+        InterlockedAdd(g_write_counter[0], shared_write_counter, global_write_counter);
+        if(shared_write_counter > (0xFFFFFFFF - global_write_counter)) {
+            InterlockedAdd(g_write_counter[1], 1);
+        }
+    }
+}
+
+#define SIMULATION_IMPLEMENTATION(lightType)                        \
+[numthreads(NUMTHREADS_1D)] void Simulate_##lightType (             \
+    uint3 id : SV_DispatchThreadID, uint localID : SV_GroupIndex) { \
+    ForwardMonteCarlo integrator = BeginSimulation(id, localID);    \
+    Ray photon = integrator.Emit##lightType();                      \
+    EndSimulation(id, integrator, photon);                          \
 }
 
 SIMULATION_IMPLEMENTATION(DefaultLight)

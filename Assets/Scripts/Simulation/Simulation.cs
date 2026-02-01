@@ -2,6 +2,7 @@ using System;
 using System.Collections.Generic;
 using UnityEngine;
 using System.Linq;
+using UnityEngine.UI;
 
 
 public delegate void SimulationStepEvent(int frameCount);
@@ -31,39 +32,40 @@ public class Simulation : PhotonerComponent
         Hybrid
     }
 
-    [SerializeField] private LayerMask rayTracedLayers;
+    const bool bilinearPhotonWrites = true;
 
-    [SerializeField] private int frameLimit = -1;
     [SerializeField] public int width = 256;
     [SerializeField] public int height = 256;
-
+    [SerializeField] public Strategy strategy = Strategy.LightTransport;
     [SerializeField] public SimulationMode priority = SimulationMode.Realtime;
-    [SerializeField] private int raysPerFrame = 64000;
+    [SerializeField] private LayerMask rayTracedLayers;
+    [SerializeField] private int raysPerFrame = 65536;
     [SerializeField] private int photonBounces = -1;
     [SerializeField, Min(0.01f)] private float integrationInterval = 0.1f;
     [SerializeField] private float transmissibilityVariationEpsilon = 1e-3f;
 
-    [Header("Convergence Information")]
+    [Header("Convergence Info")]
     [SerializeField, Min(1)] int _measurementInterval = 100;
+    [SerializeField] private int frameLimit = -1;
     [SerializeField] private float _convergenceThreshold = -1;
     [SerializeField] private int iterationsSinceClear = 0;
     [SerializeField, ReadOnly] private float convergenceProgress = 100000;
+    [SerializeField, ReadOnly] public bool hasConverged = false;
 
-    [Header("Archaic Properties")]
-    [SerializeField] private Strategy strategy = Strategy.LightTransport;
-    [SerializeField] private bool bilinearPhotonWrites = true;
+    [Header("Performance Info")]
+    [SerializeField, Min(0)] int _perfUpdateInterval = 0;
+    [SerializeField] Text _perfDisplay;
 
     private static int _MainTexID = Shader.PropertyToID("_MainTex");
     private Material _compositorMat;
     private SimulationCamera _realContentCamera;
     private bool _freshContentCamera = true;
 
-    [SerializeField, ReadOnly] public bool hasConverged = false;
 
     private SortedDictionary<float, uint> performanceCounter = new SortedDictionary<float, uint>();
 
     public uint TraversalsPerSecond { get; private set; }
-    public uint PhotonWritesPerSecond { get; private set; }
+    public long PhotonWritesPerSecond { get; private set; }
 
     int _sceneId;
     bool _validationFailed = false;
@@ -451,6 +453,21 @@ public class Simulation : PhotonerComponent
             iterationsSinceClear == 1 && _convergenceThreshold > 0)
         {
            MeasureConvergence(iterationsSinceClear == 1);
+        }
+
+        if(_perfUpdateInterval != 0)
+        {
+            if(Time.frameCount % _perfUpdateInterval == 0) {
+                TracerTask( t => t.UpdatePerformanceMetrics());
+            }
+
+            if(Time.frameCount % _perfUpdateInterval == 1) {
+                PhotonWritesPerSecond = _activeTracer.Sum(t => t.ForwardWritesPerSecond);
+
+                if(_perfDisplay != null) {
+                    _perfDisplay.text = (PhotonWritesPerSecond / 1000000.0f).ToString("0.0") + " MWrites/s";
+                }
+            }
         }
 
         if (fireConvergedEvent)
