@@ -1380,7 +1380,7 @@ PrefabInstance:
       objectReference: {fileID: 0}
     - target: {fileID: 2232668876957911187, guid: 89ca6a0506bec49e099c4e4c12b6ce44, type: 3}
       propertyPath: intensity
-      value: 36.1
+      value: 2.85
       objectReference: {fileID: 0}
     - target: {fileID: 3754045051728488763, guid: 89ca6a0506bec49e099c4e4c12b6ce44, type: 3}
       propertyPath: m_Color.b

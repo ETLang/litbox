@@ -1290,7 +1290,7 @@ MonoBehaviour:
   m_Script: {fileID: 11500000, guid: aa5e73cb1f064d7c0b0e423c01724af7, type: 3}
   m_Name: 
   m_EditorClassIdentifier: 
-  intensity: 10
+  intensity: 2.58
   bounces: 4
   emissionOutscatter: 0
 --- !u!1 &26504925558930495
@@ -1450,7 +1450,7 @@ MonoBehaviour:
   brightnessThreshold: 0.02
   varianceThreshold: 1
   simulation: {fileID: 2408986526842077597}
-  type: 9
+  type: 2
 --- !u!4 &4185717351858822417
 Transform:
   m_ObjectHideFlags: 0

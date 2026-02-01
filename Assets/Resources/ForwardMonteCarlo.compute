@@ -107,7 +107,7 @@ struct ForwardMonteCarlo : BaseContext, IMonteCarloMethod
         float4 normal_alignment = g_normalAlignment.SampleLevel(samplerg_normalAlignment, uv, 0);
 
         float3 albedo = g_albedo.SampleLevel(sampler_point_clamp, uv, 0).rgb;
-        float outScatterDensity = g_integration_interval * transmissibility * (1 - pow(tested_transmissibility, 1.0/(1 << lod)));
+        float outScatterDensity = g_integration_interval * g_integration_interval * transmissibility * (1 - pow(tested_transmissibility, 1.0/(1 << lod)));
         WritePhoton(pSample, photon.Energy * albedo, outScatterDensity, false);//bounce == 0);
     }
 

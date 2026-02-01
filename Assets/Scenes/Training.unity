@@ -1142,8 +1142,8 @@ MonoBehaviour:
   m_Script: {fileID: 11500000, guid: c24462d0e0c7579bba204567fe131285, type: 3}
   m_Name: 
   m_EditorClassIdentifier: 
-  _train: 1
-  _continuePreviousSession: 0
+  _train: 0
+  _continuePreviousSession: 1
   outputFolder: ./training_data
   _samplesToGenerate: 30000
   inputProfiles:

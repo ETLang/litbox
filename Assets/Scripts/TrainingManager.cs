@@ -347,7 +347,7 @@ public class TrainingManager : DisposalHelperComponent {
             });
 
             light.color = _rand.NextLightColor();
-            light.intensity = _rand.NextRange(0.01f, 10);
+            light.intensity = _rand.NextRange(0.01f, 3, -0.3f);
 
             switch (light.type) {
                 case "Directional":
