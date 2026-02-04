@@ -568,7 +568,7 @@ Transform:
   m_GameObject: {fileID: 961628824}
   serializedVersion: 2
   m_LocalRotation: {x: 0, y: -0, z: 0.98795986, w: -0.15471035}
-  m_LocalPosition: {x: -1.23, y: -3.6, z: -0.005840614}
+  m_LocalPosition: {x: 0.09, y: -3.55, z: -0.005840614}
   m_LocalScale: {x: 0.01, y: 0.48184988, z: 1}
   m_ConstrainProportionsScale: 0
   m_Children: []
@@ -644,7 +644,7 @@ MonoBehaviour:
   m_Script: {fileID: 11500000, guid: 58f9e6f458e034bb4a5fe51c97b6d54a, type: 3}
   m_Name: 
   m_EditorClassIdentifier: 
-  intensity: 10
+  intensity: 1.42
   bounces: 4
 --- !u!1 &1038391232
 GameObject:
@@ -1166,7 +1166,7 @@ MonoBehaviour:
   m_Script: {fileID: 11500000, guid: 14a0e5c7ca6748d2da91c7d70db73a3a, type: 3}
   m_Name: 
   m_EditorClassIdentifier: 
-  intensity: 10
+  intensity: 3
   bounces: 3
 --- !u!1 &2123204530
 GameObject:
@@ -1378,7 +1378,7 @@ MonoBehaviour:
   m_EditorClassIdentifier: 
   width: 256
   height: 256
-  strategy: 0
+  strategy: 1
   priority: 0
   rayTracedLayers:
     serializedVersion: 2
@@ -1386,6 +1386,7 @@ MonoBehaviour:
   raysPerFrame: 65536
   photonBounces: -1
   integrationInterval: 0.01
+  logViewThickness: 3
   transmissibilityVariationEpsilon: 0.001
   _measurementInterval: 20
   frameLimit: -1

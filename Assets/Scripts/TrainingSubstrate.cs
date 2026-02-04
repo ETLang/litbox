@@ -48,8 +48,8 @@ public class TrainingSubstrate : MonoBehaviour {
     [Header("Color")]
     public Color colorA = Color.white;
     public Color colorB = Color.white;
-    [Range(0,2)] public float densityA = 0.1f;
-    [Range(0,2)] public float densityB = 0.01f;
+    [Range(0,1)] public float densityA = 0.1f;
+    [Range(0,1)] public float densityB = 0.01f;
     [Range(0,360)] public float gradientAngle = 90;
     [Range(0.1f, 1.4f)] public float gradientLength = 0.7f;
 
@@ -115,8 +115,10 @@ public class TrainingSubstrate : MonoBehaviour {
 
         colorA = Color.HSVToRGB(rand.NextSingle(), rand.NextRange(0,1,0.75f), rand.NextRange(0.25f, 1, 0.75f));
         colorB = Color.HSVToRGB(rand.NextSingle(), rand.NextRange(0,1,0.75f), rand.NextRange(0.25f, 1, 0.75f));
-        densityA = Mathf.Min(Mathf.Pow(10, rand.NextRange(-3, 0)), 0.9f);
-        densityB = Mathf.Min(Mathf.Pow(10, rand.NextRange(-3, 0)), 0.9f);
+        densityA = rand.NextRange(0.01f, 0.99f);
+        densityB = rand.NextRange(0.01f, 0.99f);
+        // densityA = Mathf.Min(Mathf.Pow(10, rand.NextRange(-2, 0)), 0.99f);
+        // densityB = Mathf.Min(Mathf.Pow(10, rand.NextRange(-2, 0)), 0.99f);
         
         gradientAngle = rand.NextRange(0, 360);
         gradientLength = rand.NextRange(0.1f, 1.4f);
@@ -201,7 +203,7 @@ public class TrainingSubstrate : MonoBehaviour {
 
         if(changed) {
             ForceCreateTexture();
-           // GetComponent<RTObject>().Invalidate();
+            GetComponent<RTObject>().Invalidate();
         }
     }
 

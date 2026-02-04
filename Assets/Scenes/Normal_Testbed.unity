@@ -238,24 +238,25 @@ MonoBehaviour:
   m_Script: {fileID: 11500000, guid: 28dc00e08ae073370b033ca94fb47443, type: 3}
   m_Name: 
   m_EditorClassIdentifier: Assembly-CSharp::Simulation
+  width: 512
+  height: 512
+  strategy: 0
+  priority: 0
   rayTracedLayers:
     serializedVersion: 2
     m_Bits: 768
-  frameLimit: -1
-  width: 512
-  height: 512
-  priority: 0
   raysPerFrame: 128000
   photonBounces: -1
   integrationInterval: 0.1
   transmissibilityVariationEpsilon: 0.001
   _measurementInterval: 100
+  frameLimit: -1
   _convergenceThreshold: -1
   iterationsSinceClear: 0
   convergenceProgress: 100000
-  strategy: 0
-  bilinearPhotonWrites: 1
   hasConverged: 0
+  _perfUpdateInterval: 0
+  _perfDisplay: {fileID: 0}
 --- !u!33 &443151170
 MeshFilter:
   m_ObjectHideFlags: 0
@@ -1251,7 +1252,7 @@ PrefabInstance:
       objectReference: {fileID: 0}
     - target: {fileID: 7211980385114862445, guid: 6a50d69d76eca14f99a3a4adbf059f94, type: 3}
       propertyPath: substrateLogDensity
-      value: -3.43
+      value: -4.5
       objectReference: {fileID: 0}
     - target: {fileID: 7876814041424374406, guid: 6a50d69d76eca14f99a3a4adbf059f94, type: 3}
       propertyPath: m_LocalScale.x

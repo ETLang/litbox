@@ -62,7 +62,7 @@ public class HybridTracer : Disposable, ITracer
 
     public HybridTracer()
     {
-        _forwardIntegrator = new ForwardMonteCarlo();
+        _forwardIntegrator = new ForwardMonteCarlo() { FinalizeOutscatterDensity = false };
         AutoDispose(_forwardIntegrator);
         _backwardIntegrator = new BackwardMonteCarlo();
         AutoDispose(_backwardIntegrator);

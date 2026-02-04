@@ -3,6 +3,7 @@
 #include "../Shaders/SimulationCommon.cginc"
 
 #pragma multi_compile __ BILINEAR_PHOTON_DISTRIBUTION
+#pragma multi_compile __ FINALIZE_OUTSCATTER_DENSITY
 
 #pragma kernel Simulate_DefaultLight
 #pragma kernel Simulate_PointLight
@@ -13,7 +14,7 @@
 #pragma kernel Simulate_DirectionalLight
 #pragma kernel ConvertToHDR
 
-#line 17
+#line 18
 
 RWStructuredBuffer<uint4> g_rand;
 RWStructuredBuffer<uint> g_write_counter;
@@ -39,14 +40,12 @@ groupshared uint shared_write_counter;
 groupshared int shared_live_threads;
 
 uint3 ReadPhoton_Indexed(uint2 pixel) {
-    uint3 output;
     pixel.x *= 3;
-    output.r = g_output_raw[pixel];
-    pixel.x++;
-    output.g = g_output_raw[pixel];
-    pixel.x++;
-    output.b = g_output_raw[pixel];
-    return output;
+    return uint3(
+        g_output_raw[pixel],
+        g_output_raw[pixel + 1],
+        g_output_raw[pixel + 2]
+    );
 }
 
 void WritePhoton_Indexed(int2 pixel, uint3 energy, float density, bool suppressPhoton=false) {
@@ -111,7 +110,7 @@ struct ForwardMonteCarlo : BaseContext, IMonteCarloMethod
         float4 normal_alignment = g_normalAlignment.SampleLevel(samplerg_normalAlignment, uv, 0);
 
         float3 albedo = g_albedo.SampleLevel(sampler_point_clamp, uv, 0).rgb;
-        float outScatterDensity = g_integration_interval * g_integration_interval * transmissibility * (1 - pow(tested_transmissibility, 1.0/(1 << lod)));
+        float outScatterDensity = g_integration_interval * g_integration_interval * transmissibility;
         WritePhoton(pSample, photon.Energy * albedo, outScatterDensity, false);//bounce == 0);
     }
 
@@ -347,9 +346,9 @@ SIMULATION_IMPLEMENTATION(DirectionalLight)
 RWTexture2D<float4> g_output_hdr;
 [numthreads(NUMTHREADS_2D)]
 void ConvertToHDR (uint3 id : SV_DispatchThreadID) {
-    // ConvergenceCellInput cellData = g_convergenceCellStateIn[GetGridCellIndex((int2) id.xy)];
-    // float frames = cellData.FrameCount;
-
-    //g_output_hdr[id.xy] = float4((ReadPhoton_Indexed(id.xy) / g_energy_norm + g_output_accumulated[id.xy].rgb) / frames, 1);
-    g_output_hdr[id.xy] = float4(ReadPhoton_Indexed(id.xy) / g_hdr_scale, 1);
+    float outScatterDensity = 1;
+#if FINALIZE_OUTSCATTER_DENSITY
+    outScatterDensity *= (1 - g_transmissibility[id.xy]);
+#endif
+    g_output_hdr[id.xy] = float4(ReadPhoton_Indexed(id.xy) * g_hdr_scale * outScatterDensity, 1);
 }

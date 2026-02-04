@@ -68,7 +68,7 @@ struct BackwardMonteCarlo : BaseContext, IMonteCarloMethod
             uSampleRandomOffset = rand.Next();
             float4 sample = g_hdr.SampleLevel(samplerg_hdr, ctx.testUV, 0);
             // TODO in the future, a geometry term will be necessary here.
-            ctx.photon.Energy += sample.rgb * transmissibility * g_integration_interval / ((1 + ctx.uHitCurrent) * (1 + ctx.uHitCurrent));
+            ctx.photon.Energy += sample.rgb * transmissibility * g_integration_interval / (1e-5 + ctx.uHitCurrent * ctx.uHitCurrent);
             uSampleTarget = (currentSample + uSampleRandomOffset) * g_integration_interval; 
         }
 
@@ -100,9 +100,9 @@ void Simulate_Camera (uint3 id : SV_DispatchThreadID) {
     //float3 directionWeight = { sim.rand.NextDirection(), 1 / (2 * PI) };
 
     float2 uv = origin / targetSize;
-    float3 directLight = g_hdr.SampleLevel(samplerg_hdr, uv, 0).rgb;
-    float3 localAlbedo = g_albedo.SampleLevel(sampler_point_clamp, uv, 0).rgb;
-    float localTransmissibility = g_transmissibility.SampleLevel(samplerg_transmissibility, origin, 0).x;
+    float3 directLight = g_hdr[id.xy].rgb;
+    float3 localAlbedo = g_albedo[id.xy].rgb;
+    float localOutscatter = 1-g_transmissibility[id.xy].x;
 
     Ray accumulated_photon = {
         origin,
@@ -112,7 +112,7 @@ void Simulate_Camera (uint3 id : SV_DispatchThreadID) {
 
     Integrate(accumulated_photon, 1, sim);
 
-    float3 accumulated_sample = accumulated_photon.Energy * localAlbedo * directionWeight.z/* (1 - pow(localTransmissibility, g_view_thickness))*/ + directLight;
+    float3 accumulated_sample = (accumulated_photon.Energy * localAlbedo * directionWeight.z + directLight) * localOutscatter;
     g_output_hdr[id.xy] += float4(accumulated_sample, 0);   
 
     g_rand[randContext] = sim.rand.state;

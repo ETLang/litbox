@@ -64,6 +64,19 @@ public class ForwardMonteCarlo : Disposable
     private bool _disableBilinearWrites;
     #endregion
 
+    #region FinalizeOutscatterDensity
+    public bool FinalizeOutscatterDensity
+    {
+        get => _finalizeOutscatterDensity;
+        set
+        {
+            _finalizeOutscatterDensity = value;
+            _forwardIntegrationShader.SetShaderFlag("FINALIZE_OUTSCATTER_DENSITY", _finalizeOutscatterDensity);
+        }
+    }
+    private bool _finalizeOutscatterDensity = true;
+    #endregion
+
     #region IntegrationInterval
     public float IntegrationInterval
     {
@@ -102,6 +115,7 @@ public class ForwardMonteCarlo : Disposable
         _forwardIntegrationShader = (ComputeShader)Resources.Load("ForwardMonteCarlo");
         _forwardIntegrationShader.SetVector("g_importance_sampling_target", ImportanceSamplingTarget);
         _forwardIntegrationShader.SetShaderFlag("BILINEAR_PHOTON_DISTRIBUTION", !_disableBilinearWrites);
+        _forwardIntegrationShader.SetShaderFlag("FINALIZE_OUTSCATTER_DENSITY", _finalizeOutscatterDensity);
     }
 
     public void Clear()
@@ -126,7 +140,7 @@ public class ForwardMonteCarlo : Disposable
         int width = RawPhotonBuffer.width;
         int height = RawPhotonBuffer.height;
 
-        _forwardIntegrationShader.SetFloat("g_hdr_scale", (float)((double)uint.MaxValue * IterationsSinceClear / (width * height)));
+        _forwardIntegrationShader.SetFloat("g_hdr_scale", (float)((width * height) / ((double)uint.MaxValue * IterationsSinceClear)));
 
         float totalLuma = 0;
         foreach (var light in lights)
@@ -144,7 +158,8 @@ public class ForwardMonteCarlo : Disposable
         
         _forwardIntegrationShader.RunKernel("ConvertToHDR", width, height,
             ("g_output_raw", RawPhotonBuffer),
-            ("g_output_hdr", OutputImageHDR));
+            ("g_output_hdr", OutputImageHDR),
+            ("g_transmissibility", _gBuffer.Transmissibility));
     }
 
     public async Task<long> GetCurrentWriteCountAsync()

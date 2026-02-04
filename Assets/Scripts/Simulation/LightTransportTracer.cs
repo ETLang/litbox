@@ -50,7 +50,7 @@ public class LightTransportTracer : Disposable, ITracer
 
     public LightTransportTracer()
     {
-        _forwardIntegrator = new ForwardMonteCarlo();
+        _forwardIntegrator = new ForwardMonteCarlo() { FinalizeOutscatterDensity = true };
         AutoDispose(_forwardIntegrator);
     }
 

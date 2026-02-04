@@ -88,9 +88,6 @@ void ComputeCVAndNMipsFromSamplePair(uint3 id, uint2 localID, int mipCount) {
     shared_source_mean[localID.x][localID.y] = mean;
     shared_pixel_variance[localID.x][localID.y] = dot(((a - b) * (a - b) / (mean * mean + 1e-5)).rgb, 1/3.0);
     
-    // CANDIDATE A: Relative variance. A bit heavy on bright areas but seems to get things about right.
-    //shared_pixel_variance[localID.x][localID.y] = dot(((a - b) * (a - b)).rgb, 1/3.0);
-    
     GroupMemoryBarrierWithGroupSync();
 
     if (((localID.x | localID.y) & 1) == 0) {
