@@ -65,14 +65,12 @@ uint3 ReadPhoton_Indexed(uint2 pixel) {
     );
 }
 
-void WritePhoton_Indexed(int2 pixel, uint3 energy, float density, bool suppressPhoton=false) {
+void WritePhoton_Indexed(int2 pixel, float3 energy, bool suppressPhoton=false) {
     const uint EnergyMax = (1 << 31);
 
     if(!suppressPhoton) {
         InterlockedAdd(shared_write_counter, 1);
     }
-
-    energy *= density;
 
     pixel.x *= 3;
     uint3 rgb;
@@ -87,24 +85,24 @@ void WritePhoton_Indexed(int2 pixel, uint3 energy, float density, bool suppressP
 #endif
 }
 
-void WritePhoton_Bilinear(float2 location, uint3 energy, float density, bool suppressPhoton=false) {
+void WritePhoton_Bilinear(float2 location, float3 energy, bool suppressPhoton=false) {
     if(any(location < 0)) return;
 
     float2 pixel = location - 0.5f;
     int2 pixelFloor = (int2)floor(pixel);
     float2 pixelFrac = pixel - pixelFloor;
 
-    WritePhoton_Indexed(pixelFloor, energy, density * (1 - pixelFrac.x) * (1 - pixelFrac.y), suppressPhoton);
-    WritePhoton_Indexed(pixelFloor + int2(1, 0), energy, density * pixelFrac.x * (1 - pixelFrac.y), true /*suppressPhoton*/);
-    WritePhoton_Indexed(pixelFloor + int2(0, 1), energy, density * (1 - pixelFrac.x) * pixelFrac.y, true /*suppressPhoton*/);
-    WritePhoton_Indexed(pixelFloor + int2(1, 1), energy, density * pixelFrac.x * pixelFrac.y, true /*suppressPhoton*/);
+    WritePhoton_Indexed(pixelFloor, energy * (1 - pixelFrac.x) * (1 - pixelFrac.y), suppressPhoton);
+    WritePhoton_Indexed(pixelFloor + int2(1, 0), energy * pixelFrac.x * (1 - pixelFrac.y), true /*suppressPhoton*/);
+    WritePhoton_Indexed(pixelFloor + int2(0, 1), energy * (1 - pixelFrac.x) * pixelFrac.y, true /*suppressPhoton*/);
+    WritePhoton_Indexed(pixelFloor + int2(1, 1), energy * pixelFrac.x * pixelFrac.y, true /*suppressPhoton*/);
 }
 
-void WritePhoton(float2 location, uint3 energy, float density, bool suppressPhoton=false) {
+void WritePhoton(float2 location, float3 energy, bool suppressPhoton=false) {
 #if BILINEAR_PHOTON_DISTRIBUTION
-    WritePhoton_Bilinear(location, energy, density, suppressPhoton);
+    WritePhoton_Bilinear(location, energy, suppressPhoton);
 #else
-    WritePhoton_Indexed(location, energy, density, suppressPhoton);
+    WritePhoton_Indexed(location, energy, suppressPhoton);
 #endif
 }
 
@@ -128,7 +126,7 @@ struct ForwardMonteCarlo : BaseContext, IMonteCarloMethod
         float3 albedo = g_albedo.SampleLevel(sampler_point_clamp, uv, 0).rgb;
 
         float outScatterDensity = g_integration_interval_squared * transmissibility;
-        WritePhoton(location, energy/* * albedo*/, outScatterDensity, false);
+        WritePhoton(location, energy * outScatterDensity, false);
     }
 
     void Init(uint4 seed)
@@ -368,9 +366,10 @@ void ConvertToHDR (uint3 id : SV_DispatchThreadID, uint2 localID : SV_GroupThrea
     outScatterDensity *= (1 - g_transmissibility[id.xy].x);
 #endif
 
-    float3 cumulative = ReadPhoton_Indexed(id.xy) * g_hdr_scale + g_accumulated_output_hdr[id.xy].rgb;
+    float3 cumulative = ReadPhoton_Indexed(id.xy) * g_hdr_scale;
 
 #if !SKIP_ACCUMULATION
+    cumulative += g_accumulated_output_hdr[id.xy].rgb;
     if(g_needs_accumulation[0] != 0) {
         ClearPhoton_Indexed(id.xy);
         g_accumulated_output_hdr[id.xy] = float4(cumulative, 0);

@@ -1,6 +1,8 @@
 #include "../Shaders/PhotonerCommon.cginc"
 
 #pragma kernel AnalysisA
+#pragma kernel AnalysisB
+#pragma kernel AnalysisC
 #line 5
 
 Texture2D<float4> _in_albedo;
@@ -13,6 +15,7 @@ Texture2D<float4> _in_hdr_b;
 Texture2D<float4> _in_hdr_final;
 Texture2D<float4> _in_importance;
 Texture2D<float4> _in_variance;
+Texture2D<float4> _in_previous_analysis;
 
 RWTexture2D<float4> _out_analysis;
 
@@ -27,24 +30,22 @@ void AnalysisA(uint3 id : SV_DispatchThreadID) {
 
     float2 uv = (id.xy + 0.5) / size;
 
-    float variance = _in_variance.SampleLevel(sampler_linear_clamp, uv, 0).x;
-    float importance = _in_importance.SampleLevel(sampler_linear_clamp, uv, 0).x;
+    float3 sample_a = _in_hdr_a.SampleLevel(sampler_linear_clamp, uv, 0).rgb;
+    float3 sample_b = _in_hdr_b.SampleLevel(sampler_linear_clamp, uv, 0).rgb;
 
-   // float result = variance / importance;
-   // float result = variance * (1-saturate(importance / _brightness_threshold));
-    float brightnessCriterion = 1-saturate(importance / _brightness_threshold);
+    // Compute full-resolution relative variance
+    float mean = (sample_a + sample_b) / 2.0;
+    float3 relative_variance = (sample_a - sample_b) * (sample_a - sample_b) / (mean * mean + 1e-5);
 
-    float varianceCriterion = variance / _variance_threshold;
+    _out_analysis[id.xy] = float4(dot(relative_variance, 1.0/3.0), 0, 0, 1);
+}
 
-    float result = brightnessCriterion;
+[numthreads(NUMTHREADS_2D)]
+void AnalysisB(uint3 id : SV_DispatchThreadID) {
+    // Perform median filter on variance map
+}
 
-    _out_analysis[id.xy] = float4(0, result, 0, 1);
-
-    // POWER HEURISTIC
-    // (NfPf)^2 / ((NfPf)^2 + (NbPb)^2)
-
-    // Nf = RaysEmitted
-    // Pf = energy per ray
-    // Nb = w*h*samples
-    // Pb = 
+[numthreads(NUMTHREADS_2D)]
+void AnalysisC(uint3 id : SV_DispatchThreadID) {
+    // Perform adaptive guided filter on variance map
 }

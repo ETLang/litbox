@@ -1139,13 +1139,13 @@ MonoBehaviour:
   rayTracedLayers:
     serializedVersion: 2
     m_Bits: 768
-  raysPerFrame: 16000
+  raysPerFrame: 65536
   photonBounces: -1
   integrationInterval: 0.01
   transmissibilityVariationEpsilon: 0.001
   _measurementInterval: 100
   frameLimit: -1
-  _convergenceThreshold: 0.001
+  _convergenceThreshold: 0.0001
   iterationsSinceClear: 0
   convergenceProgress: 100000
   hasConverged: 0
