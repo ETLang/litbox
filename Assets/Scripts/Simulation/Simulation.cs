@@ -37,7 +37,7 @@ public class Simulation : PhotonerComponent
     [SerializeField] public int width = 256;
     [SerializeField] public int height = 256;
     [SerializeField] public Strategy strategy = Strategy.LightTransport;
-    [SerializeField] public SimulationMode priority = SimulationMode.Realtime;
+    [SerializeField] public SimulationMode mode = SimulationMode.Realtime;
     [SerializeField] private LayerMask rayTracedLayers;
     [SerializeField] private int raysPerFrame = 65536;
     [SerializeField] private int photonBounces = -1;
@@ -59,8 +59,6 @@ public class Simulation : PhotonerComponent
     private static int _MainTexID = Shader.PropertyToID("_MainTex");
     private Material _compositorMat;
     private SimulationCamera _realContentCamera;
-    private bool _freshContentCamera = true;
-
 
     private SortedDictionary<float, uint> performanceCounter = new SortedDictionary<float, uint>();
 
@@ -172,6 +170,7 @@ public class Simulation : PhotonerComponent
             _updateTracerProperties = () => {
                 for(int i = 0;i < 2;i++)
                 {
+                    lightTracers[i].SkipAccumulation = (mode == SimulationMode.Realtime);
                     lightTracers[i].DisableBilinearWrites = !bilinearPhotonWrites;
                     lightTracers[i].IntegrationInterval = integrationInterval;
                     lightTracers[i].OverrideBounceCount = photonBounces == -1 ? null : (uint)photonBounces;
@@ -190,6 +189,7 @@ public class Simulation : PhotonerComponent
             _updateTracerProperties = () =>
             {
                 for(int i = 0;i < 2;i++) {
+                    hybridTracers[i].SkipAccumulation = (mode == SimulationMode.Realtime);
                     hybridTracers[i].DisableBilinearWrites = !bilinearPhotonWrites;
                     hybridTracers[i].ForwardIntegrationInterval = integrationInterval;
                     hybridTracers[i].BackwardIntegrationInterval = integrationInterval;
@@ -265,7 +265,7 @@ public class Simulation : PhotonerComponent
         DisposeOnDisable(_importanceMap);
 
         _realContentCamera = new GameObject("__Simulation_Camera", typeof(SimulationCamera)).GetComponent<SimulationCamera>();
-        _realContentCamera.Initialize(transform, rayTracedLayers.value, priority);
+        _realContentCamera.Initialize(transform, rayTracedLayers.value, mode);
 
         CreateTargetBuffers();
     }
@@ -333,7 +333,7 @@ public class Simulation : PhotonerComponent
         }
 
         bool dirtyGBuffer = false;
-        if (_dirtyFrame || _validationFailed)
+        if (mode == SimulationMode.Realtime || _dirtyFrame || _validationFailed)
         {
             hasConverged = false;
             _dirtyFrame = false;
@@ -351,7 +351,7 @@ public class Simulation : PhotonerComponent
         }
         else if (hasConverged) { _needsToUpdate = false; }
 
-        if(priority == SimulationMode.Realtime) {
+        if(mode == SimulationMode.Realtime) {
             _realContentCamera.gameObject.SetActive(dirtyGBuffer);
         } else if(_needsToUpdate) {
             _realContentCamera.Render();
@@ -362,7 +362,7 @@ public class Simulation : PhotonerComponent
 
     bool ShouldUpdateImportanceMap()
     {
-        if(iterationsSinceClear == 0) { return priority != SimulationMode.Realtime; }
+        if(iterationsSinceClear == 0) { return mode != SimulationMode.Realtime; }
         else if(iterationsSinceClear < 100) { return iterationsSinceClear % 10 == 0; }
         else { return iterationsSinceClear % 100 == 0; }
     }

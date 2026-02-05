@@ -1040,7 +1040,7 @@ MonoBehaviour:
   m_Name: 
   m_EditorClassIdentifier: 
   _train: 0
-  _continuePreviousSession: 1
+  _continuePreviousSession: 0
   outputFolder: ./training_data
   _samplesToGenerate: 30000
   inputProfiles:
@@ -1066,7 +1066,7 @@ MonoBehaviour:
     photonBounces: 4
   convergenceProfile:
     frameLimit: -1
-    raysPerFrame: 16384
+    raysPerFrame: 65536
     integrationInterval: 0.01
     photonBounces: 4
   _simulation: {fileID: 923172386}
@@ -1135,7 +1135,7 @@ MonoBehaviour:
   width: 256
   height: 256
   strategy: 1
-  priority: 0
+  mode: 1
   rayTracedLayers:
     serializedVersion: 2
     m_Bits: 768

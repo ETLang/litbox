@@ -11,6 +11,8 @@ public class BackwardMonteCarlo : Disposable
         get => _inputImage;
         set
         {
+            if(value == _inputImage) { return; }
+
             _inputImage = value;
 
             BufferManager.Release(ref _outputImage);

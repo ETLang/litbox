@@ -11,6 +11,7 @@ public class ForwardMonteCarlo : Disposable
         get => _gBuffer;
         set
         {
+            if(value.Equals(_gBuffer)) { return; }
             _gBuffer = value;
 
             BufferManager.Release(ref _rawPhotonBuffer);
@@ -21,6 +22,7 @@ public class ForwardMonteCarlo : Disposable
                 int h = _gBuffer.AlbedoAlpha.height;
 
                 _rawPhotonBuffer = BufferManager.AcquireTexture(w * 3, h, RenderTextureFormat.RInt);
+                _accumulationImage = BufferManager.AcquireTexture(w, h, RenderTextureFormat.ARGBFloat);
                 _outputImageHDR = BufferManager.AcquireTexture(w, h, RenderTextureFormat.ARGBFloat, true);
                 UpdateIntegrationInterval();
             }
@@ -31,6 +33,9 @@ public class ForwardMonteCarlo : Disposable
 
     public RenderTexture RawPhotonBuffer => _rawPhotonBuffer;
     private RenderTexture _rawPhotonBuffer;
+
+    public RenderTexture AccumulationImage => _accumulationImage;
+    private RenderTexture _accumulationImage;
 
     public RenderTexture OutputImageHDR => _outputImageHDR;
     private RenderTexture _outputImageHDR;
@@ -77,6 +82,19 @@ public class ForwardMonteCarlo : Disposable
     private bool _finalizeOutscatterDensity = true;
     #endregion
 
+    #region SkipAccumulation
+    public bool SkipAccumulation
+    {
+        get => _skipAccumulation;
+        set
+        {
+            _skipAccumulation = value;
+            _forwardIntegrationShader.SetShaderFlag("SKIP_ACCUMULATION", _skipAccumulation);
+        }
+    }
+    private bool _skipAccumulation = false;
+    #endregion
+
     #region IntegrationInterval
     public float IntegrationInterval
     {
@@ -93,8 +111,10 @@ public class ForwardMonteCarlo : Disposable
     {
         if(_gBuffer.AlbedoAlpha == null) return;
 
-        _forwardIntegrationShader.SetFloat("g_integration_interval",
-            Mathf.Max(0.01f, IntegrationInterval * _gBuffer.AlbedoAlpha.height));
+        float interval = Mathf.Max(0.01f, IntegrationInterval * _gBuffer.AlbedoAlpha.height);
+
+        _forwardIntegrationShader.SetFloat("g_integration_interval", interval);
+        _forwardIntegrationShader.SetFloat("g_integration_interval_squared", interval * interval);
     }
     #endregion
 
@@ -106,21 +126,28 @@ public class ForwardMonteCarlo : Disposable
 
     private ComputeShader _forwardIntegrationShader;
     private ComputeBuffer _forwardWriteCounterBuffer;
-    uint4[] _forwardWriteCounterInitialValue = new uint4[] { new uint4(0, 0, 0, 0) };
+    private ComputeBuffer _needsAccumulationBuffer;
+    private int _convertToHDRKernel;
+    uint4[] _zeroSBO = new uint4[] { new uint4(0, 0, 0, 0) };
 
     public ForwardMonteCarlo()
     {
-        _forwardWriteCounterBuffer = this.CreateStructuredBuffer(_forwardWriteCounterInitialValue);
+        _forwardWriteCounterBuffer = this.CreateStructuredBuffer(_zeroSBO);
+        _needsAccumulationBuffer = this.CreateStructuredBuffer(_zeroSBO);
 
         _forwardIntegrationShader = (ComputeShader)Resources.Load("ForwardMonteCarlo");
+        _convertToHDRKernel = _forwardIntegrationShader.FindKernel("ConvertToHDR");
+
         _forwardIntegrationShader.SetVector("g_importance_sampling_target", ImportanceSamplingTarget);
         _forwardIntegrationShader.SetShaderFlag("BILINEAR_PHOTON_DISTRIBUTION", !_disableBilinearWrites);
         _forwardIntegrationShader.SetShaderFlag("FINALIZE_OUTSCATTER_DENSITY", _finalizeOutscatterDensity);
+        _forwardIntegrationShader.SetShaderFlag("SKIP_ACCUMULATION", _skipAccumulation);
     }
 
     public void Clear()
     {
         RawPhotonBuffer.Clear(Color.clear);
+        AccumulationImage.Clear(Color.clear);
     }
 
     private static Vector4 _LuminanceWeight = new Vector4(0.2126f, 0.7152f, 0.0722f, 0);
@@ -140,7 +167,9 @@ public class ForwardMonteCarlo : Disposable
         int width = RawPhotonBuffer.width;
         int height = RawPhotonBuffer.height;
 
-        _forwardIntegrationShader.SetFloat("g_hdr_scale", (float)((width * height) / ((double)uint.MaxValue * IterationsSinceClear)));
+        _forwardIntegrationShader.SetFloat("g_hdr_scale", (float)((width * height) / ((double)uint.MaxValue)));
+        _forwardIntegrationShader.SetFloat("g_batch_count_inv", 1.0f / IterationsSinceClear);
+        _forwardIntegrationShader.SetInt("g_threadgroup_count", _forwardIntegrationShader.GetThreadGroupCount(_convertToHDRKernel, width, height, 1).x);
 
         float totalLuma = 0;
         foreach (var light in lights)
@@ -156,9 +185,12 @@ public class ForwardMonteCarlo : Disposable
             SimulateLight(light, rays);
         }
         
-        _forwardIntegrationShader.RunKernel("ConvertToHDR", width, height,
+        _forwardIntegrationShader.RunKernel(_convertToHDRKernel, width, height,
             ("g_output_raw", RawPhotonBuffer),
+            ("g_accumulated_output_hdr", AccumulationImage),
+            ("g_needs_accumulation", _needsAccumulationBuffer),
             ("g_output_hdr", OutputImageHDR),
+            ("g_albedo", _gBuffer.AlbedoAlpha),
             ("g_transmissibility", _gBuffer.Transmissibility));
     }
 
@@ -221,12 +253,14 @@ public class ForwardMonteCarlo : Disposable
             ("g_rand", BufferManager.GetRandomSeedBuffer(rays)),
             ("g_write_counter", _forwardWriteCounterBuffer),
             ("g_output_raw", RawPhotonBuffer),
+            ("g_accumulated_output_hdr", AccumulationImage),
+            ("g_needs_accumulation", _needsAccumulationBuffer),
             ("g_albedo", _gBuffer.AlbedoAlpha),
             ("g_transmissibility", _gBuffer.Transmissibility),
             ("g_normalAlignment", _gBuffer.NormalRoughness),
             ("g_quadTreeLeaves", _gBuffer.QuadTreeLeaves),
             ("g_mieScatteringLUT", BufferManager.MieScatteringLUT),
-            ("g_teardropScatteringLUT", BufferManager.TeardropScatteringLUT),
+            ("g_teardropScatteringLUT", BufferManager.TeardropScatteringLUT), 
             ("g_bdrfLUT", BufferManager.BRDFLUT));
     }
 
@@ -235,6 +269,7 @@ public class ForwardMonteCarlo : Disposable
         base.OnDispose();
 
         BufferManager.Release(ref _rawPhotonBuffer);
+        BufferManager.Release(ref _accumulationImage);
         BufferManager.Release(ref _outputImageHDR);
     }
 }

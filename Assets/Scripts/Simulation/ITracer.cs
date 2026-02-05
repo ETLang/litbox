@@ -7,6 +7,7 @@ public interface ITracer : IDisposable
     RenderTexture EarlyRadianceForImportanceSampling { get; }
     RenderTexture TracerOutput { get; }
     Matrix4x4 WorldToTargetTransform { get; set; }
+    bool SkipAccumulation { get; set; }
 
     long ForwardWritesPerSecond { get; }
     long BackwardReadsPerSecond { get; }
@@ -20,4 +21,10 @@ public interface ITracer : IDisposable
     void EndTrace(RenderTexture importanceMap = null);
 
     void UpdatePerformanceMetrics();
+}
+
+public interface ITracerDebug
+{
+    RenderTexture ForwardRawPhotons { get; }
+    RenderTexture ForwardAccumulation { get; }
 }

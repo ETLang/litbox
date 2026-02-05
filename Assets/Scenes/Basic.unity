@@ -368,7 +368,7 @@ MonoBehaviour:
   m_PrefabInstance: {fileID: 0}
   m_PrefabAsset: {fileID: 0}
   m_GameObject: {fileID: 503795289}
-  m_Enabled: 1
+  m_Enabled: 0
   m_EditorHideFlags: 0
   m_Script: {fileID: 11500000, guid: a53b2f5a379d1664d947c74b66bf2665, type: 3}
   m_Name: 
@@ -524,6 +524,10 @@ PrefabInstance:
     - target: {fileID: 8869134941954330059, guid: 50c9c6dd5fc3aa84bbc2b48c795e7a44, type: 3}
       propertyPath: m_Name
       value: PerfDisplay
+      objectReference: {fileID: 0}
+    - target: {fileID: 8869134941954330059, guid: 50c9c6dd5fc3aa84bbc2b48c795e7a44, type: 3}
+      propertyPath: m_IsActive
+      value: 1
       objectReference: {fileID: 0}
     m_RemovedComponents: []
     m_RemovedGameObjects: []
@@ -1378,15 +1382,14 @@ MonoBehaviour:
   m_EditorClassIdentifier: 
   width: 256
   height: 256
-  strategy: 1
-  priority: 0
+  strategy: 0
+  priority: 1
   rayTracedLayers:
     serializedVersion: 2
     m_Bits: 768
   raysPerFrame: 65536
   photonBounces: -1
   integrationInterval: 0.01
-  logViewThickness: 3
   transmissibilityVariationEpsilon: 0.001
   _measurementInterval: 20
   frameLimit: -1
@@ -1433,7 +1436,7 @@ MonoBehaviour:
   brightnessThreshold: 0.02
   varianceThreshold: 1
   simulation: {fileID: 2408986526842077597}
-  type: 2
+  type: 3
 --- !u!4 &4185717351858822417
 Transform:
   m_ObjectHideFlags: 0

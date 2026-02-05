@@ -1,6 +1,6 @@
 using UnityEngine;
 
-public class HybridTracer : Disposable, ITracer
+public class HybridTracer : Disposable, ITracer, ITracerDebug
 {
     private ForwardMonteCarlo _forwardIntegrator;
     private BackwardMonteCarlo _backwardIntegrator;
@@ -57,8 +57,17 @@ public class HybridTracer : Disposable, ITracer
         set => _forwardIntegrator.RaysToEmit = value;
     }
 
+    public bool SkipAccumulation
+    {
+        get => _forwardIntegrator.SkipAccumulation;
+        set => _forwardIntegrator.SkipAccumulation = value;
+    }
+
     public long ForwardWritesPerSecond { get; private set; }
     public long BackwardReadsPerSecond => 0;
+
+    RenderTexture ITracerDebug.ForwardRawPhotons => _forwardIntegrator.RawPhotonBuffer;
+RenderTexture ITracerDebug.ForwardAccumulation => _forwardIntegrator.AccumulationImage;
 
     public HybridTracer()
     {
