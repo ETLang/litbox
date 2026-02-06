@@ -10,7 +10,7 @@ from PIL import Image
 import OpenEXR
 import Imath
 
-class PhotonerDataset(Dataset):
+class LitboxDenoiserDataset(Dataset):
     def __init__(self,
                  input_a_paths: list, input_b_paths: list,
                  albedo_paths: list, transmissibility_paths: list, reference_paths: Optional[list] = None, 

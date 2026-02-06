@@ -1,5 +1,5 @@
-#ifndef _PHOTONER_COMMON_
-#define _PHOTONER_COMMON_
+#ifndef _LITBOX_COMMON_
+#define _LITBOX_COMMON_
 
 #include "UnityCG.cginc"
 //#include "Packages/com.unity.render-pipelines.universal/ShaderLibrary/Core.hlsl"
@@ -140,4 +140,4 @@ float2 lut_slice_window_##name;
 SamplerState sampler_point_clamp;
 SamplerState sampler_linear_clamp;
 
-#endif // _PHOTONER_COMMON_
+#endif // _LITBOX_COMMON_

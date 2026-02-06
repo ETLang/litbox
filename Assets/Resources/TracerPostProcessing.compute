@@ -1,4 +1,4 @@
-#include "../Shaders/PhotonerCommon.cginc"
+#include "../Shaders/LitboxCommon.cginc"
 
 //#pragma kernel GenerateOutputMips
 #pragma kernel ComputeCVAndOneMipFromSamplePair

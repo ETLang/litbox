@@ -25,7 +25,7 @@ public enum SimulationMode
 
 [RequireComponent(typeof(MeshRenderer))]
 [RequireComponent(typeof(MeshFilter))]
-public class Simulation : PhotonerComponent
+public class Simulation : LitboxComponent
 {
     public enum Strategy
     {
@@ -79,7 +79,7 @@ public class Simulation : PhotonerComponent
     ImportanceMap _importanceMap;
     Action _updateTracerProperties;
 
-    public PhotonerGBuffer GBuffer { get; private set; }
+    public LitboxGBuffer GBuffer { get; private set; }
     public RenderTexture SimulationOutputHDR { get; private set; }
     public RenderTexture VarianceMap { get; private set; }
     public RenderTexture ImportanceMap => _importanceMap?.Map;
@@ -219,7 +219,7 @@ public class Simulation : PhotonerComponent
         }
 
         if(_meshRenderer.sharedMaterial == null) {
-            _compositorMat = new Material(Shader.Find("Photoner/SimulationCompositor"));
+            _compositorMat = new Material(Shader.Find("Litbox/SimulationCompositor"));
             _meshRenderer.sharedMaterial = _compositorMat;
         } else {
             _compositorMat = _meshRenderer.sharedMaterial;
@@ -274,7 +274,7 @@ public class Simulation : PhotonerComponent
 
     private void CreateTargetBuffers()
     {
-        PhotonerGBuffer gBuffer = new PhotonerGBuffer
+        LitboxGBuffer gBuffer = new LitboxGBuffer
         {
             AlbedoAlpha = this.CreateRWTextureWithMips(width, height, RenderTextureFormat.ARGBFloat, 32),
             Transmissibility = this.CreateRWTextureWithMips(width, height, RenderTextureFormat.ARGBFloat),

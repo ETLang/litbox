@@ -3,7 +3,7 @@ using UnityEngine;
 
 public interface ITracer : IDisposable
 {
-    PhotonerGBuffer GBuffer { get; set; }
+    LitboxGBuffer GBuffer { get; set; }
     RenderTexture EarlyRadianceForImportanceSampling { get; }
     RenderTexture TracerOutput { get; }
     Matrix4x4 WorldToTargetTransform { get; set; }

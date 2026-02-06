@@ -2,7 +2,7 @@ using System;
 using UnityEngine;
 
 [RequireComponent(typeof(Renderer))]
-public class SimulationTexturePicker : PhotonerComponent {
+public class SimulationTexturePicker : LitboxComponent {
     [SerializeField] float brightnessThreshold = 1;
     [SerializeField] float varianceThreshold = 1;
 

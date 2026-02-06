@@ -5,7 +5,7 @@ using Unity.VisualScripting;
 using UnityEngine;
 using UnityEngine.Rendering;
 
-public class CloudGroupController : PhotonerComponent
+public class CloudGroupController : LitboxComponent
 {
     [SerializeField] Material foregroundCloudMat;
     [SerializeField] int foregroundSimulationLOD = 5;

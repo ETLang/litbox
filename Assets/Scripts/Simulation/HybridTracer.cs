@@ -7,7 +7,7 @@ public class HybridTracer : Disposable, ITracer, ITracerDebug
     long _lastForwardWriteCount = 0;
     float _lastPerformanceUpdateTime = 0;
 
-    public PhotonerGBuffer GBuffer
+    public LitboxGBuffer GBuffer
     {
         get => _forwardIntegrator.GBuffer;
         set

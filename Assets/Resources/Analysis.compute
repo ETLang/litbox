@@ -1,4 +1,4 @@
-#include "../Shaders/PhotonerCommon.cginc"
+#include "../Shaders/LitboxCommon.cginc"
 
 #pragma kernel AnalysisA
 #pragma kernel AnalysisB
@@ -39,6 +39,7 @@ void AnalysisA(uint3 id : SV_DispatchThreadID) {
 
     _out_analysis[id.xy] = float4(dot(relative_variance, 1.0/3.0), 0, 0, 1);
 }
+ 
 
 [numthreads(NUMTHREADS_2D)]
 void AnalysisB(uint3 id : SV_DispatchThreadID) {
@@ -47,5 +48,5 @@ void AnalysisB(uint3 id : SV_DispatchThreadID) {
 
 [numthreads(NUMTHREADS_2D)]
 void AnalysisC(uint3 id : SV_DispatchThreadID) {
-    // Perform adaptive guided filter on variance map
+// Perform adaptive guided filter on variance map
 }

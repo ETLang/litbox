@@ -1,5 +1,5 @@
 #include "UnityCG.cginc"
-#include "../Shaders/PhotonerCommon.cginc"
+#include "../Shaders/LitboxCommon.cginc"
 #pragma kernel CloudForegroundBlur
 
 Texture2D<float4> blur_input;

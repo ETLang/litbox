@@ -2,7 +2,7 @@ using System.Collections;
 using System.Collections.Generic;
 using UnityEngine;
 
-public class RTObject : PhotonerComponent
+public class RTObject : LitboxComponent
 {
     [SerializeField] public Texture texture;
     [SerializeField] public Texture normal;

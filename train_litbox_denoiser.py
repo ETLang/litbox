@@ -19,10 +19,10 @@ import math
 from typing import Tuple, Optional
 import torch.nn.functional as F
 import torchvision.transforms.functional
-from photoner_display import PhotonerDisplay
-from photoner_loss import HdrLoss
-from photoner_dataset import PhotonerDataset
-from photoner_model import PhotonerNet
+from litbox_display import LitboxDenoiserDisplay
+from litbox_loss import HdrLoss
+from litbox_dataset import LitboxDenoiserDataset
+from litbox_model import LitboxDenoiserNet
 
 # Settings (overridable via command line arguments)
 g_output_upsample = 1 # 4
@@ -54,7 +54,7 @@ g_gaussian_initialization = True
 device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
 
 def parse_args():
-    parser = argparse.ArgumentParser(description='Photoner Neural Network Training Script')
+    parser = argparse.ArgumentParser(description='Litbox Denoiser Training Script')
     parser.add_argument('--eval', action='store_true', help='Run in evaluation mode')
     parser.add_argument('--input-a-easy-location', help='Path to easy input imageset A, for curriculum training')
     parser.add_argument('--input-b-easy-location', help='Path to easy input imageset B, for curriculum training')
@@ -125,7 +125,7 @@ def compute_mean_and_relative_variance(image_a, image_b):
     return mean, relative_variance
 
 def train(args):
-    display = PhotonerDisplay()
+    display = LitboxDenoiserDisplay()
 
     # Create datasets
     input_sets = []
@@ -165,7 +165,7 @@ def train(args):
 
     # Initialize model
     use_sigmoid = use_sigmoid_from_input(input_a_final_files)
-    model = PhotonerNet(
+    model = LitboxDenoiserNet(
         upsample_factor=args.upsample, 
         use_sigmoid=use_sigmoid, 
         use_log_space=False, #train_dataset.exr_source and args.log_space,
@@ -210,9 +210,9 @@ def train(args):
             # transforms.Resize((8,8))
         ])
         
-        train_dataset = PhotonerDataset(train_a_input, train_b_input, train_albedo_input, train_transmissibility_input, train_reference, 
+        train_dataset = LitboxDenoiserDataset(train_a_input, train_b_input, train_albedo_input, train_transmissibility_input, train_reference, 
                                     args.crop_size, args.upsample, None) # truth_transform)
-        test_dataset = PhotonerDataset(test_a_input, test_b_input, test_albedo_input, test_transmissibility_input, test_reference,
+        test_dataset = LitboxDenoiserDataset(test_a_input, test_b_input, test_albedo_input, test_transmissibility_input, test_reference,
                                     args.crop_size, args.upsample, None) #truth_transform)
         
         train_loader = DataLoader(train_dataset, batch_size=args.batch_size, shuffle=False, num_workers=4)
@@ -322,7 +322,7 @@ def evaluate(model, input_pattern, output_folder, args):
     
     with torch.no_grad():
         for input_path in input_files:
-            dataset = PhotonerDataset([input_path], None, args.crop_size, 
+            dataset = LitboxDenoiserDataset([input_path], None, args.crop_size, 
                                     args.upsample)
             input_img = dataset[0][0].unsqueeze(0).to(device)
             
@@ -367,7 +367,7 @@ def main():
     if args.eval:
         input_files = sorted(glob.glob(args.input_location))
         use_sigmoid = use_sigmoid_from_input(input_files)
-        model = PhotonerNet(
+        model = LitboxDenoiserNet(
             upsample_factor=args.upsample, 
             use_sigmoid=use_sigmoid, 
             use_log_space=args.log_space, 

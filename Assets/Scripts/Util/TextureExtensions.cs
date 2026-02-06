@@ -322,7 +322,7 @@ public static class TextureExtensions {
             var current = RenderTexture.active;
             if(!float.IsNaN(exposure)) {
                 if(_ToneMapper == null) {
-                    _ToneMapper = new Material(Shader.Find("Hidden/PhotonerToneMapping_UE5"));
+                    _ToneMapper = new Material(Shader.Find("Hidden/LitboxToneMapping_UE5"));
                     _ToneMapper.SetFloat("_Exposure", exposure);
                     _ToneMapper.SetVector("_WhitePointLog", new Vector3(2, 2, 2));
                     _ToneMapper.SetVector("_BlackPointLog", new Vector3(-3, -3, -3));
