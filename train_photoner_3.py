@@ -56,10 +56,15 @@ device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
 def parse_args():
     parser = argparse.ArgumentParser(description='Photoner Neural Network Training Script')
     parser.add_argument('--eval', action='store_true', help='Run in evaluation mode')
-    parser.add_argument('--input-easy-location', help='Path to easy input images, for curriculum training')
-    parser.add_argument('--input-medium-location', help='Path to input images, for curriculum training')
-    parser.add_argument('--input-location', required=True, help='Path to input images')
-    parser.add_argument('--training-location', help='Path to training images')
+    parser.add_argument('--input-a-easy-location', help='Path to easy input imageset A, for curriculum training')
+    parser.add_argument('--input-b-easy-location', help='Path to easy input imageset B, for curriculum training')
+    parser.add_argument('--input-a-medium-location', help='Path to input imageset A, for curriculum training')
+    parser.add_argument('--input-b-medium-location', help='Path to input imageset B, for curriculum training')
+    parser.add_argument('--input-a-location', required=True, help='Path to input imageset A')
+    parser.add_argument('--input-b-location', required=True, help='Path to input imageset B')
+    parser.add_argument('--input-albedo-location', required=True, help='Path to albedo imageset')
+    parser.add_argument('--input-transmissibility-location', required=True, help='Path to transmissibility imageset')
+    parser.add_argument('--reference-location', help='Path to reference images for training')
     parser.add_argument('--output-folder', help='Output folder for evaluated images')
     parser.add_argument('--model-path', required=True, help='Path to save/load model')
     parser.add_argument('--checkpoint-interval', type=int, default=g_checkpoint_interval, help='Seconds between checkpoints')
@@ -77,12 +82,20 @@ def parse_args():
     args = parser.parse_args()
     
     # Validation
-    if not args.eval and not args.training_location:
-        parser.error("--training-location is required in training mode")
+    if not args.eval and not args.reference_location:
+        parser.error("--reference-location is required in training mode")
     if args.eval and not args.output_folder:
         parser.error("--output-folder is required in eval mode")
     if args.checkpoint_interval and not args.checkpoint_folder:
         parser.error("--checkpoint-folder is required when using --checkpoint-interval")
+    if args.input_a_easy_location and not args.input_b_easy_location:
+        parser.error("Both --input-a-easy-location and --input-b-easy-location must be provided for easy curriculum training")
+    if args.input_b_easy_location and not args.input_a_easy_location:
+        parser.error("Both --input-a-easy-location and --input-b-easy-location must be provided for easy curriculum training")
+    if args.input_a_medium_location and not args.input_b_medium_location:
+        parser.error("Both --input-a-medium-location and --input-b-medium-location must be provided for medium curriculum training")
+    if args.input_b_medium_location and not args.input_a_medium_location:
+        parser.error("Both --input-a-medium-location and --input-b-medium-location must be provided for medium curriculum training")
         
     return args
 
@@ -103,42 +116,64 @@ def use_sigmoid_from_input(input_files):
     # Assumes all input files are the same type
     return not input_files[0].lower().endswith('.exr')
 
+def compute_mean_and_relative_variance(image_a, image_b):
+    mean = (image_a + image_b) / 2.0
+    relative_variance = (image_a - image_b) ** 2 / (mean ** 2 + 1e-5)
+    # Originally I was planning on using a lower resolution variance map, but for now let's try full resolution
+    # relative_variance = F.avg_pool2d(relative_variance, kernel_size=4, stride=4)
+    relative_variance = relative_variance.mean(dim=1, keepdim=True)
+    return mean, relative_variance
+
 def train(args):
     display = PhotonerDisplay()
 
     # Create datasets
     input_sets = []
-    training_files = sorted(glob.glob(args.training_location))
-    if args.input_easy_location:
-        input_easy_files = sorted(glob.glob(args.input_easy_location))
-        if len(input_easy_files) < len(training_files):
-            raise ValueError("There are fewer input files than training files. Each training file must have a corresponding input file.")
-        input_easy_files = input_easy_files[:len(training_files)]
-        input_sets.append(("Easy", input_easy_files))
-    if args.input_medium_location:
-        input_medium_files = sorted(glob.glob(args.input_medium_location))
-        if len(input_medium_files) < len(training_files):
-            raise ValueError("There are fewer input files than training files. Each training file must have a corresponding input file.")
-        input_medium_files = input_medium_files[:len(training_files)]
-        input_sets.append(("Medium", input_medium_files))
-    input_final_files = sorted(glob.glob(args.input_location))
-    if len(input_final_files) < len(training_files):
-        raise ValueError("There are fewer input files than training files. Each training file must have a corresponding input file.")
-    input_final_files = input_final_files[:len(training_files)]
-    input_sets.append(("Final", input_final_files))
+    reference_files = sorted(glob.glob(args.reference_location))
+    albedo_files = sorted(glob.glob(args.input_albedo))
+    if len(albedo_files) < len(reference_files):
+        raise ValueError("There are fewer albedo files than reference files. Each reference file must have a corresponding albedo file.")
+    albedo_files = albedo_files[:len(reference_files)]
+    transmissibility_files = sorted(glob.glob(args.input_transmissibility))
+    if len(transmissibility_files) < len(reference_files):
+        raise ValueError("There are fewer transmissibility files than reference files. Each reference file must have a corresponding transmissibility file.")
+    transmissibility_files = transmissibility_files[:len(reference_files)]
 
-    # Initialize model and move to device
-    use_sigmoid = use_sigmoid_from_input(input_final_files)
+    if args.input_a_easy_location:
+        input_a_easy_files = sorted(glob.glob(args.input_a_easy_location))
+        input_b_easy_files = sorted(glob.glob(args.input_b_easy_location))
+        if len(input_a_easy_files) < len(reference_files) or len(input_b_easy_files) < len(reference_files):
+            raise ValueError("There are fewer input files than reference files. Each reference file must have a corresponding input file.")
+        input_a_easy_files = input_a_easy_files[:len(reference_files)]
+        input_b_easy_files = input_b_easy_files[:len(reference_files)]
+        input_sets.append(("Easy", input_a_easy_files, input_b_easy_files))
+    if args.input_a_medium_location:
+        input_a_medium_files = sorted(glob.glob(args.input_a_medium_location))
+        input_b_medium_files = sorted(glob.glob(args.input_b_medium_location))
+        if len(input_a_medium_files) < len(reference_files) or len(input_b_medium_files) < len(reference_files):
+            raise ValueError("There are fewer input files than reference files. Each reference file must have a corresponding input file.")
+        input_a_medium_files = input_a_medium_files[:len(reference_files)]
+        input_b_medium_files = input_b_medium_files[:len(reference_files)]
+        input_sets.append(("Medium", input_a_medium_files, input_b_medium_files))
+    input_a_final_files = sorted(glob.glob(args.input_a_location))
+    input_b_final_files = sorted(glob.glob(args.input_b_location))
+    if len(input_a_final_files) < len(reference_files) or len(input_b_final_files) < len(reference_files):
+        raise ValueError("There are fewer input files than reference files. Each reference file must have a corresponding input file.")
+    input_a_final_files = input_a_final_files[:len(reference_files)]
+    input_b_final_files = input_b_final_files[:len(reference_files)]
+    input_sets.append(("Final", input_a_final_files, input_b_final_files))
+
+    # Initialize model
+    use_sigmoid = use_sigmoid_from_input(input_a_final_files)
     model = PhotonerNet(
         upsample_factor=args.upsample, 
         use_sigmoid=use_sigmoid, 
-        use_log_space=True, #train_dataset.exr_source and args.log_space,
+        use_log_space=False, #train_dataset.exr_source and args.log_space,
         normalize_input=g_normalize_input, 
         initial_features=g_initial_features,
-        unet_size=g_unet_size, 
+        unet_size=g_unet_size,
         epsilon=g_epsilon, 
         padding_mode=g_padding_mode).to(device)
-
     
     # Loss functions
     loss_fn = HdrLoss(g_loss_bright_weight, g_loss_gradient_weight, g_loss_l1_weight, g_loss_dark_bias)
@@ -157,35 +192,45 @@ def train(args):
     
     model.train()
 
-    for curriculum_name, input_files in input_sets:
+    for curriculum_name, input_a_files, input_b_files in input_sets:
         # Split into train and test sets
-        split_idx = int(len(training_files) * (1 - args.test_ratio))
-        train_input = input_files[:split_idx]
-        train_target = training_files[:split_idx]
-        test_input = input_files[split_idx:]
-        test_target = training_files[split_idx:]
+        split_idx = int(len(reference_files) * (1 - args.test_ratio))
+        train_a_input = input_a_files[:split_idx]
+        train_b_input = input_b_files[:split_idx]
+        train_albedo_input = albedo_files[:split_idx]
+        train_transmissibility_input = transmissibility_files[:split_idx]
+        train_reference = reference_files[:split_idx]
+        test_a_input = input_a_files[split_idx:]
+        test_b_input = input_b_files[split_idx:]
+        test_albedo_input = albedo_files[split_idx:]
+        test_transmissibility_input = transmissibility_files[split_idx:]
+        test_reference = reference_files[split_idx:]
 
         truth_transform = transforms.Compose([
             # transforms.Resize((8,8))
         ])
         
-        train_dataset = PhotonerDataset(train_input, train_target, 
-                                    args.crop_size, args.upsample, truth_transform)
-        test_dataset = PhotonerDataset(test_input, test_target,
-                                    args.crop_size, args.upsample, truth_transform)
+        train_dataset = PhotonerDataset(train_a_input, train_b_input, train_albedo_input, train_transmissibility_input, train_reference, 
+                                    args.crop_size, args.upsample, None) # truth_transform)
+        test_dataset = PhotonerDataset(test_a_input, test_b_input, test_albedo_input, test_transmissibility_input, test_reference,
+                                    args.crop_size, args.upsample, None) #truth_transform)
         
         train_loader = DataLoader(train_dataset, batch_size=args.batch_size, shuffle=False, num_workers=4)
         test_loader = DataLoader(test_dataset, batch_size=args.batch_size, shuffle=False, num_workers=4)
         
         for epoch in range(args.epochs):
-            for batch_idx, (input_img, target_img) in enumerate(train_loader):
+            for batch_idx, (input_a, input_b, albedo, transmissibility, reference) in enumerate(train_loader):
                 # Clone tensors to make them resizable
                 # TODO: Check if this is necessary
-                input_img = input_img.clone().detach().to(device)
-                target_img = target_img.clone().detach().to(device)
-                
+                input_a = input_a.clone().detach().to(device)
+                input_b = input_b.clone().detach().to(device)
+                albedo = albedo.clone().detach().to(device)
+                transmissibility = transmissibility.clone().detach().to(device)
+                reference = reference.clone().detach().to(device)
+                    
+                # TODO uncertain if it would be best to train with all three color channels, or treat them independently
                 # Select random channel for both input and target (using same index)
-                input_channel, target_channel = select_random_channel(input_img, target_img)
+                # input_channel, target_channel = select_random_channel(input_a, reference)
                 
                 optimizer.zero_grad()
 
