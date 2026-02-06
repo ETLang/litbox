@@ -3,6 +3,7 @@ using System.Collections.Generic;
 using UnityEngine;
 using System.Linq;
 using UnityEngine.UI;
+using System.Text;
 
 
 public delegate void SimulationStepEvent(int frameCount);
@@ -62,7 +63,6 @@ public class Simulation : PhotonerComponent
 
     private SortedDictionary<float, uint> performanceCounter = new SortedDictionary<float, uint>();
 
-    public uint TraversalsPerSecond { get; private set; }
     public long PhotonWritesPerSecond { get; private set; }
 
     int _sceneId;
@@ -70,6 +70,7 @@ public class Simulation : PhotonerComponent
     bool _dirtyFrame;
     RTLightSource[] _allLights;
     RTObject[] _allObjects;
+    Matrix4x4 _presentationToTargetSpace;
     Matrix4x4 _worldToPresentation;
     MeshFilter _meshFilter;
     MeshRenderer _meshRenderer;
@@ -99,6 +100,7 @@ public class Simulation : PhotonerComponent
     public float ConvergenceStartTime { get; private set; }
     public float Convergence => convergenceProgress;
     public float EstimatedConvergenceTime => (Time.time - ConvergenceStartTime) * Convergence / _convergenceThreshold;
+    public float EstimatedRemainingConvergenceTime => EstimatedConvergenceTime - (Time.time - ConvergenceStartTime);
 
     public event SimulationStepEvent OnStep;
     public event SimulationConvergedEvent OnConverged;
@@ -294,6 +296,8 @@ public class Simulation : PhotonerComponent
 
         SimulationOutputHDR = this.CreateRWTextureWithMips(GBuffer.AlbedoAlpha.width, GBuffer.AlbedoAlpha.height, RenderTextureFormat.ARGBFloat);
         VarianceMap = this.CreateRWTexture(GBuffer.AlbedoAlpha.width / 4, GBuffer.AlbedoAlpha.height / 4, RenderTextureFormat.RFloat);
+
+        _presentationToTargetSpace = Matrix4x4.Scale(new Vector3(width, height, 1)) * Matrix4x4.Translate(new Vector3(0.5f, 0.5f, 0));
     }
 
     void OnEnable()
@@ -375,38 +379,15 @@ public class Simulation : PhotonerComponent
 
         if (_realContentCamera == null) { return; }
         if (!GBuffer.IsValid) { return; }
+        if (!_needsToUpdate) { return; }
 
-        var presentationToTargetSpace = Matrix4x4.Scale(new Vector3(width, height, 1)) * Matrix4x4.Translate(new Vector3(0.5f, 0.5f, 0));
-        var worldToTargetSpace = presentationToTargetSpace * _worldToPresentation;
-
-        // PERFORMANCE MEASUREMENT
-        var now = Time.time;
-        while (performanceCounter.Keys.Count != 0 && performanceCounter.Keys.First() < now - 1)
-            performanceCounter.Remove(performanceCounter.Keys.First());
-
-        uint total = 0;
-        foreach (var value in performanceCounter.Values)
-            total += value;
-        uint bouncesThisFrame = 0;
-
-        foreach (var bounces in _allLights.Select(light => light.bounces))
-            bouncesThisFrame += bounces;
-
-        bouncesThisFrame *= (uint)raysPerFrame;
-
-        uint existing = 0;
-        performanceCounter.TryGetValue(now, out existing);
-        performanceCounter[now] = existing + bouncesThisFrame;
-
-        TraversalsPerSecond = total;
-
-        if(!_needsToUpdate) { return; }
+        var worldToTargetSpace = _presentationToTargetSpace * _worldToPresentation;
 
         // CLEAR TARGET
         if (iterationsSinceClear == 0)
         {
             convergenceProgress = -1;
-            ConvergenceStartTime = now;
+            ConvergenceStartTime = Time.time;
 
             TracerTask(t => t?.NewScene());
         }
@@ -465,7 +446,15 @@ public class Simulation : PhotonerComponent
                 PhotonWritesPerSecond = _activeTracer.Sum(t => t.ForwardWritesPerSecond);
 
                 if(_perfDisplay != null) {
-                    _perfDisplay.text = (PhotonWritesPerSecond / 1000000.0f).ToString("0.0") + " MWrites/s";
+                    var sb = new StringBuilder();
+                    sb.AppendLine((PhotonWritesPerSecond / 1000000.0f).ToString("0.0") + " MWrites/s");
+
+                    if(mode == SimulationMode.Reference) {
+                        sb.AppendLine("Variance:   " + convergenceProgress.ToString("0.000000"));
+                        sb.AppendLine("ETA:   " + EstimatedRemainingConvergenceTime.ToString("0.0") + "s");
+                    }
+
+                    _perfDisplay.text = sb.ToString();
                 }
             }
         }

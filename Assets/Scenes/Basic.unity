@@ -1382,7 +1382,7 @@ MonoBehaviour:
   m_EditorClassIdentifier: 
   width: 256
   height: 256
-  strategy: 1
+  strategy: 0
   mode: 0
   rayTracedLayers:
     serializedVersion: 2

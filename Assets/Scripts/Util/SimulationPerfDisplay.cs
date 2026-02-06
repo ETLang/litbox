@@ -7,7 +7,6 @@ using UnityEngine.UIElements;
 public class SimulationPerfDisplay : MonoBehaviour
 {
     public enum PerfDisplayType {
-        TraversalsPerSecond,
         ConvergenceValue,
         ConvergenceTime,
         PhotonWritesPerSecond
@@ -40,10 +39,6 @@ public class SimulationPerfDisplay : MonoBehaviour
         string value = "";
         bool doUpdate = true;
         switch(displayData) {
-        case PerfDisplayType.TraversalsPerSecond:
-            doUpdate = !simulation.hasConverged;
-            value = (simulation.TraversalsPerSecond / 1000000.0f).ToString("0.0") + " MTPS";
-            break;
         case PerfDisplayType.ConvergenceValue:
             value = simulation.Convergence.ToString() + " ξ";
             break;
