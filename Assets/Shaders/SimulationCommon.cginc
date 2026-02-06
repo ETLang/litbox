@@ -1,7 +1,7 @@
 #ifndef _SIMULATION_COMMON_
 #define _SIMULATION_COMMON_
 
-#include "PhotonerCommon.cginc"
+#include "LitboxCommon.cginc"
 #include "Random.cginc"
 
 DECLARE_LUT(float2, g_mieScatteringLUT)

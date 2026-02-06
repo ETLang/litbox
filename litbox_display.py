@@ -3,7 +3,7 @@ from matplotlib import pyplot as plt
 import numpy as np
 
 
-class PhotonerDisplay:
+class LitboxDenoiserDisplay:
     def __init__(self):
         plt.ion()  # Turn on interactive mode
         fig, axes = plt.subplots(1, 2, figsize=(12, 4))

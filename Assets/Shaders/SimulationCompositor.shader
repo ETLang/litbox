@@ -1,4 +1,4 @@
-Shader "Photoner/SimulationCompositor"
+Shader "Litbox/SimulationCompositor"
 {
     Properties
     {

@@ -24,7 +24,7 @@ class ResidualBlock(nn.Module):
         out = self.final(out)
         return out
 
-class PhotonerNet(nn.Module):
+class LitboxDenoiserNet(nn.Module):
     def __init__(self,
                  upsample_factor, 
                  use_sigmoid=False, 
@@ -34,7 +34,7 @@ class PhotonerNet(nn.Module):
                  unet_size=3, 
                  epsilon=1e-6,
                  padding_mode='reflect'):
-        super(PhotonerNet, self).__init__()        
+        super(LitboxDenoiserNet, self).__init__()        
         self.normalize_input = normalize_input
         self.unet_size = unet_size
         self.previous_range = -1
@@ -233,7 +233,7 @@ class PhotonerNet(nn.Module):
         # 3. Upsample back to desired output resolution (2x/4x) using PixelShuffle.
         # 4. Final reconstruction layer.
 
-        # Simplified PhotonerNet for 2x/4x SR and Inpainting:
+        # Simplified LitboxDenoiserNet for 2x/4x SR and Inpainting:
         # (This is a common pattern for fast SR models like FSRCNN or ESPCN-like)
 
         # Remove explicit pooling in the encoder if we want direct upsampling from LR.

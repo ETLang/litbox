@@ -1,7 +1,7 @@
 #ifndef _LEGACY_INTEGRATORS_
 #define _LEGACY_INTEGRATORS_
 
-#include "../Shaders/PhotonerCommon.cginc"
+#include "../Shaders/LitboxCommon.cginc"
 #include "../Shaders/Random.cginc"
 #include "../Shaders/SimulationCommon.cginc"
 

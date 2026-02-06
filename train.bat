@@ -1,11 +1,13 @@
-SET CHECKPOINT_TESTS_EXR="checkpoint_tests/exr_easy/*"
-SET CHECKPOINT_TESTS_PNG="checkpoint_tests/png_easy/*"
+SET CHECKPOINT_TESTS="checkpoint_tests/exr_easy/*"
 
-python train_photoner_3.py ^
-    --input-location "training_data/2025-01-20-23-17-48/input_0_*.exr" ^
-    --training-location "training_data/2025-01-20-23-17-48/output_*.exr" ^
+python train.py ^
+    --input-a-location "training_data/2026-02-04-23-50-02/input_0_*.exr" ^
+    --input-b-location "training_data/2026-02-04-23-50-02/input_1_*.exr" ^
+    --input-albedo-location "training_data/2026-02-04-23-50-02/albedo_*.exr" ^
+    --input-transmissibility-location "training_data/2026-02-04-23-50-02/transmissibility_*.exr" ^
+    --reference-location "training_data/2026-02-04-23-50-02/output_*.exr" ^
     --model-path "training_output/model.pth" ^
     --checkpoint-folder "training_output/checkpoints" ^
-    --checkpoint-tests %CHECKPOINT_TESTS_EXR% ^
-    --onnx-export "training_output/model.onnx" ^
-    --log-space
+    --checkpoint-tests %CHECKPOINT_TESTS% ^
+    --onnx-export "training_output/model.onnx"
+  '  --log-space

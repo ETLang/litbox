@@ -1,6 +1,6 @@
 using UnityEngine;
 
-public class ProceduralCloud : PhotonerComponent
+public class ProceduralCloud : LitboxComponent
 {
     [SerializeField] public Texture2D cloudTexture;
     [SerializeField] public float cloudScale = 1f;

@@ -24,7 +24,7 @@ public class ForceHDR_Uchimura : MonoBehaviour
         _hdrTarget = new RenderTexture(_cam.pixelWidth, _cam.pixelHeight, 24, RenderTextureFormat.ARGBFloat);
         _hdrTarget.Create();
 
-        _toneMapper = new Material(Shader.Find("Hidden/PhotonerToneMapping_Uchimura"));
+        _toneMapper = new Material(Shader.Find("Hidden/LitboxToneMapping_Uchimura"));
     }
 
     void OnPreRender()

@@ -4,7 +4,7 @@ using Unity.IO.LowLevel.Unsafe;
 using UnityEngine;
 using UnityEngine.Rendering;
 
-public struct PhotonerGBuffer
+public struct LitboxGBuffer
 {
     public RenderTexture AlbedoAlpha;
     public RenderTexture Transmissibility;
@@ -23,7 +23,7 @@ public class SimulationCamera : MonoBehaviour {
 
     private ComputeShader _computeShader;
 
-    public PhotonerGBuffer GBuffer { get; set; }
+    public LitboxGBuffer GBuffer { get; set; }
 
     public float VarianceEpsilon {
         get => _varianceEpsilon;

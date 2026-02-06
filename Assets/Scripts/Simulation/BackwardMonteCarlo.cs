@@ -3,7 +3,7 @@ using UnityEngine;
 
 public class BackwardMonteCarlo : Disposable
 {
-    public PhotonerGBuffer GBuffer { get; set; }
+    public LitboxGBuffer GBuffer { get; set; }
 
     #region InputImage
     public RenderTexture InputImage

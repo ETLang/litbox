@@ -1,4 +1,4 @@
-Shader "Hidden/PhotonerToneMapping_Uchimura"
+Shader "Hidden/LitboxToneMapping_Uchimura"
 {
     Properties
     {

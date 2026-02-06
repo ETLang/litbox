@@ -14,7 +14,7 @@ public interface IProceduralGenerator
     event Action<IProceduralGenerator> Invalidated;
 }
 
-public class GeneratorBase<T> : PhotonerComponent, IProceduralGenerator where T : Object
+public class GeneratorBase<T> : LitboxComponent, IProceduralGenerator where T : Object
 {
     public GeneratorBase() : base(false) { }
 

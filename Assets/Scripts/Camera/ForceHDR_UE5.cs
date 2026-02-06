@@ -18,7 +18,7 @@ public class ForceHDR_UE5 : MonoBehaviour
         _hdrTarget = new RenderTexture(_cam.pixelWidth, _cam.pixelHeight, 24, RenderTextureFormat.ARGBFloat);
         _hdrTarget.Create();
 
-        _toneMapper = new Material(Shader.Find("Hidden/PhotonerToneMapping_UE5"));
+        _toneMapper = new Material(Shader.Find("Hidden/LitboxToneMapping_UE5"));
     }
 
     void OnPreRender()

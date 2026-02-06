@@ -1,4 +1,4 @@
-Shader "Hidden/PhotonerToneMapping_UE5"
+Shader "Hidden/LitboxToneMapping_UE5"
 {
     Properties
     {

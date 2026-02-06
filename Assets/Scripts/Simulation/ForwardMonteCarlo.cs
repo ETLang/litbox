@@ -6,7 +6,7 @@ using UnityEngine;
 public class ForwardMonteCarlo : Disposable
 {
     #region GBuffer
-    public PhotonerGBuffer GBuffer
+    public LitboxGBuffer GBuffer
     {
         get => _gBuffer;
         set
@@ -28,7 +28,7 @@ public class ForwardMonteCarlo : Disposable
             }
         }
     }
-    private PhotonerGBuffer _gBuffer = new PhotonerGBuffer();
+    private LitboxGBuffer _gBuffer = new LitboxGBuffer();
     #endregion
 
     public RenderTexture RawPhotonBuffer => _rawPhotonBuffer;

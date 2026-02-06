@@ -9,7 +9,7 @@ public class LightTransportTracer : Disposable, ITracer, ITracerDebug
     public RenderTexture TracerOutput => _forwardIntegrator.OutputImageHDR;
     RenderTexture ITracer.EarlyRadianceForImportanceSampling => null;
 
-    public PhotonerGBuffer GBuffer
+    public LitboxGBuffer GBuffer
     {
         get => _forwardIntegrator.GBuffer;
         set => _forwardIntegrator.GBuffer = value;
