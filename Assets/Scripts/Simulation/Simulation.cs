@@ -2,6 +2,8 @@ using System;
 using System.Collections.Generic;
 using UnityEngine;
 using System.Linq;
+using UnityEngine.UI;
+using System.Text;
 
 
 public delegate void SimulationStepEvent(int frameCount);
@@ -31,45 +33,44 @@ public class Simulation : PhotonerComponent
         Hybrid
     }
 
-    [SerializeField] private LayerMask rayTracedLayers;
+    const bool bilinearPhotonWrites = true;
 
-    [SerializeField] private int frameLimit = -1;
     [SerializeField] public int width = 256;
     [SerializeField] public int height = 256;
-
-    [SerializeField] public SimulationMode priority = SimulationMode.Realtime;
-    [SerializeField] private int raysPerFrame = 64000;
+    [SerializeField] public Strategy strategy = Strategy.LightTransport;
+    [SerializeField] public SimulationMode mode = SimulationMode.Realtime;
+    [SerializeField] private LayerMask rayTracedLayers;
+    [SerializeField] private int raysPerFrame = 65536;
     [SerializeField] private int photonBounces = -1;
     [SerializeField, Min(0.01f)] private float integrationInterval = 0.1f;
     [SerializeField] private float transmissibilityVariationEpsilon = 1e-3f;
 
-    [Header("Convergence Information")]
+    [Header("Convergence Info")]
     [SerializeField, Min(1)] int _measurementInterval = 100;
+    [SerializeField] private int frameLimit = -1;
     [SerializeField] private float _convergenceThreshold = -1;
     [SerializeField] private int iterationsSinceClear = 0;
     [SerializeField, ReadOnly] private float convergenceProgress = 100000;
+    [SerializeField, ReadOnly] public bool hasConverged = false;
 
-    [Header("Archaic Properties")]
-    [SerializeField] private Strategy strategy = Strategy.LightTransport;
-    [SerializeField] private bool bilinearPhotonWrites = true;
+    [Header("Performance Info")]
+    [SerializeField, Min(0)] int _perfUpdateInterval = 0;
+    [SerializeField] Text _perfDisplay;
 
     private static int _MainTexID = Shader.PropertyToID("_MainTex");
     private Material _compositorMat;
     private SimulationCamera _realContentCamera;
-    private bool _freshContentCamera = true;
-
-    [SerializeField, ReadOnly] public bool hasConverged = false;
 
     private SortedDictionary<float, uint> performanceCounter = new SortedDictionary<float, uint>();
 
-    public uint TraversalsPerSecond { get; private set; }
-    public uint PhotonWritesPerSecond { get; private set; }
+    public long PhotonWritesPerSecond { get; private set; }
 
     int _sceneId;
     bool _validationFailed = false;
     bool _dirtyFrame;
     RTLightSource[] _allLights;
     RTObject[] _allObjects;
+    Matrix4x4 _presentationToTargetSpace;
     Matrix4x4 _worldToPresentation;
     MeshFilter _meshFilter;
     MeshRenderer _meshRenderer;
@@ -99,6 +100,7 @@ public class Simulation : PhotonerComponent
     public float ConvergenceStartTime { get; private set; }
     public float Convergence => convergenceProgress;
     public float EstimatedConvergenceTime => (Time.time - ConvergenceStartTime) * Convergence / _convergenceThreshold;
+    public float EstimatedRemainingConvergenceTime => EstimatedConvergenceTime - (Time.time - ConvergenceStartTime);
 
     public event SimulationStepEvent OnStep;
     public event SimulationConvergedEvent OnConverged;
@@ -170,6 +172,7 @@ public class Simulation : PhotonerComponent
             _updateTracerProperties = () => {
                 for(int i = 0;i < 2;i++)
                 {
+                    lightTracers[i].SkipAccumulation = (mode == SimulationMode.Realtime);
                     lightTracers[i].DisableBilinearWrites = !bilinearPhotonWrites;
                     lightTracers[i].IntegrationInterval = integrationInterval;
                     lightTracers[i].OverrideBounceCount = photonBounces == -1 ? null : (uint)photonBounces;
@@ -188,6 +191,7 @@ public class Simulation : PhotonerComponent
             _updateTracerProperties = () =>
             {
                 for(int i = 0;i < 2;i++) {
+                    hybridTracers[i].SkipAccumulation = (mode == SimulationMode.Realtime);
                     hybridTracers[i].DisableBilinearWrites = !bilinearPhotonWrites;
                     hybridTracers[i].ForwardIntegrationInterval = integrationInterval;
                     hybridTracers[i].BackwardIntegrationInterval = integrationInterval;
@@ -263,7 +267,7 @@ public class Simulation : PhotonerComponent
         DisposeOnDisable(_importanceMap);
 
         _realContentCamera = new GameObject("__Simulation_Camera", typeof(SimulationCamera)).GetComponent<SimulationCamera>();
-        _realContentCamera.Initialize(transform, rayTracedLayers.value, priority);
+        _realContentCamera.Initialize(transform, rayTracedLayers.value, mode);
 
         CreateTargetBuffers();
     }
@@ -292,6 +296,8 @@ public class Simulation : PhotonerComponent
 
         SimulationOutputHDR = this.CreateRWTextureWithMips(GBuffer.AlbedoAlpha.width, GBuffer.AlbedoAlpha.height, RenderTextureFormat.ARGBFloat);
         VarianceMap = this.CreateRWTexture(GBuffer.AlbedoAlpha.width / 4, GBuffer.AlbedoAlpha.height / 4, RenderTextureFormat.RFloat);
+
+        _presentationToTargetSpace = Matrix4x4.Scale(new Vector3(width, height, 1)) * Matrix4x4.Translate(new Vector3(0.5f, 0.5f, 0));
     }
 
     void OnEnable()
@@ -331,7 +337,7 @@ public class Simulation : PhotonerComponent
         }
 
         bool dirtyGBuffer = false;
-        if (_dirtyFrame || _validationFailed)
+        if (mode == SimulationMode.Realtime || _dirtyFrame || _validationFailed)
         {
             hasConverged = false;
             _dirtyFrame = false;
@@ -349,7 +355,7 @@ public class Simulation : PhotonerComponent
         }
         else if (hasConverged) { _needsToUpdate = false; }
 
-        if(priority == SimulationMode.Realtime) {
+        if(mode == SimulationMode.Realtime) {
             _realContentCamera.gameObject.SetActive(dirtyGBuffer);
         } else if(_needsToUpdate) {
             _realContentCamera.Render();
@@ -360,7 +366,7 @@ public class Simulation : PhotonerComponent
 
     bool ShouldUpdateImportanceMap()
     {
-        if(iterationsSinceClear == 0) { return priority != SimulationMode.Realtime; }
+        if(iterationsSinceClear == 0) { return mode != SimulationMode.Realtime; }
         else if(iterationsSinceClear < 100) { return iterationsSinceClear % 10 == 0; }
         else { return iterationsSinceClear % 100 == 0; }
     }
@@ -373,38 +379,15 @@ public class Simulation : PhotonerComponent
 
         if (_realContentCamera == null) { return; }
         if (!GBuffer.IsValid) { return; }
+        if (!_needsToUpdate) { return; }
 
-        var presentationToTargetSpace = Matrix4x4.Scale(new Vector3(width, height, 1)) * Matrix4x4.Translate(new Vector3(0.5f, 0.5f, 0));
-        var worldToTargetSpace = presentationToTargetSpace * _worldToPresentation;
-
-        // PERFORMANCE MEASUREMENT
-        var now = Time.time;
-        while (performanceCounter.Keys.Count != 0 && performanceCounter.Keys.First() < now - 1)
-            performanceCounter.Remove(performanceCounter.Keys.First());
-
-        uint total = 0;
-        foreach (var value in performanceCounter.Values)
-            total += value;
-        uint bouncesThisFrame = 0;
-
-        foreach (var bounces in _allLights.Select(light => light.bounces))
-            bouncesThisFrame += bounces;
-
-        bouncesThisFrame *= (uint)raysPerFrame;
-
-        uint existing = 0;
-        performanceCounter.TryGetValue(now, out existing);
-        performanceCounter[now] = existing + bouncesThisFrame;
-
-        TraversalsPerSecond = total;
-
-        if(!_needsToUpdate) { return; }
+        var worldToTargetSpace = _presentationToTargetSpace * _worldToPresentation;
 
         // CLEAR TARGET
         if (iterationsSinceClear == 0)
         {
             convergenceProgress = -1;
-            ConvergenceStartTime = now;
+            ConvergenceStartTime = Time.time;
 
             TracerTask(t => t?.NewScene());
         }
@@ -451,6 +434,29 @@ public class Simulation : PhotonerComponent
             iterationsSinceClear == 1 && _convergenceThreshold > 0)
         {
            MeasureConvergence(iterationsSinceClear == 1);
+        }
+
+        if(_perfUpdateInterval != 0)
+        {
+            if(Time.frameCount % _perfUpdateInterval == 0) {
+                TracerTask( t => t.UpdatePerformanceMetrics());
+            }
+
+            if(Time.frameCount % _perfUpdateInterval == 1) {
+                PhotonWritesPerSecond = _activeTracer.Sum(t => t.ForwardWritesPerSecond);
+
+                if(_perfDisplay != null) {
+                    var sb = new StringBuilder();
+                    sb.AppendLine((PhotonWritesPerSecond / 1000000.0f).ToString("0.0") + " MWrites/s");
+
+                    if(mode == SimulationMode.Reference) {
+                        sb.AppendLine("Variance:   " + convergenceProgress.ToString("0.000000"));
+                        sb.AppendLine("ETA:   " + EstimatedRemainingConvergenceTime.ToString("0.0") + "s");
+                    }
+
+                    _perfDisplay.text = sb.ToString();
+                }
+            }
         }
 
         if (fireConvergedEvent)

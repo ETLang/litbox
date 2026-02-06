@@ -4,6 +4,15 @@ using UnityEngine;
 
 public static class ComputeShaderExtensions
 {
+    public static int3 GetThreadGroupCount(this ComputeShader shader, int kernelID, int threadsX, int threadsY, int threadsZ)
+    {
+        shader.GetKernelThreadGroupSizes(kernelID, out var groupSizeX, out var groupSizeY, out var groupSizeZ);
+        return new int3(
+            (int)((threadsX - 1) / groupSizeX + 1),
+            (int)((threadsY - 1) / groupSizeY + 1),
+            (int)((threadsZ - 1) / groupSizeZ + 1));
+    }
+
     public static void RunKernel(this ComputeShader shader, string kernel, int n, params (string,object)[] args) {
         RunKernel(shader, kernel, n, 1, args);
     }
@@ -59,17 +68,13 @@ public static class ComputeShaderExtensions
             }
         }
 
-        shader.GetKernelThreadGroupSizes(kernelID, out var sizeX, out var sizeY, out var _);
-        shader.Dispatch(kernelID, (int)((w - 1) / sizeX + 1), (int)((h - 1) / sizeY + 1), 1);
+        shader.DispatchAutoGroup(kernelID, w, h, 1);
     }
 
     public static void DispatchAutoGroup(this ComputeShader shader, int kernelID, int threadsX, int threadsY, int threadsZ)
     {
-        shader.GetKernelThreadGroupSizes(kernelID, out var groupSizeX, out var groupSizeY, out var groupSizeZ);
-        shader.Dispatch(kernelID, 
-            (int)((threadsX - 1) / groupSizeX + 1),
-            (int)((threadsY - 1) / groupSizeY + 1),
-            (int)((threadsZ - 1) / groupSizeZ + 1));
+        var groupCount = shader.GetThreadGroupCount(kernelID, threadsX, threadsY, threadsZ);
+        shader.Dispatch(kernelID, groupCount.x, groupCount.y, groupCount.z); 
     }
 
     public static void SetShaderFlag(this ComputeShader shader, string keyword, bool value) {

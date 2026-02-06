@@ -1,9 +1,11 @@
 using UnityEngine;
 
-public class HybridTracer : Disposable, ITracer
+public class HybridTracer : Disposable, ITracer, ITracerDebug
 {
     private ForwardMonteCarlo _forwardIntegrator;
     private BackwardMonteCarlo _backwardIntegrator;
+    long _lastForwardWriteCount = 0;
+    float _lastPerformanceUpdateTime = 0;
 
     public PhotonerGBuffer GBuffer
     {
@@ -55,9 +57,21 @@ public class HybridTracer : Disposable, ITracer
         set => _forwardIntegrator.RaysToEmit = value;
     }
 
+    public bool SkipAccumulation
+    {
+        get => _forwardIntegrator.SkipAccumulation;
+        set => _forwardIntegrator.SkipAccumulation = value;
+    }
+
+    public long ForwardWritesPerSecond { get; private set; }
+    public long BackwardReadsPerSecond => 0;
+
+    RenderTexture ITracerDebug.ForwardRawPhotons => _forwardIntegrator.RawPhotonBuffer;
+RenderTexture ITracerDebug.ForwardAccumulation => _forwardIntegrator.AccumulationImage;
+
     public HybridTracer()
     {
-        _forwardIntegrator = new ForwardMonteCarlo();
+        _forwardIntegrator = new ForwardMonteCarlo() { FinalizeOutscatterDensity = false };
         AutoDispose(_forwardIntegrator);
         _backwardIntegrator = new BackwardMonteCarlo();
         AutoDispose(_backwardIntegrator);
@@ -84,5 +98,21 @@ public class HybridTracer : Disposable, ITracer
         _backwardIntegrator.ImportanceMap = importanceMap;
         _backwardIntegrator.ImportanceSamplingTarget = new Vector2(0.5f, 0.5f);
         _backwardIntegrator.Integrate();
+    }
+
+    public async void UpdatePerformanceMetrics()
+    {
+        var currentWriteCount = await _forwardIntegrator.GetCurrentWriteCountAsync();
+        var currentTime = Time.time;
+
+        if(_lastPerformanceUpdateTime > 0)
+        {
+            var deltaWrites = currentWriteCount - _lastForwardWriteCount;
+            var deltaTime = currentTime - _lastPerformanceUpdateTime;
+            ForwardWritesPerSecond = (long)(deltaWrites / deltaTime);
+        }
+
+        _lastForwardWriteCount = currentWriteCount;
+        _lastPerformanceUpdateTime = currentTime;
     }
 }

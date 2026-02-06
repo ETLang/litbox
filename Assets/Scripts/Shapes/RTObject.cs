@@ -28,6 +28,11 @@ public class RTObject : PhotonerComponent
     private static int _mainTexId = Shader.PropertyToID("_MainTex");
     private static int _heightScaleId = Shader.PropertyToID("_heightScale");
 
+    public void Invalidate()
+    {
+        Changed = true;
+    }
+
     protected virtual void Awake()
     {
     }

@@ -333,7 +333,7 @@ public class TrainingManager : DisposalHelperComponent {
         output.ambientLightColor = _rand.NextLightColor();
         output.ambientLightIntensity = _rand.NextRange(0, 0.5f, -0.5f);
         output.backgroundColor = Color.white; // _rand.NextLightColor();
-        output.backgroundDensity = _rand.NextRange(-4, -2, -0.4f);
+        output.backgroundDensity = _rand.NextRange(-5, -2);
         output.lights = new JsonLightData[_rand.Next(3) + 1];
 
         for (int i = 0; i < output.lights.Length; i++) {
@@ -347,7 +347,7 @@ public class TrainingManager : DisposalHelperComponent {
             });
 
             light.color = _rand.NextLightColor();
-            light.intensity = _rand.NextRange(0.01f, 10);
+            light.intensity = _rand.NextRange(0.01f, 3, -0.3f);
 
             switch (light.type) {
                 case "Directional":
@@ -368,7 +368,7 @@ public class TrainingManager : DisposalHelperComponent {
                         baseAngle *= -1;
                     baseAngle += 270;
                     light.angle = baseAngle + _rand.NextRange(-80, 80);
-                    light.scale = new Vector2(_rand.NextRange(0.03f, 0.5f, 0.3f), _rand.NextRange(0.05f, 0.5f));
+                    light.scale = new Vector2(_rand.NextRange(0.03f, 0.5f, 0.3f), light.scale.y);
                     break;
                 case "Laser":
                     light.position = new Vector2(_rand.NextRange(-3, 3), _rand.NextRange(-3, 3));

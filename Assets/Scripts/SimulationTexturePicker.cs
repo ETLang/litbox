@@ -10,6 +10,7 @@ public class SimulationTexturePicker : PhotonerComponent {
         HDR,
         Variance,
         Importance,
+        ForwardAccumulation,
         AI_ToneMapped,
         AI_HDR,
         Albedo,
@@ -17,6 +18,8 @@ public class SimulationTexturePicker : PhotonerComponent {
         NormalRoughness,
         QuadTree,
         AnalysisA,
+        AnalysisB,
+        AnalysisC,
     }
 
     [SerializeField] public Simulation simulation;
@@ -24,15 +27,20 @@ public class SimulationTexturePicker : PhotonerComponent {
     [SerializeField] public TextureType type = TextureType.HDR;
 
     int _analysisAKernelId;
+    int _analysisBKernelId;
+    int _analysisCKernelId;
 
     ComputeShader _analysisShader;
-    RenderTexture _analysisTarget;
-    int _selectedAnalysisKernel = -1;
+    RenderTexture _analysisTargetA;
+    RenderTexture _analysisTargetB;
+    RenderTexture _analysisTargetC;
 
     void Awake()
     {
         _analysisShader = (ComputeShader)Resources.Load("Analysis");
         _analysisAKernelId = _analysisShader.FindKernel("AnalysisA");
+        _analysisBKernelId = _analysisShader.FindKernel("AnalysisB");
+        _analysisCKernelId = _analysisShader.FindKernel("AnalysisC");
     }
 
     void OnEnable()
@@ -88,14 +96,21 @@ public class SimulationTexturePicker : PhotonerComponent {
         case TextureType.Importance:
             value = simulation?.ImportanceMap;
             break;
+        case TextureType.ForwardAccumulation:
+            value = simulation?.TracerA is ITracerDebug debugA ? debugA.ForwardAccumulation : null;
+            break;
         case TextureType.AnalysisA:
             ConfigureAnalysisA();
-            value = _analysisTarget;
+            value = _analysisTargetA;
             break;
-        }
-
-        if(value != _analysisTarget) {
-            _selectedAnalysisKernel = -1;
+        case TextureType.AnalysisB:
+            ConfigureAnalysisB();
+            value = _analysisTargetB;
+            break;
+        case TextureType.AnalysisC:
+            ConfigureAnalysisC();
+            value = _analysisTargetC;
+            break;
         }
 
         if(value != null) {
@@ -105,18 +120,48 @@ public class SimulationTexturePicker : PhotonerComponent {
 
     void ConfigureAnalysisA()
     {
-        if(_selectedAnalysisKernel == _analysisAKernelId) { return; }
+        if(_analysisTargetA != null) { return; }
+        _analysisTargetA = this.CreateRWTexture(simulation.width, simulation.height, RenderTextureFormat.RFloat);
+    }
 
-        _selectedAnalysisKernel = _analysisAKernelId;
-        _analysisTarget = this.CreateRWTexture(simulation.width, simulation.height, RenderTextureFormat.ARGBFloat);
+    void ConfigureAnalysisB()
+    {
+        if(_analysisTargetB != null) { return; }
+        _analysisTargetB = this.CreateRWTexture(simulation.width, simulation.height, RenderTextureFormat.RFloat);
+    }
+
+    void ConfigureAnalysisC()
+    {
+        if(_analysisTargetC != null) { return; }
+        _analysisTargetC = this.CreateRWTexture(simulation.width, simulation.height, RenderTextureFormat.RFloat);
     }
 
     private void OnSimulationUpdated(int frameCount)
     {
-        if(_selectedAnalysisKernel == -1) { return; }
+        switch(type) {
+        case TextureType.AnalysisA:
+            // Compute full resolution relative variance
+            RunAnalysis(_analysisAKernelId, _analysisTargetA);
+            break;
+        case TextureType.AnalysisB:
+            // Perform median filter on AnalysisA to produce AnalysisB
+            RunAnalysis(_analysisAKernelId, _analysisTargetA);
+            RunAnalysis(_analysisBKernelId, _analysisTargetB, _analysisTargetA);
+            break;
+        case TextureType.AnalysisC:
+            // Perform 5x5 adaptive filter on AnalysisB to produce AnalysisC
+            RunAnalysis(_analysisAKernelId, _analysisTargetA);
+            RunAnalysis(_analysisBKernelId, _analysisTargetB, _analysisTargetA);
+            RunAnalysis(_analysisCKernelId, _analysisTargetC, _analysisTargetB);
+            break;
+        }
+    }
 
-        _analysisShader.RunKernel(_selectedAnalysisKernel, _analysisTarget.width, _analysisTarget.height,
-            ("_out_analysis", _analysisTarget),
+    private void RunAnalysis(int kernel, RenderTexture target, RenderTexture previous = null)
+    {
+        if(kernel == -1) { return; }
+        _analysisShader.RunKernel(kernel, target.width, target.height,
+            ("_out_analysis", target),
             ("_in_albedo", simulation.GBuffer.AlbedoAlpha),
             ("_in_transmissibility", simulation.GBuffer.Transmissibility),
             ("_in_normal_roughness", simulation.GBuffer.NormalRoughness),
@@ -128,7 +173,8 @@ public class SimulationTexturePicker : PhotonerComponent {
             ("_in_importance", simulation.ImportanceMap),
             ("_in_variance", simulation.VarianceMap),
             ("_brightness_threshold", brightnessThreshold),
-            ("_variance_threshold", varianceThreshold)
+            ("_variance_threshold", varianceThreshold),
+            ("_in_previous_analysis", previous)
         );
     }
 }

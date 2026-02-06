@@ -3,6 +3,8 @@
 #include "../Shaders/SimulationCommon.cginc"
 
 #pragma multi_compile __ BILINEAR_PHOTON_DISTRIBUTION
+#pragma multi_compile __ FINALIZE_OUTSCATTER_DENSITY
+#pragma multi_compile __ SKIP_ACCUMULATION
 
 #pragma kernel Simulate_DefaultLight
 #pragma kernel Simulate_PointLight
@@ -13,13 +15,17 @@
 #pragma kernel Simulate_DirectionalLight
 #pragma kernel ConvertToHDR
 
-#line 17
+#line 18
 
 RWStructuredBuffer<uint4> g_rand;
+RWStructuredBuffer<uint> g_write_counter;
+RWStructuredBuffer<uint> g_needs_accumulation;
 RWTexture2D<uint> g_output_raw;
 
 uint g_bounces;
+uint g_threadgroup_count;
 float g_integration_interval;
+float g_integration_interval_squared;
 
 // Light Emission Data
 Texture2D<float4> g_lightFieldTexture;
@@ -32,57 +38,71 @@ float2 g_directionalLightDirection;
 
 // HDR Conversion
 float g_hdr_scale;
+float g_batch_count_inv;
+RWTexture2D<float4> g_output_hdr;
+RWTexture2D<float4> g_accumulated_output_hdr;
+
+// Write Counter
+groupshared uint shared_write_counter;
+groupshared int shared_live_threads;
+groupshared bool shared_needs_accumulation;
+
+void ClearPhoton_Indexed(int2 pixel) {
+    pixel.x *= 3;
+    g_output_raw[pixel] = 0;
+    pixel.x++;
+    g_output_raw[pixel] = 0;
+    pixel.x++;
+    g_output_raw[pixel] = 0;
+}
 
 uint3 ReadPhoton_Indexed(uint2 pixel) {
-    uint3 output;
     pixel.x *= 3;
-    output.r = g_output_raw[pixel];
-    pixel.x++;
-    output.g = g_output_raw[pixel];
-    pixel.x++;
-    output.b = g_output_raw[pixel];
-    return output;
+    return uint3(
+        g_output_raw[pixel],
+        g_output_raw[pixel + 1],
+        g_output_raw[pixel + 2]
+    );
 }
 
-void WritePhoton_Indexed(int2 pixel, uint3 energy, float density, bool suppressPhoton=false) {
+void WritePhoton_Indexed(int2 pixel, float3 energy, bool suppressPhoton=false) {
     const uint EnergyMax = (1 << 31);
 
-    // if(!suppressPhoton) {
-    //     if(g_photon_density_raw[pixel] < EnergyMax)
-    //         InterlockedAdd(g_photon_density_raw[pixel], density * g_density_granularity);
-    // }
-
-    energy *= density;
+    if(!suppressPhoton) {
+        InterlockedAdd(shared_write_counter, 1);
+    }
 
     pixel.x *= 3;
-    if(g_output_raw[pixel] < EnergyMax)
-        InterlockedAdd(g_output_raw[pixel], energy.r);
-    pixel.x++;
-    if(g_output_raw[pixel] < EnergyMax)
-        InterlockedAdd(g_output_raw[pixel], energy.g);
-    pixel.x++;
-    if(g_output_raw[pixel] < EnergyMax)
-        InterlockedAdd(g_output_raw[pixel], energy.b);
+    uint3 rgb;
+    InterlockedAdd(g_output_raw[pixel], energy.r, rgb.r);
+    InterlockedAdd(g_output_raw[pixel + 1], energy.g, rgb.g);
+    InterlockedAdd(g_output_raw[pixel + 2], energy.b, rgb.b);
+    
+#if !SKIP_ACCUMULATION
+    if(any(rgb > EnergyMax)) {
+        shared_needs_accumulation = true;
+    }
+#endif
 }
 
-void WritePhoton_Bilinear(float2 location, uint3 energy, float density, bool suppressPhoton=false) {
+void WritePhoton_Bilinear(float2 location, float3 energy, bool suppressPhoton=false) {
     if(any(location < 0)) return;
 
     float2 pixel = location - 0.5f;
     int2 pixelFloor = (int2)floor(pixel);
     float2 pixelFrac = pixel - pixelFloor;
 
-    WritePhoton_Indexed(pixelFloor, energy, density * (1 - pixelFrac.x) * (1 - pixelFrac.y), suppressPhoton);
-    WritePhoton_Indexed(pixelFloor + int2(1, 0), energy, density * pixelFrac.x * (1 - pixelFrac.y), true /*suppressPhoton*/);
-    WritePhoton_Indexed(pixelFloor + int2(0, 1), energy, density * (1 - pixelFrac.x) * pixelFrac.y, true /*suppressPhoton*/);
-    WritePhoton_Indexed(pixelFloor + int2(1, 1), energy, density * pixelFrac.x * pixelFrac.y, true /*suppressPhoton*/);
+    WritePhoton_Indexed(pixelFloor, energy * (1 - pixelFrac.x) * (1 - pixelFrac.y), suppressPhoton);
+    WritePhoton_Indexed(pixelFloor + int2(1, 0), energy * pixelFrac.x * (1 - pixelFrac.y), true /*suppressPhoton*/);
+    WritePhoton_Indexed(pixelFloor + int2(0, 1), energy * (1 - pixelFrac.x) * pixelFrac.y, true /*suppressPhoton*/);
+    WritePhoton_Indexed(pixelFloor + int2(1, 1), energy * pixelFrac.x * pixelFrac.y, true /*suppressPhoton*/);
 }
 
-void WritePhoton(float2 location, uint3 energy, float density, bool suppressPhoton=false) {
+void WritePhoton(float2 location, float3 energy, bool suppressPhoton=false) {
 #if BILINEAR_PHOTON_DISTRIBUTION
-    WritePhoton_Bilinear(location, energy, density, suppressPhoton);
+    WritePhoton_Bilinear(location, energy, suppressPhoton);
 #else
-    WritePhoton_Indexed(location, energy, density, suppressPhoton);
+    WritePhoton_Indexed(location, energy, suppressPhoton);
 #endif
 }
 
@@ -100,15 +120,13 @@ struct ForwardMonteCarlo : BaseContext, IMonteCarloMethod
     float tested_transmissibility;
     float tested_u;
 
-    void WriteSample(inout Ray photon, float u, int lod)
+    void WriteSample(float3 energy, float2 location, float2 uv)
     {
-        float2 pSample = photon.Origin + photon.Direction * u;
-        float2 uv = pSample / targetSize;
         float4 normal_alignment = g_normalAlignment.SampleLevel(samplerg_normalAlignment, uv, 0);
-
         float3 albedo = g_albedo.SampleLevel(sampler_point_clamp, uv, 0).rgb;
-        float outScatterDensity = g_integration_interval * transmissibility * (1 - pow(tested_transmissibility, 1.0/(1 << lod)));
-        WritePhoton(pSample, photon.Energy * albedo, outScatterDensity, false);//bounce == 0);
+
+        float outScatterDensity = g_integration_interval_squared * transmissibility;
+        WritePhoton(location, energy * outScatterDensity, false);
     }
 
     void Init(uint4 seed)
@@ -153,7 +171,10 @@ struct ForwardMonteCarlo : BaseContext, IMonteCarloMethod
         while(searchingPhase && tested_u > uSampleTarget) {
             currentSample += 1;
             uSampleRandomOffset = rand.Next();
-            WriteSample(ctx.photon, uSampleTarget, ctx.lod);
+
+            // note: ctx.testUV is a slightly different location than uSampleTarget points. Doesn't seem to impact quality,
+            // but it seems to be simpler math to do it this way. Revisit if odd blurriness or lines are noticed.
+            WriteSample(ctx.photon.Energy, ctx.photon.Origin + ctx.photon.Direction * uSampleTarget, ctx.testUV);
             uSampleTarget = (currentSample + uSampleRandomOffset) * g_integration_interval; 
         }
 
@@ -285,15 +306,46 @@ struct ForwardMonteCarlo : BaseContext, IMonteCarloMethod
     }
 };
 
-#define SIMULATION_IMPLEMENTATION(lightType)                    \
-[numthreads(NUMTHREADS_1D)]                                     \
-void Simulate_##lightType (uint3 id : SV_DispatchThreadID) {    \
-    ForwardMonteCarlo integrator;                               \
-    integrator.Init(g_rand[id.x]);                              \
-    Ray photon = integrator.Emit##lightType();                  \
-    if(g_lightEmissionOutscatter != 0) { WritePhoton(photon.Origin, photon.Energy, g_lightEmissionOutscatter, true); } \
-    Integrate(photon, g_bounces, integrator);                   \
-    g_rand[id.x] = integrator.rand.state;                       \
+ForwardMonteCarlo BeginSimulation(uint3 id, uint localID) {
+    if(localID == 0) {
+        shared_needs_accumulation = false;
+        shared_write_counter = 0;
+        shared_live_threads = uint3(NUMTHREADS_1D).x;
+    }
+
+    GroupMemoryBarrierWithGroupSync();
+
+    ForwardMonteCarlo integrator;
+    integrator.Init(g_rand[id.x]);
+    return integrator;
+}
+
+void EndSimulation(uint3 id, inout ForwardMonteCarlo integrator, Ray photon) {
+    Integrate(photon, g_bounces, integrator);
+    g_rand[id.x] = integrator.rand.state;
+    int previous_threads;
+    InterlockedAdd(shared_live_threads, -1, previous_threads);
+    if(previous_threads == 1) {
+        uint global_write_counter;
+
+        // Hacking in uint64_t
+        InterlockedAdd(g_write_counter[0], shared_write_counter, global_write_counter);
+        if(shared_write_counter > (0xFFFFFFFF - global_write_counter)) {
+            InterlockedAdd(g_write_counter[1], 1);
+        }
+
+        if(shared_needs_accumulation) {
+            g_needs_accumulation[0] = g_threadgroup_count;
+        }
+    }
+}
+
+#define SIMULATION_IMPLEMENTATION(lightType)                        \
+[numthreads(NUMTHREADS_1D)] void Simulate_##lightType (             \
+    uint3 id : SV_DispatchThreadID, uint localID : SV_GroupIndex) { \
+    ForwardMonteCarlo integrator = BeginSimulation(id, localID);    \
+    Ray photon = integrator.Emit##lightType();                      \
+    EndSimulation(id, integrator, photon);                          \
 }
 
 SIMULATION_IMPLEMENTATION(DefaultLight)
@@ -305,26 +357,28 @@ SIMULATION_IMPLEMENTATION(FieldLight)
 SIMULATION_IMPLEMENTATION(DirectionalLight)
 
 
-// For practical purposes, the accumulation overflow buffer seems to be unnecessary.
-// TODO: Revisit if needed later.
-
-// RWTexture2D<float4> g_output_accumulated;
-// uint2 g_accumulate_base_index;
-// [numthreads(NUMTHREADS_2D)]
-// void AccumulatePhotons(uint3 id : SV_DispatchThreadID)
-// {
-//     uint2 index = g_accumulate_base_index + id.xy;
-//     g_output_accumulated[index] += float4(ReadPhoton_Indexed(index) / g_energy_norm, 1);
-//     ClearPhoton_Indexed(index);
-// }
-
-// TODO: Treat ConvertToHDR as a material being rendered to a render target, so that it works on GLES3
-RWTexture2D<float4> g_output_hdr;
 [numthreads(NUMTHREADS_2D)]
-void ConvertToHDR (uint3 id : SV_DispatchThreadID) {
-    // ConvergenceCellInput cellData = g_convergenceCellStateIn[GetGridCellIndex((int2) id.xy)];
-    // float frames = cellData.FrameCount;
+void ConvertToHDR (uint3 id : SV_DispatchThreadID, uint2 localID : SV_GroupThreadID) {
+    float outScatterDensity = 1;
+    float3 albedo = g_albedo[id.xy].rgb;
 
-    //g_output_hdr[id.xy] = float4((ReadPhoton_Indexed(id.xy) / g_energy_norm + g_output_accumulated[id.xy].rgb) / frames, 1);
-    g_output_hdr[id.xy] = float4(ReadPhoton_Indexed(id.xy) / g_hdr_scale, 1);
+#if FINALIZE_OUTSCATTER_DENSITY
+    outScatterDensity *= (1 - g_transmissibility[id.xy].x);
+#endif
+
+    float3 cumulative = ReadPhoton_Indexed(id.xy) * g_hdr_scale;
+
+#if !SKIP_ACCUMULATION
+    cumulative += g_accumulated_output_hdr[id.xy].rgb;
+    if(g_needs_accumulation[0] != 0) {
+        ClearPhoton_Indexed(id.xy);
+        g_accumulated_output_hdr[id.xy] = float4(cumulative, 0);
+
+        if(localID.x == 0 && localID.y == 0) {
+            InterlockedAdd(g_needs_accumulation[0], -1);
+        }
+    }
+#endif
+
+    g_output_hdr[id.xy] = float4(cumulative * albedo * g_batch_count_inv * outScatterDensity, 1);
 }
