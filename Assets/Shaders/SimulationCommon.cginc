@@ -347,8 +347,7 @@ struct BaseContext {
 
         if(dot(normal.xy, normal.xy) < eps) {
             // No normal information, scatter uniformly
-            float2 dir = rand.NextDirection();
-            return float4(dir, 1, 0);
+            return float4(ScatterImportanceLobed(origin), 0);
         // } else if(dot(normal.xy, normal.xy) < 0.99) {
         //      // Small normal implies we're near a flat surface - continue propagating
         //      return (1).xxxx;

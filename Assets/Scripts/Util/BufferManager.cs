@@ -250,7 +250,7 @@ public static class BufferManager
             if(_purged) return null;
             if(_teardropScatteringLUT == null)
             {
-                float strength = 10;
+                float strength = 6;
                 _teardropScatteringLUT = LUT.CreateTeardropScatteringLUT(strength).AsTexture();
                 _teardropScatteringLUT.name = $"Teardrop Scattering LUT (Strength={strength})";
             }

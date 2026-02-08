@@ -161,7 +161,7 @@ static class LUT
         ComponentwiseGlue(vectorTable, inverted, finalTable);
 
         for(int i = 0;i < finalTable.Length;i++) {
-            finalTable[i].z = avg / relativePDF(finalTable[i].z);
+            finalTable[i].z = avg / (2 * Mathf.PI * relativePDF(finalTable[i].z));
         }
 
         return finalTable;
@@ -221,11 +221,11 @@ static class LUT
             return (softener + Mathf.Pow(cos, lobe_sharpness)) / (1 + forward_bias * cos);
         });
 
-    public static float3[] CreateTeardropScatteringLUT(float spikeStrength) =>
+    public static float3[] CreateTeardropScatteringLUT(float spikeStrength, int samples = 2048) =>
         CreateVectorizedAnglePDFLUT((float theta) => {
             var x = theta / Mathf.PI;
             return 1 + spikeStrength * Mathf.Pow(x,6);
-        });
+        }, samples);
 
     public static float4[,,] CreateBDRFLUT() {
         // BDRF LUT is 3 dimensional.

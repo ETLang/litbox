@@ -1390,11 +1390,11 @@ MonoBehaviour:
     m_Bits: 768
   raysPerFrame: 65536
   photonBounces: -1
-  integrationInterval: 0.01
+  integrationInterval: 0.04
   transmissibilityVariationEpsilon: 0.001
   _measurementInterval: 20
   frameLimit: -1
-  _convergenceThreshold: 0.0001
+  _convergenceThreshold: 0.00001
   iterationsSinceClear: 0
   convergenceProgress: 0.5718811
   hasConverged: 1

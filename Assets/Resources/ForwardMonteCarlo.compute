@@ -207,9 +207,10 @@ struct ForwardMonteCarlo : BaseContext, IMonteCarloMethod
                 transmissibility /= tested_transmissibility;
             }
         } else {
-            float u = rand.Next(transmissibility, 1);
+            float r = rand.Next();
+            float u = transmissibility + (r*r) * (1-transmissibility);// rand.Next(transmissibility, 1);
             transmitPotential = u;
-            quantumScale = 1-transmissibility;
+            quantumScale = (1-transmissibility) * 2 * r;
             searchingPhase = false;
         }
         return searchingPhase;
@@ -222,8 +223,7 @@ struct ForwardMonteCarlo : BaseContext, IMonteCarloMethod
         
         emitted.Origin = mul(float4(pos, 0, 1), g_lightToTarget).xy;
         
-        //float3 important_direction = ScatterImportanceLobed(emitted.Origin);
-        float3 important_direction = { rand.NextDirection(), 1.0 / (2 * PI)};
+        float3 important_direction = ScatterImportanceLobed(emitted.Origin);
         emitted.Direction = important_direction.xy;
         emitted.Energy = g_lightEnergy * important_direction.z;
 

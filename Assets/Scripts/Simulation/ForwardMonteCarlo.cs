@@ -25,6 +25,7 @@ public class ForwardMonteCarlo : Disposable
                 _accumulationImage = BufferManager.AcquireTexture(w, h, RenderTextureFormat.ARGBFloat);
                 _outputImageHDR = BufferManager.AcquireTexture(w, h, RenderTextureFormat.ARGBFloat, true);
                 UpdateIntegrationInterval();
+                UpdateImportanceSamplingTarget();
             }
         }
     }
@@ -47,13 +48,17 @@ public class ForwardMonteCarlo : Disposable
         set
         {
             _importanceSamplingTarget = value;
-
-            if(GBuffer.AlbedoAlpha) {
-                _forwardIntegrationShader.SetVector("g_importance_sampling_target", value * new Vector2(GBuffer.AlbedoAlpha.width, GBuffer.AlbedoAlpha.height));
-            }
+            UpdateImportanceSamplingTarget();
         }
     }
     private Vector2 _importanceSamplingTarget = new Vector2(0.5f, 0.5f);
+
+    private void UpdateImportanceSamplingTarget()
+    {
+        if(GBuffer.AlbedoAlpha) {
+            _forwardIntegrationShader.SetVector("g_importance_sampling_target", _importanceSamplingTarget * new Vector2(GBuffer.AlbedoAlpha.width, GBuffer.AlbedoAlpha.height));
+        }
+    }
     #endregion
 
     #region DisableBilinearWrites
@@ -138,7 +143,6 @@ public class ForwardMonteCarlo : Disposable
         _forwardIntegrationShader = (ComputeShader)Resources.Load("ForwardMonteCarlo");
         _convertToHDRKernel = _forwardIntegrationShader.FindKernel("ConvertToHDR");
 
-        _forwardIntegrationShader.SetVector("g_importance_sampling_target", ImportanceSamplingTarget);
         _forwardIntegrationShader.SetShaderFlag("BILINEAR_PHOTON_DISTRIBUTION", !_disableBilinearWrites);
         _forwardIntegrationShader.SetShaderFlag("FINALIZE_OUTSCATTER_DENSITY", _finalizeOutscatterDensity);
         _forwardIntegrationShader.SetShaderFlag("SKIP_ACCUMULATION", _skipAccumulation);
