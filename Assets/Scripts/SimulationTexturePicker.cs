@@ -3,9 +3,6 @@ using UnityEngine;
 
 [RequireComponent(typeof(Renderer))]
 public class SimulationTexturePicker : LitboxComponent {
-    [SerializeField] float brightnessThreshold = 1;
-    [SerializeField] float varianceThreshold = 1;
-
     public enum TextureType {
         HDR,
         Variance,
@@ -116,6 +113,10 @@ public class SimulationTexturePicker : LitboxComponent {
         if(value != null) {
             renderer.material.SetTexture("_MainTex", value);
         }
+
+        if(!simulation.IsRunning) {
+            MaybeRunAnalyses();
+        }
     }
 
     void ConfigureAnalysisA()
@@ -127,6 +128,7 @@ public class SimulationTexturePicker : LitboxComponent {
     void ConfigureAnalysisB()
     {
         if(_analysisTargetB != null) { return; }
+        _analysisTargetA = this.CreateRWTexture(simulation.width, simulation.height, RenderTextureFormat.RFloat);
         _analysisTargetB = this.CreateRWTexture(simulation.width, simulation.height, RenderTextureFormat.RFloat);
     }
 
@@ -137,6 +139,11 @@ public class SimulationTexturePicker : LitboxComponent {
     }
 
     private void OnSimulationUpdated(int frameCount)
+    {
+        MaybeRunAnalyses();
+    }
+
+    void MaybeRunAnalyses()
     {
         switch(type) {
         case TextureType.AnalysisA:
@@ -160,6 +167,22 @@ public class SimulationTexturePicker : LitboxComponent {
     private void RunAnalysis(int kernel, RenderTexture target, RenderTexture previous = null)
     {
         if(kernel == -1) { return; }
+        if(simulation == null) { return; }
+        if(target == null) { return; }
+
+        var args = GetComponent<AnalysisParameters>();
+
+        if(args == null) {
+            Debug.LogError("AnalysisParameters component is required for analysis compute shader.");
+            return;
+        }
+
+        _analysisShader.SetFloat("_sigma_spatial", args.SigmaSpatial);
+        _analysisShader.SetFloat("_sigma_albedo", args.SigmaAlbedo);
+        _analysisShader.SetFloat("_sigma_luminance_tight", args.SigmaLuminanceTight);
+        _analysisShader.SetFloat("_sigma_luminance_loose", args.SigmaLuminanceLoose);
+        _analysisShader.SetFloat("_k_luminance", args.KLuminance);
+
         _analysisShader.RunKernel(kernel, target.width, target.height,
             ("_out_analysis", target),
             ("_in_albedo", simulation.GBuffer.AlbedoAlpha),
@@ -172,8 +195,6 @@ public class SimulationTexturePicker : LitboxComponent {
             ("_in_hdr_final", simulation.SimulationOutputHDR),
             ("_in_importance", simulation.ImportanceMap),
             ("_in_variance", simulation.VarianceMap),
-            ("_brightness_threshold", brightnessThreshold),
-            ("_variance_threshold", varianceThreshold),
             ("_in_previous_analysis", previous)
         );
     }
