@@ -1044,9 +1044,9 @@ MonoBehaviour:
   outputFolder: ./training_data
   _samplesToGenerate: 30000
   inputProfiles:
-  - frameLimit: 5
-    raysPerFrame: 8192
-    integrationInterval: 0.1
+  - frameLimit: 1
+    raysPerFrame: 65536
+    integrationInterval: 0.04
     photonBounces: 4
   - frameLimit: 1
     raysPerFrame: 65536
@@ -1063,6 +1063,10 @@ MonoBehaviour:
   - frameLimit: 1
     raysPerFrame: 32768
     integrationInterval: 0.02
+    photonBounces: 4
+  - frameLimit: 1
+    raysPerFrame: 65536
+    integrationInterval: 0.04
     photonBounces: 4
   convergenceProfile:
     frameLimit: -1
@@ -1082,7 +1086,7 @@ MonoBehaviour:
   _spotLightPrefab: {fileID: 3944455307740111456, guid: e352ba77fe7468bb8988f3d07aa3a902, type: 3}
   _laserLightPrefab: {fileID: 8780435749890055110, guid: 89ca6a0506bec49e099c4e4c12b6ce44, type: 3}
   _sampleDisplay: {fileID: 752464865427857415}
-  _showProfile: 1
+  _showProfile: 5
   _debugScenePath: 
 --- !u!4 &906946635
 Transform:
@@ -1262,8 +1266,6 @@ MonoBehaviour:
   m_Script: {fileID: 11500000, guid: d03468ac19c7764bc86a37b5521090fd, type: 3}
   m_Name: 
   m_EditorClassIdentifier: 
-  brightnessThreshold: 1
-  varianceThreshold: 1
   simulation: {fileID: 923172386}
   type: 3
 --- !u!114 &933397738 stripped
@@ -2239,11 +2241,11 @@ PrefabInstance:
       objectReference: {fileID: 0}
     - target: {fileID: 7257319343551683511, guid: e352ba77fe7468bb8988f3d07aa3a902, type: 3}
       propertyPath: m_LocalScale.x
-      value: 0.69316685
+      value: 0.03
       objectReference: {fileID: 0}
     - target: {fileID: 7257319343551683511, guid: e352ba77fe7468bb8988f3d07aa3a902, type: 3}
       propertyPath: m_LocalScale.y
-      value: 2.6758
+      value: 0.5
       objectReference: {fileID: 0}
     - target: {fileID: 7257319343551683511, guid: e352ba77fe7468bb8988f3d07aa3a902, type: 3}
       propertyPath: m_LocalPosition.x

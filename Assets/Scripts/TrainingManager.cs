@@ -368,7 +368,7 @@ public class TrainingManager : DisposalHelperComponent {
                         baseAngle *= -1;
                     baseAngle += 270;
                     light.angle = baseAngle + _rand.NextRange(-80, 80);
-                    light.scale = new Vector2(_rand.NextRange(0.03f, 0.5f, 0.3f), light.scale.y);
+                    light.scale = new Vector2(_rand.NextRange(0.03f, 0.5f, -0.3f), 0.5f);
                     break;
                 case "Laser":
                     light.position = new Vector2(_rand.NextRange(-3, 3), _rand.NextRange(-3, 3));
