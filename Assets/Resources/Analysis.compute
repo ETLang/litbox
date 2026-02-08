@@ -19,8 +19,11 @@ Texture2D<float4> _in_previous_analysis;
 
 RWTexture2D<float4> _out_analysis;
 
-float _brightness_threshold;
-float _variance_threshold;
+float _sigma_spatial = 1.2;
+float _sigma_albedo = 0.05;
+float _sigma_luminance_tight = 0.05;
+float _sigma_luminance_loose = 2.5;
+float _k_luminance = 2.0;
 
 [numthreads(NUMTHREADS_2D)]
 void AnalysisA(uint3 id : SV_DispatchThreadID) {
@@ -28,25 +31,60 @@ void AnalysisA(uint3 id : SV_DispatchThreadID) {
 
     if(any(id.xy >= (uint2)size)) { return; }
 
-    float2 uv = (id.xy + 0.5) / size;
-
-    float3 sample_a = _in_hdr_a.SampleLevel(sampler_linear_clamp, uv, 0).rgb;
-    float3 sample_b = _in_hdr_b.SampleLevel(sampler_linear_clamp, uv, 0).rgb;
+    float3 a = _in_hdr_a[id.xy].rgb;
+    float3 b = _in_hdr_b[id.xy].rgb;
 
     // Compute full-resolution relative variance
-    float mean = (sample_a + sample_b) / 2.0;
-    float3 relative_variance = (sample_a - sample_b) * (sample_a - sample_b) / (mean * mean + 1e-5);
+    float3 mean = (a + b) / 2.0;
+    //float3 relative_variance = (a - b) * (a - b) / (mean * mean + 1e-5);
+    float relative_variance = dot(((a - b) * (a - b) / (mean * mean + 1e-5)).rgb, 1/3.0);
 
-    _out_analysis[id.xy] = float4(dot(relative_variance, 1.0/3.0), 0, 0, 1);
+    _out_analysis[id.xy] = float4(relative_variance, 0, 0, 1);
 }
- 
+
+float Gweight(float delta, float sigma) {
+    return exp(-0.5 * (delta * delta) / (sigma * sigma));
+}
 
 [numthreads(NUMTHREADS_2D)]
 void AnalysisB(uint3 id : SV_DispatchThreadID) {
-    // Perform median filter on variance map
+    // Validate that this variance computation matches runtime variance computation
+    // float4 total = 0;
+    // for(int i = 0; i < 4; i++) {
+    //     for(int j = 0; j < 4; j++) {
+    //         uint2 sample_id = id.xy * 4 + uint2(i, j);
+    //         total += _in_previous_analysis[sample_id]; 
+    //     }
+    // }
+    // _out_analysis[id.xy] = total / 16.0;
+
+    // Adaptive sampling of variance
+    // 5x5 kernel
+    // Weights: Spatial(σ=1.2), Albedo(σ=0.05), Normal (TBD), Adaptive Luminance (σ_tight=0.05, σ_loose=2.5, k=2) (high variance => high sigma, low variance => low sigma)
+
+    float sig_adaptive = lerp(0.05, 2.5, smoothstep(0, 1.0/_k_luminance, _in_variance[id.xy].r));
+    float total_weight = 0; 
+    float4 output = 0;
+
+    for(int j = -2; j <= 2; j++) {
+        for(int i = -2; i <= 2; i++) {
+            uint2 neighbor_id = id.xy + uint2(i, j);
+            float spatial_weight = Gweight(length(float2(i, j)), _sigma_spatial); // Cachable
+            float albedo_weight = Gweight(length(_in_albedo[neighbor_id].rgb - _in_albedo[id.xy].rgb), _sigma_albedo);
+            // float normal_weight = Gweight(length(_in_normal_roughness[neighbor_id].rgb - _in_normal_roughness[id.xy].rgb), _sigma_normal);
+            float luminance_weight = Gweight(abs(Luminance(_in_hdr_final[neighbor_id].rgb) - Luminance(_in_hdr_final[id.xy].rgb)), sig_adaptive);
+
+            float sample_weight = spatial_weight * albedo_weight * luminance_weight;
+            
+            total_weight += sample_weight;
+            output += _in_previous_analysis[neighbor_id] * sample_weight;
+        }
+    }
+
+    _out_analysis[id.xy] = output / total_weight;
 }
 
 [numthreads(NUMTHREADS_2D)]
 void AnalysisC(uint3 id : SV_DispatchThreadID) {
-// Perform adaptive guided filter on variance map
+
 }

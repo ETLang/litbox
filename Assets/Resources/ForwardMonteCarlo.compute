@@ -60,8 +60,8 @@ uint3 ReadPhoton_Indexed(uint2 pixel) {
     pixel.x *= 3;
     return uint3(
         g_output_raw[pixel],
-        g_output_raw[pixel + 1],
-        g_output_raw[pixel + 2]
+        g_output_raw[pixel + uint2(1, 0)],
+        g_output_raw[pixel + uint2(2, 0)]
     );
 }
 
@@ -75,8 +75,8 @@ void WritePhoton_Indexed(int2 pixel, float3 energy, bool suppressPhoton=false) {
     pixel.x *= 3;
     uint3 rgb;
     InterlockedAdd(g_output_raw[pixel], energy.r, rgb.r);
-    InterlockedAdd(g_output_raw[pixel + 1], energy.g, rgb.g);
-    InterlockedAdd(g_output_raw[pixel + 2], energy.b, rgb.b);
+    InterlockedAdd(g_output_raw[pixel + uint2(1, 0)], energy.g, rgb.g);
+    InterlockedAdd(g_output_raw[pixel + uint2(2, 0)], energy.b, rgb.b);
     
 #if !SKIP_ACCUMULATION
     if(any(rgb > EnergyMax)) {
@@ -86,8 +86,6 @@ void WritePhoton_Indexed(int2 pixel, float3 energy, bool suppressPhoton=false) {
 }
 
 void WritePhoton_Bilinear(float2 location, float3 energy, bool suppressPhoton=false) {
-    if(any(location < 0)) return;
-
     float2 pixel = location - 0.5f;
     int2 pixelFloor = (int2)floor(pixel);
     float2 pixelFrac = pixel - pixelFloor;

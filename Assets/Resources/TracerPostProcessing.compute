@@ -119,8 +119,6 @@ void ComputeCVAndNMipsFromSamplePair(uint3 id, uint2 localID, int mipCount) {
         }
         float mean_variance = variance_accum / 16.0f;
         // float std_dev = sqrt(mean_variance);
-        // float relative_var = mean_variance / ((mean + 0.005) * (mean + 0.005));
-        // float relative_std_dev = std_dev / (mean + 1e-7);
         _out_cv[id.xy / 4] = mean_variance;
         
         if(mipCount >= 3) {
