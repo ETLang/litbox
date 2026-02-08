@@ -1319,6 +1319,7 @@ GameObject:
   - component: {fileID: 4509012270100665205}
   - component: {fileID: 6474287393633280328}
   - component: {fileID: 3325585078810339806}
+  - component: {fileID: 7046779350545214440}
   m_Layer: 0
   m_Name: Diagnostic B
   m_TagString: Untagged
@@ -1433,10 +1434,8 @@ MonoBehaviour:
   m_Script: {fileID: 11500000, guid: d03468ac19c7764bc86a37b5521090fd, type: 3}
   m_Name: 
   m_EditorClassIdentifier: 
-  brightnessThreshold: 0.02
-  varianceThreshold: 1
   simulation: {fileID: 2408986526842077597}
-  type: 3
+  type: 11
 --- !u!4 &4185717351858822417
 Transform:
   m_ObjectHideFlags: 0
@@ -1774,6 +1773,23 @@ Transform:
   m_Children: []
   m_Father: {fileID: 6567741710732077499}
   m_LocalEulerAnglesHint: {x: 0, y: 0, z: 0}
+--- !u!114 &7046779350545214440
+MonoBehaviour:
+  m_ObjectHideFlags: 0
+  m_CorrespondingSourceObject: {fileID: 0}
+  m_PrefabInstance: {fileID: 0}
+  m_PrefabAsset: {fileID: 0}
+  m_GameObject: {fileID: 343147846758346982}
+  m_Enabled: 1
+  m_EditorHideFlags: 0
+  m_Script: {fileID: 11500000, guid: 88d95d6b90c015d4ba0dfeb10157820c, type: 3}
+  m_Name: 
+  m_EditorClassIdentifier: Assembly-CSharp::AnalysisParameters
+  SigmaSpatial: 1.2
+  SigmaAlbedo: 0.05
+  SigmaLuminanceTight: 0.05
+  SigmaLuminanceLoose: 2.5
+  KLuminance: 2
 --- !u!114 &8043991272733889010
 MonoBehaviour:
   m_ObjectHideFlags: 0
@@ -1786,8 +1802,6 @@ MonoBehaviour:
   m_Script: {fileID: 11500000, guid: d03468ac19c7764bc86a37b5521090fd, type: 3}
   m_Name: 
   m_EditorClassIdentifier: 
-  brightnessThreshold: 1
-  varianceThreshold: 1
   simulation: {fileID: 2408986526842077597}
   type: 1
 --- !u!1660057539 &9223372036854775807

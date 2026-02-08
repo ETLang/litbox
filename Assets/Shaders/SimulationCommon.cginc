@@ -74,12 +74,14 @@ interface IMonteCarloMethod
 struct BaseContext {
     Random rand;
     float2 targetSize;
+    float2 pixelSize;
 
     void Init_BaseContext(uint4 seed) {
         rand.Init(seed);
         
         // TODO: Shall we always assume the GBuffer and output buffer are the same resolution?
         targetSize = TextureSize(g_albedo);
+        pixelSize = 1.0f / targetSize;
     }
 
     void Init(uint4 seed) {
@@ -387,6 +389,7 @@ void Integrate(inout Ray photon, uint bounces, IMonteCarloMethod state) {
     ctx.Init(photon);
 
     float2 target_size = TextureSize(g_albedo);
+    float2 pixel_size = 1.0f / target_size;
 
     for(uint bounce = 0;bounce < bounces;) {
         float uScatter;
@@ -396,9 +399,9 @@ void Integrate(inout Ray photon, uint bounces, IMonteCarloMethod state) {
     
         float2 uvOrigin = ctx.photon.Origin / target_size;
         float2 uvDirection = ctx.photon.Direction / target_size;
-        float4 uBoundaryBox = (float4(0,1,0,1) - uvOrigin.xxyy) / uvDirection.xxyy;
+        float4 uBoundaryBox = (float4(-pixel_size,1 + pixel_size) - uvOrigin.xyxy) / uvDirection.xyxy;
 
-        ctx.uEscape = min(max(uBoundaryBox[0], uBoundaryBox[1]), max(uBoundaryBox[2], uBoundaryBox[3]));
+        ctx.uEscape = min(max(uBoundaryBox[0], uBoundaryBox[2]), max(uBoundaryBox[1], uBoundaryBox[3]));
         ctx.uHitCurrent = 0;
         ctx.testUV = uvOrigin;
 

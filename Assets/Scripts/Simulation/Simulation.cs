@@ -64,6 +64,7 @@ public class Simulation : LitboxComponent
     private SortedDictionary<float, uint> performanceCounter = new SortedDictionary<float, uint>();
 
     public long PhotonWritesPerSecond { get; private set; }
+    public bool IsRunning => _needsToUpdate;
 
     int _sceneId;
     bool _validationFailed = false;
