@@ -6,6 +6,7 @@ Temp/**
 build/**
 ProjectSettings/**
 __pycache__/**
+training_script/__pycache__/**
 training_data/**
 training_output/**
 UserSettings/**
