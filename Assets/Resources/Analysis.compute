@@ -1,4 +1,5 @@
 #include "../Shaders/LitboxCommon.cginc"
+#include "Variance.compute"
 
 #pragma kernel AnalysisA
 #pragma kernel AnalysisB
@@ -42,9 +43,9 @@ void AnalysisA(uint3 id : SV_DispatchThreadID) {
     _out_analysis[id.xy] = float4(relative_variance, 0, 0, 1);
 }
 
-float Gweight(float delta, float sigma) {
-    return exp(-0.5 * (delta * delta) / (sigma * sigma));
-}
+// float Gweight(float delta, float sigma) {
+//     return exp(-0.5 * (delta * delta) / (sigma * sigma));
+// }
 
 [numthreads(NUMTHREADS_2D)]
 void AnalysisB(uint3 id : SV_DispatchThreadID) {
@@ -84,7 +85,8 @@ void AnalysisB(uint3 id : SV_DispatchThreadID) {
     _out_analysis[id.xy] = output / total_weight;
 }
 
-[numthreads(NUMTHREADS_2D)]
-void AnalysisC(uint3 id : SV_DispatchThreadID) {
-
+[numthreads(GROUP_SIZE,GROUP_SIZE,1)]
+void AnalysisC(uint3 Gid : SV_GroupID, uint2 localID : SV_GroupThreadID, uint2 id : SV_DispatchThreadID) {
+    float3 result = ComputeVariance(Gid, localID, id, _in_hdr_a, _in_hdr_b, _in_albedo);
+    _out_analysis[result.yz] = float4(result.x, 0, 0, 1);
 }

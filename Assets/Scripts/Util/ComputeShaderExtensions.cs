@@ -23,10 +23,19 @@ public static class ComputeShaderExtensions
 
     public static void RunKernel(this ComputeShader shader, string kernel, int w, int h, params (string,object)[] args)
     {
-        RunKernel(shader, shader.FindKernel(kernel), w, h, args);
+        RunKernel(shader, shader.FindKernel(kernel), uint2.zero, w, h, args);
     }
 
-    public static void RunKernel(this ComputeShader shader, int kernelID, int w, int h, params (string,object)[] args) {
+    public static void RunKernel(this ComputeShader shader, int kernelID, int w, int h, params (string,object)[] args)
+    {
+        RunKernel(shader, kernelID, uint2.zero, w, h, args);
+    }
+
+    public static void RunKernel(this ComputeShader shader, string kernel, uint2 tileSize, int w, int h, params (string,object)[] args) {
+        RunKernel(shader, shader.FindKernel(kernel), tileSize, w, h, args);
+    }
+
+    public static void RunKernel(this ComputeShader shader, int kernelID, uint2 tileSize, int w, int h, params (string,object)[] args) {
         foreach(var tuple in args) {
             switch(tuple.Item2) {
             case null:
@@ -68,13 +77,24 @@ public static class ComputeShaderExtensions
             }
         }
 
-        shader.DispatchAutoGroup(kernelID, w, h, 1);
+        if(tileSize.Equals(uint2.zero)) {
+            shader.DispatchAutoGroup( kernelID, w, h, 1);
+        } else {
+            shader.DispatchAutoGroupTiled(kernelID, tileSize, w, h);
+        }
     }
 
     public static void DispatchAutoGroup(this ComputeShader shader, int kernelID, int threadsX, int threadsY, int threadsZ)
     {
         var groupCount = shader.GetThreadGroupCount(kernelID, threadsX, threadsY, threadsZ);
         shader.Dispatch(kernelID, groupCount.x, groupCount.y, groupCount.z); 
+    }
+
+    public static void DispatchAutoGroupTiled(this ComputeShader shader, int kernelId, uint2 tileSize, int w, int h)
+    {
+        int xGroups = (int)((w - 1) / tileSize.x + 1);
+        int yGroups = (int)((h - 1) / tileSize.y + 1);
+        shader.Dispatch(kernelId, xGroups, yGroups, 1);
     }
 
     public static void SetShaderFlag(this ComputeShader shader, string keyword, bool value) {

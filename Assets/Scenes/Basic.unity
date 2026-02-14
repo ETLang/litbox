@@ -1435,7 +1435,7 @@ MonoBehaviour:
   m_Name: 
   m_EditorClassIdentifier: 
   simulation: {fileID: 2408986526842077597}
-  type: 11
+  type: 12
 --- !u!4 &4185717351858822417
 Transform:
   m_ObjectHideFlags: 0

@@ -1,4 +1,5 @@
 using System;
+using Unity.Mathematics;
 using UnityEngine;
 
 [RequireComponent(typeof(Renderer))]
@@ -159,12 +160,17 @@ public class SimulationTexturePicker : LitboxComponent {
             // Perform 5x5 adaptive filter on AnalysisB to produce AnalysisC
             RunAnalysis(_analysisAKernelId, _analysisTargetA);
             RunAnalysis(_analysisBKernelId, _analysisTargetB, _analysisTargetA);
-            RunAnalysis(_analysisCKernelId, _analysisTargetC, _analysisTargetB);
+            RunAnalysis(_analysisCKernelId, new uint2(16, 16), _analysisTargetC, _analysisTargetB);
             break;
         }
     }
 
     private void RunAnalysis(int kernel, RenderTexture target, RenderTexture previous = null)
+    {
+        RunAnalysis(kernel, uint2.zero, target, previous);
+    }
+
+    private void RunAnalysis(int kernel, uint2 tileSize, RenderTexture target, RenderTexture previous = null)
     {
         if(kernel == -1) { return; }
         if(simulation == null) { return; }
@@ -183,7 +189,7 @@ public class SimulationTexturePicker : LitboxComponent {
         _analysisShader.SetFloat("_sigma_luminance_loose", args.SigmaLuminanceLoose);
         _analysisShader.SetFloat("_k_luminance", args.KLuminance);
 
-        _analysisShader.RunKernel(kernel, target.width, target.height,
+        _analysisShader.RunKernel(kernel, tileSize, target.width, target.height,
             ("_out_analysis", target),
             ("_in_albedo", simulation.GBuffer.AlbedoAlpha),
             ("_in_transmissibility", simulation.GBuffer.Transmissibility),

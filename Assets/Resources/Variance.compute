@@ -1,0 +1,96 @@
+#include "../Shaders/LitboxCommon.cginc"
+
+#pragma kernel Variance_Kernel
+
+Texture2D<float4> _sample_a : register(t0);
+Texture2D<float4> _sample_b : register(t1);
+Texture2D<float4> _albedo : register(t2);
+
+RWTexture2D<float> _output : register(u0);
+#line 11
+
+#define SIGMA_SPATIAL 1.2f
+#define SIGMA_ALBEDO 0.05f
+#define SIGMA_LUMINANCE_TIGHT 0.05f
+#define SIGMA_LUMINANCE_LOOSE 2.5f
+#define K_LUMINANCE 2.0f
+
+#define TILE_SIZE 16
+#define RADIUS 2
+#define GROUP_SIZE (TILE_SIZE+2*RADIUS)
+
+#define JAG(idx) (idx).x][(idx).y
+groupshared float shared_variance[GROUP_SIZE][GROUP_SIZE];
+groupshared half4 shared_albedo[GROUP_SIZE][GROUP_SIZE];
+groupshared float shared_luminance[GROUP_SIZE][GROUP_SIZE];
+
+// float2 TextureSize(RWTexture2D<float> tex) {
+//     float w, h;
+//     tex.GetDimensions(w, h);
+//     return float2(w, h);
+// }
+
+// float Luminance(float3 rgb) {
+//     return dot(rgb, float3(0.2126, 0.7152, 0.0722));
+// }
+
+float Gweight(float delta, float sigma) {
+    return exp(-0.5 * (delta * delta) / (sigma * sigma));
+}
+
+float3 ComputeVariance(uint3 Gid, uint2 localID, uint2 id, Texture2D<float4> sample_a, Texture2D<float4> sample_b, Texture2D<float4> albedo) {
+    float2 size = TextureSize(sample_a);
+
+    int2 blockIndex = localID.xy - RADIUS;
+    int2 bufferIndex = Gid.xy * TILE_SIZE + blockIndex;
+
+    float3 a = sample_a[bufferIndex].rgb;
+    float3 b = sample_b[bufferIndex].rgb;
+
+    float3 mean = (a + b) / 2.0;
+    float relative_variance = dot(((a - b) * (a - b) / (mean * mean + 1e-5)).rgb, 1/3.0);
+
+    shared_variance[JAG(localID)] = relative_variance;
+    shared_albedo[JAG(localID)] = albedo[bufferIndex];
+    shared_luminance[JAG(localID)] = Luminance(mean);
+
+    GroupMemoryBarrierWithGroupSync();
+
+    float total_weight = 0; 
+    float output_sample = 0;
+    if(all(blockIndex >= 0) && all(blockIndex < TILE_SIZE)) {
+        if(any(bufferIndex >= (int2)size)) { return -1; }
+
+        // Adaptive sampling of variance
+        // 5x5 kernel
+        // Weights: Spatial(σ=1.2), Albedo(σ=0.05), Normal (TBD), Adaptive Luminance (σ_tight=0.05, σ_loose=2.5, k=2) (high variance => high sigma, low variance => low sigma)
+
+        float sig_adaptive = lerp(SIGMA_LUMINANCE_TIGHT, SIGMA_LUMINANCE_LOOSE, smoothstep(0, 1.0/K_LUMINANCE, shared_variance[JAG(localID)]));
+
+        for(int j = -2; j <= 2; j++) {
+            for(int i = -2; i <= 2; i++) {
+                uint2 neighbor_id = localID.xy + uint2(i, j);
+                float spatial_weight = Gweight(length(float2(i, j)), SIGMA_SPATIAL); // TODO: Cachable
+                float albedo_weight = Gweight(length(shared_albedo[JAG(neighbor_id)].rgb - shared_albedo[JAG(localID)].rgb), SIGMA_ALBEDO);
+                // float normal_weight = Gweight(length(_in_normal_roughness[neighbor_id].rgb - _in_normal_roughness[id.xy].rgb), SIGMA_NORMAL);
+                float luminance_weight = Gweight(abs(shared_luminance[JAG(neighbor_id)] - shared_luminance[JAG(localID)]), sig_adaptive);
+
+                float sample_weight = spatial_weight * albedo_weight * luminance_weight;
+                
+                total_weight += sample_weight;
+                output_sample += shared_variance[JAG(neighbor_id)] * sample_weight;
+            }
+        }
+        return float3(output_sample / total_weight, bufferIndex);
+    }
+    return -1;
+}
+
+[numthreads(GROUP_SIZE,GROUP_SIZE,1)]
+void Variance_Kernel(uint3 Gid : SV_GroupID, uint2 localID : SV_GroupThreadID, uint2 id : SV_DispatchThreadID) {
+    float3 result = ComputeVariance(Gid, localID, id, _sample_a, _sample_b, _albedo);
+
+    if(result.y >= 0) {
+        _output[result.yz] = result.x;
+    }
+}
