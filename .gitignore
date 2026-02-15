@@ -9,6 +9,7 @@ __pycache__/**
 training_script/__pycache__/**
 training_data/**
 training_output/**
+training_cache/**
 UserSettings/**
 .vscode/**
 *.csproj
