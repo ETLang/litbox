@@ -9,8 +9,8 @@ SET TRAINING_DATA_FOLDER=training_data/2026-02-08-01-17-30
 SET CHECKPOINT_TESTS="checkpoint_tests/exr_easy/*"
 
 python training_script/train_litbox_denoiser.py ^
-    --input-a-location "%TRAINING_DATA_FOLDER%/input_0_*.exr" ^
-    --input-b-location "%TRAINING_DATA_FOLDER%/input_1_*.exr" ^
+    --input-a-location "%TRAINING_DATA_FOLDER%/input5_Radiance_A_*.exr" ^
+    --input-b-location "%TRAINING_DATA_FOLDER%/input5_Radiance_B_*.exr" ^
     --input-albedo-location "%TRAINING_DATA_FOLDER%/albedo_*.exr" ^
     --input-transmissibility-location "%TRAINING_DATA_FOLDER%/transmissibility_*.exr" ^
     --reference-location "%TRAINING_DATA_FOLDER%/output_*.exr" ^

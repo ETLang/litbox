@@ -1,6 +1,7 @@
 import time
 from matplotlib import pyplot as plt
 import numpy as np
+import torch
 
 
 class LitboxDenoiserDisplay:
@@ -12,21 +13,24 @@ class LitboxDenoiserDisplay:
 
     def show(self, input_image, output_image, target_image):
         # Ensure single-channel inputs (keep first channel if multiple) for the input plot
-        if input_image.shape[1] != 1:
-            input_plot = input_image[:, 0:1, :, :]
-        else:
-            input_plot = input_image
+        # if input_image.shape[1] != 1:
+        #     input_plot = input_image[:, 0:1, :, :]
+        # else:
+        input_plot = torch.clamp((input_image + 3) / 6, min=0, max=1)
+
 
         # For output and target, keep full channels but ensure we display only first channel if required
-        if output_image.shape[1] != 1:
-            out_plot = output_image[:, 0:1, :, :]
-        else:
-            out_plot = output_image
+        # if output_image.shape[1] != 1:
+        #     out_plot = output_image[:, 0:1, :, :]
+        # else:
+        out_plot = torch.clamp((output_image + 3) / 6, min=0, max=1)
 
-        if target_image.shape[1] != 1:
-            tgt_plot = target_image[:, 0:1, :, :]
-        else:
-            tgt_plot = target_image
+
+        # if target_image.shape[1] != 1:
+        #     tgt_plot = target_image[:, 0:1, :, :]
+        # else:
+        tgt_plot = torch.clamp((target_image + 3) / 6, min=0, max=1)
+
 
         def to_numpy(img):
             arr = img[0].cpu().detach().numpy().transpose(1, 2, 0)  # H, W, C

@@ -5,6 +5,26 @@ import torch.nn.functional as F
 import torchvision.models as models
 from torchvision import transforms
 
+class RelativeCharbonnierLoss(nn.Module):
+    def __init__(self, eps=1e-6, eta=1e-3):
+        super(RelativeCharbonnierLoss, self).__init__()
+        self.eps = eps   # Stability for the denominator
+        self.eta = eta   # Smoothness constant for Charbonnier
+
+    def forward(self, pred, target):
+        # Calculate the absolute difference
+        diff = pred - target
+        
+        # Charbonnier component: sqrt(x^2 + eta^2)
+        # This acts like L2 for small errors and L1 for large ones
+        loss_val = torch.sqrt(diff * diff + self.eta * self.eta)
+        
+        # Relative component: Normalize by the target magnitude
+        # We add eps to avoid division by zero on black pixels
+        relative_loss = loss_val / (target + self.eps)
+        
+        return torch.mean(relative_loss)
+
 class HdrLoss(nn.Module):
     def __init__(self, alpha=1.0, beta=0.1, gamma=0.5, base_weight=1.0):
         """

@@ -1,6 +1,17 @@
 import torch
 import torch.nn as nn
 
+def initialize_to_identity(model):
+    for m in model.modules():
+        if isinstance(m, (nn.Conv2d, nn.ConvTranspose2d)):
+            # Sets weights so output matches input (center pixel = 1)
+            nn.init.dirac_(m.weight)
+            if m.bias is not None:
+                nn.init.constant_(m.bias, 0)
+        elif isinstance(m, (nn.BatchNorm2d, nn.GroupNorm)):
+            # Ensure normalization doesn't shift the identity
+            nn.init.constant_(m.weight, 1)
+            nn.init.constant_(m.bias, 0)
 
 class ResidualBlock(nn.Module):
     def __init__(self, in_channels, out_channels, padding_mode):
@@ -14,6 +25,7 @@ class ResidualBlock(nn.Module):
             nn.ReLU(inplace=True),
             nn.Conv2d(out_channels, out_channels, kernel_size=3, padding=1, padding_mode=padding_mode),
             nn.BatchNorm2d(out_channels))
+        initialize_to_identity(self)
         
         self.final = nn.ReLU(inplace=True)
 
@@ -47,7 +59,9 @@ class LitboxDenoiserNet(nn.Module):
         self.unet_downsamplers = nn.ModuleList()
         self.unet_decoders = nn.ModuleList()
         self.unet_skipconns = nn.ModuleList()
-        pipeline_channels = 1
+        pipeline_channels = 8
+
+        # TODO: Incorporate a scalar representation of SPP into the model
         
         #########################
         # Initial Feature Extraction
@@ -64,7 +78,7 @@ class LitboxDenoiserNet(nn.Module):
         # Bottleneck
         self.bottleneck, pipeline_channels = self.make_bottleneck(pipeline_channels)
 
-        self.short_circuit = nn.Conv2d(pipeline_channels, 1, kernel_size=3, padding=1)
+        self.short_circuit = nn.Conv2d(pipeline_channels, 3, kernel_size=3, padding=1)
 
         ##########################
         # Decoder (Upsampling path) - Using PixelShuffle for efficient upsampling
@@ -92,7 +106,7 @@ class LitboxDenoiserNet(nn.Module):
         #     self.conv_out = nn.Conv2d(64, 1, kernel_size=3, padding=1)
         # else: # upsample_factor == 2
         #     self.conv_out = nn.Conv2d(128, 1, kernel_size=3, padding=1) # No extra upsample needed if input 2x already
-        self.conv_out = nn.Conv2d(pipeline_channels, 1, kernel_size=3, padding=1)
+        self.conv_out = nn.Conv2d(pipeline_channels, 3, kernel_size=3, padding=1)
         
         if use_sigmoid:
             self.clamp_output = nn.Sigmoid() # Or adjust based on your image range [0,1] or [-1,1]

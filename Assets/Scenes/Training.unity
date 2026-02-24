@@ -726,7 +726,7 @@ Camera:
   far clip plane: 1000
   field of view: 60
   orthographic: 1
-  orthographic size: 5
+  orthographic size: 5.6651616
   m_Depth: -1
   m_CullingMask:
     serializedVersion: 2
@@ -1147,7 +1147,7 @@ MonoBehaviour:
   photonBounces: -1
   integrationInterval: 0.01
   transmissibilityVariationEpsilon: 0.001
-  _measurementInterval: 100
+  _measurementInterval: 20
   frameLimit: -1
   _convergenceThreshold: 0.0001
   iterationsSinceClear: 0

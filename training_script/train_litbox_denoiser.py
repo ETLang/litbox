@@ -1,28 +1,27 @@
-import random
 import torch
-import torch.nn as nn
 import torch.optim as optim
-from torch.utils.data import Dataset, DataLoader
-import torchvision.models as models
+from torch.utils.data import DataLoader
 from torchvision import transforms
 import numpy as np
-import matplotlib.pyplot as plt
 import os
 import glob
 import time
+import random
 import argparse
 from PIL import Image
 import OpenEXR
 import Imath
-import array
-import math
-from typing import Tuple, Optional
-import torch.nn.functional as F
-import torchvision.transforms.functional
 from litbox_display import LitboxDenoiserDisplay
 from litbox_loss import HdrLoss
+from litbox_loss import RelativeCharbonnierLoss
 from litbox_dataset import LitboxDenoiserDataset
 from litbox_model import LitboxDenoiserNet
+import data_processing
+from preprocess_data import build_cache
+from preprocess_data import create_litbox_cached_datasets
+from curriculum_manager import CurriculumManager
+from data_processing import augment_for_training
+import wandb
 
 # Settings (overridable via command line arguments)
 g_output_upsample = 1 # 4
@@ -39,6 +38,7 @@ g_padding_mode = 'reflect'
 g_initial_features = 32
 g_normalize_input = False
 g_use_adam_w = True
+g_use_sigmoid = False
 g_weight_decay = 0.01
 g_epsilon = 1e-6 
 g_loss_dark_bias = 0.5 # 1.0 is OK
@@ -55,16 +55,11 @@ device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
 
 def parse_args():
     parser = argparse.ArgumentParser(description='Litbox Denoiser Training Script')
+    data_processing.register_dataset_args(parser, False)
+    parser.add_argument('--recompute-stats', action='store_true', help='Compute global normalization stats, even if they are cached.')
+    parser.add_argument('--skip-cache-validation', action='store_true', help='Trust that the cache is populated, and skip validating it')
+    parser.add_argument('--cache-location', help='Path to preprocessed feature cache', default='./training_cache')
     parser.add_argument('--eval', action='store_true', help='Run in evaluation mode')
-    parser.add_argument('--input-a-easy-location', help='Path to easy input imageset A, for curriculum training')
-    parser.add_argument('--input-b-easy-location', help='Path to easy input imageset B, for curriculum training')
-    parser.add_argument('--input-a-medium-location', help='Path to input imageset A, for curriculum training')
-    parser.add_argument('--input-b-medium-location', help='Path to input imageset B, for curriculum training')
-    parser.add_argument('--input-a-location', required=True, help='Path to input imageset A')
-    parser.add_argument('--input-b-location', required=True, help='Path to input imageset B')
-    parser.add_argument('--input-albedo-location', required=True, help='Path to albedo imageset')
-    parser.add_argument('--input-transmissibility-location', required=True, help='Path to transmissibility imageset')
-    parser.add_argument('--reference-location', help='Path to reference images for training')
     parser.add_argument('--output-folder', help='Output folder for evaluated images')
     parser.add_argument('--model-path', required=True, help='Path to save/load model')
     parser.add_argument('--checkpoint-interval', type=int, default=g_checkpoint_interval, help='Seconds between checkpoints')
@@ -80,6 +75,7 @@ def parse_args():
     parser.add_argument('--learn-rate', type=float, default=g_learn_rate, help='Learning rate') 
     
     args = parser.parse_args()
+    args.compute_stats = args.recompute_stats
     
     # Validation
     if not args.eval and not args.reference_location:
@@ -88,14 +84,7 @@ def parse_args():
         parser.error("--output-folder is required in eval mode")
     if args.checkpoint_interval and not args.checkpoint_folder:
         parser.error("--checkpoint-folder is required when using --checkpoint-interval")
-    if args.input_a_easy_location and not args.input_b_easy_location:
-        parser.error("Both --input-a-easy-location and --input-b-easy-location must be provided for easy curriculum training")
-    if args.input_b_easy_location and not args.input_a_easy_location:
-        parser.error("Both --input-a-easy-location and --input-b-easy-location must be provided for easy curriculum training")
-    if args.input_a_medium_location and not args.input_b_medium_location:
-        parser.error("Both --input-a-medium-location and --input-b-medium-location must be provided for medium curriculum training")
-    if args.input_b_medium_location and not args.input_a_medium_location:
-        parser.error("Both --input-a-medium-location and --input-b-medium-location must be provided for medium curriculum training")
+    data_processing.validate_dataset_args(args, parser)
         
     return args
 
@@ -112,62 +101,31 @@ def select_random_channel(img_batch, target_batch=None):
     else:
         return img_selected.unsqueeze(1)  # [batch, 1, H, W]
 
-def use_sigmoid_from_input(input_files):
-    # Assumes all input files are the same type
-    return not input_files[0].lower().endswith('.exr')
-
-def compute_mean_and_relative_variance(image_a, image_b):
-    mean = (image_a + image_b) / 2.0
-    relative_variance = (image_a - image_b) ** 2 / (mean ** 2 + 1e-5)
-    # Originally I was planning on using a lower resolution variance map, but for now let's try full resolution
-    # relative_variance = F.avg_pool2d(relative_variance, kernel_size=4, stride=4)
-    relative_variance = relative_variance.mean(dim=1, keepdim=True)
-    return mean, relative_variance
-
 def train(args):
+    run = wandb.init(
+        # Set the wandb entity where your project will be logged (generally your team name).
+        entity="etlang-org",
+        # Set the wandb project where this run will be logged.
+        project="my-awesome-project",
+        # Track hyperparameters and run metadata.
+        config={
+            "learning_rate": args.learn_rate,
+            "architecture": "UNet-5",
+            "dataset": f"Litbox-{os.path.basename(os.path.dirname(args.input_a_location))}",
+            "epochs": args.epochs,
+            "upsample": args.upsample,
+            
+        },
+    )
+
     display = LitboxDenoiserDisplay()
-
-    # Create datasets
-    input_sets = []
-    reference_files = sorted(glob.glob(args.reference_location))
-    albedo_files = sorted(glob.glob(args.input_albedo))
-    if len(albedo_files) < len(reference_files):
-        raise ValueError("There are fewer albedo files than reference files. Each reference file must have a corresponding albedo file.")
-    albedo_files = albedo_files[:len(reference_files)]
-    transmissibility_files = sorted(glob.glob(args.input_transmissibility))
-    if len(transmissibility_files) < len(reference_files):
-        raise ValueError("There are fewer transmissibility files than reference files. Each reference file must have a corresponding transmissibility file.")
-    transmissibility_files = transmissibility_files[:len(reference_files)]
-
-    if args.input_a_easy_location:
-        input_a_easy_files = sorted(glob.glob(args.input_a_easy_location))
-        input_b_easy_files = sorted(glob.glob(args.input_b_easy_location))
-        if len(input_a_easy_files) < len(reference_files) or len(input_b_easy_files) < len(reference_files):
-            raise ValueError("There are fewer input files than reference files. Each reference file must have a corresponding input file.")
-        input_a_easy_files = input_a_easy_files[:len(reference_files)]
-        input_b_easy_files = input_b_easy_files[:len(reference_files)]
-        input_sets.append(("Easy", input_a_easy_files, input_b_easy_files))
-    if args.input_a_medium_location:
-        input_a_medium_files = sorted(glob.glob(args.input_a_medium_location))
-        input_b_medium_files = sorted(glob.glob(args.input_b_medium_location))
-        if len(input_a_medium_files) < len(reference_files) or len(input_b_medium_files) < len(reference_files):
-            raise ValueError("There are fewer input files than reference files. Each reference file must have a corresponding input file.")
-        input_a_medium_files = input_a_medium_files[:len(reference_files)]
-        input_b_medium_files = input_b_medium_files[:len(reference_files)]
-        input_sets.append(("Medium", input_a_medium_files, input_b_medium_files))
-    input_a_final_files = sorted(glob.glob(args.input_a_location))
-    input_b_final_files = sorted(glob.glob(args.input_b_location))
-    if len(input_a_final_files) < len(reference_files) or len(input_b_final_files) < len(reference_files):
-        raise ValueError("There are fewer input files than reference files. Each reference file must have a corresponding input file.")
-    input_a_final_files = input_a_final_files[:len(reference_files)]
-    input_b_final_files = input_b_final_files[:len(reference_files)]
-    input_sets.append(("Final", input_a_final_files, input_b_final_files))
+    training_datasets, validation_datasets = create_litbox_cached_datasets(args, device)
+    curriculum_manager = CurriculumManager(patience=3, min_delta=0.01)
 
     # Initialize model
-    use_sigmoid = use_sigmoid_from_input(input_a_final_files)
     model = LitboxDenoiserNet(
         upsample_factor=args.upsample, 
-        use_sigmoid=use_sigmoid, 
+        use_sigmoid=g_use_sigmoid, 
         use_log_space=False, #train_dataset.exr_source and args.log_space,
         normalize_input=g_normalize_input, 
         initial_features=g_initial_features,
@@ -176,15 +134,17 @@ def train(args):
         padding_mode=g_padding_mode).to(device)
     
     # Loss functions
-    loss_fn = HdrLoss(g_loss_bright_weight, g_loss_gradient_weight, g_loss_l1_weight, g_loss_dark_bias)
-    #loss_fn = nn.MSELoss()
+    loss_fn = torch.nn.MSELoss()
+    # loss_fn = HdrLoss(g_loss_bright_weight, g_loss_gradient_weight, g_loss_l1_weight, g_loss_dark_bias)
+    # loss_fn =  RelativeCharbonnierLoss()
 
     # Optimizer
     if g_use_adam_w:
-        optimizer = optim.Adam(model.parameters(), lr=args.learn_rate, weight_decay=g_weight_decay)
+        weight_decay = g_weight_decay
     else:
-        optimizer = optim.Adam(model.parameters(), lr=args.learn_rate)
-    
+        weight_decay = 0
+    optimizer = optim.Adam(model.parameters(), lr=args.learn_rate, weight_decay=weight_decay)
+
     # Training loop
     start_time = time.time()
     last_checkpoint = start_time
@@ -192,80 +152,63 @@ def train(args):
     
     model.train()
 
-    for curriculum_name, input_a_files, input_b_files in input_sets:
-        # Split into train and test sets
-        split_idx = int(len(reference_files) * (1 - args.test_ratio))
-        train_a_input = input_a_files[:split_idx]
-        train_b_input = input_b_files[:split_idx]
-        train_albedo_input = albedo_files[:split_idx]
-        train_transmissibility_input = transmissibility_files[:split_idx]
-        train_reference = reference_files[:split_idx]
-        test_a_input = input_a_files[split_idx:]
-        test_b_input = input_b_files[split_idx:]
-        test_albedo_input = albedo_files[split_idx:]
-        test_transmissibility_input = transmissibility_files[split_idx:]
-        test_reference = reference_files[split_idx:]
+    curriculum_weights = [1, 0, 0] # [Easy, Medium, Hard]
+    curriculum_spp = [16, 4, 1]
+    # TODO: Easy may still be too hard. Add 64spp and 256spp
 
-        truth_transform = transforms.Compose([
-            # transforms.Resize((8,8))
-        ])
-        
-        train_dataset = LitboxDenoiserDataset(train_a_input, train_b_input, train_albedo_input, train_transmissibility_input, train_reference, 
-                                    args.crop_size, args.upsample, None) # truth_transform)
-        test_dataset = LitboxDenoiserDataset(test_a_input, test_b_input, test_albedo_input, test_transmissibility_input, test_reference,
-                                    args.crop_size, args.upsample, None) #truth_transform)
-        
-        train_loader = DataLoader(train_dataset, batch_size=args.batch_size, shuffle=False, num_workers=4)
-        test_loader = DataLoader(test_dataset, batch_size=args.batch_size, shuffle=False, num_workers=4)
-        
-        for epoch in range(args.epochs):
-            for batch_idx, (input_a, input_b, albedo, transmissibility, reference) in enumerate(train_loader):
-                # Clone tensors to make them resizable
-                # TODO: Check if this is necessary
-                input_a = input_a.clone().detach().to(device)
-                input_b = input_b.clone().detach().to(device)
-                albedo = albedo.clone().detach().to(device)
-                transmissibility = transmissibility.clone().detach().to(device)
-                reference = reference.clone().detach().to(device)
-                    
-                # TODO uncertain if it would be best to train with all three color channels, or treat them independently
-                # Select random channel for both input and target (using same index)
-                # input_channel, target_channel = select_random_channel(input_a, reference)
+    for epoch in range(args.epochs):
+        curriculum = random.choices(training_datasets, curriculum_weights[:len(training_datasets)], k=1)[0]
+
+        loader = DataLoader(curriculum, batch_size=args.batch_size, shuffle=False, num_workers=1) # TODO: Change to 4 workers when done debugging
+
+        for batch_idx, features in enumerate(loader):
+            radiance = features['radiance']
+            variance = features['variance']
+            albedo = features['albedo']
+            density = features['density']
+            reference = features['reference']
                 
-                optimizer.zero_grad()
+            input_tensor = torch.cat([radiance, variance, albedo, density], dim=1)
+            if ~torch.isfinite(input_tensor).all():
+                print("oops input_tensor")
 
-                input_channel = model.pre_transform(input_channel)
-                output = model(input_channel)
-                output = model.post_transform(output)
+            output = model(input_tensor)
+            # output = model.post_transform(output)
 
-                # Calculate losses
-                loss = loss_fn(output, target_channel)
-                loss.backward()
-                optimizer.step()
+            if ~torch.isfinite(output).all():
+                print("oops output has bad numbers")
+
+            if ~torch.isfinite(reference).all():
+                print("oops reference has bad numbers")
+
+            # Calculate losses 
+            loss = loss_fn(output, reference)
+            loss.backward()
+            optimizer.step()
+            
+            # Console output every 5 seconds
+            current_time = time.time()
+            if current_time - last_print >= 10:
+                elapsed = current_time - start_time
+                print(f"{elapsed:.2f},{curriculum.name},{epoch},{epoch*len(curriculum) + batch_idx*len(radiance)},{loss.item():.6f}")
+                last_print = current_time
+
+                display.show(radiance, output, reference)
                 
-                # Console output every 5 seconds
-                current_time = time.time()
-                if current_time - last_print >= 10:
-                    elapsed = current_time - start_time
-                    print(f"{elapsed:.2f},{curriculum_name},{epoch},{epoch*len(train_dataset) + batch_idx*len(input_img)},{loss.item():.6f}")
-                    last_print = current_time
-
-                    display.show(input_channel, output, target_channel)
+                # Checkpoint if needed
+                if args.checkpoint_interval and current_time - last_checkpoint >= args.checkpoint_interval:
+                    checkpoint_dir = os.path.join(args.checkpoint_folder, f"{int(elapsed)}")
+                    os.makedirs(checkpoint_dir, exist_ok=True)
                     
-                    # Checkpoint if needed
-                    if args.checkpoint_interval and current_time - last_checkpoint >= args.checkpoint_interval:
-                        checkpoint_dir = os.path.join(args.checkpoint_folder, f"{int(elapsed)}")
-                        os.makedirs(checkpoint_dir, exist_ok=True)
+                    # Save model
+                    torch.save(model.state_dict(), os.path.join(checkpoint_dir, "model.pth"))
+                    
+                    # Evaluate checkpoint tests if provided
+                    if args.checkpoint_tests:
+                        evaluate(model, args.checkpoint_tests, checkpoint_dir, args)
+                        model.train()
                         
-                        # Save model
-                        torch.save(model.state_dict(), os.path.join(checkpoint_dir, "model.pth"))
-                        
-                        # Evaluate checkpoint tests if provided
-                        if args.checkpoint_tests:
-                            evaluate(model, args.checkpoint_tests, checkpoint_dir, args)
-                            model.train()
-                            
-                        last_checkpoint = time.time()
+                    last_checkpoint = time.time()
     
     display.shutdown()
     
@@ -366,7 +309,7 @@ def main():
 
     if args.eval:
         input_files = sorted(glob.glob(args.input_location))
-        use_sigmoid = use_sigmoid_from_input(input_files)
+        use_sigmoid = g_use_sigmoid
         model = LitboxDenoiserNet(
             upsample_factor=args.upsample, 
             use_sigmoid=use_sigmoid, 
@@ -379,6 +322,8 @@ def main():
         model.load_state_dict(torch.load(args.model_path))
         evaluate(model, args.input_location, args.output_folder, args)
     else:
+        if not args.skip_cache_validation:
+            build_cache(args)
         train(args)
 
 if __name__ == "__main__":
