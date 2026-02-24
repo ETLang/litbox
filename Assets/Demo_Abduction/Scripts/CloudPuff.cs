@@ -64,8 +64,8 @@ public class CloudPuff : MonoBehaviour
             }
         } else {
             // Link the alpha of the foreground and background to the density of the cloud
-            var transmissibilityPerPixel = 1-Mathf.Pow(10, rayTracedObject.substrateLogDensity);
-            var transmissibilityPerPuff = Mathf.Pow(transmissibilityPerPixel, transform.localScale.x * puffThickness);
+            var transmissibilityPerPixel = Mathf.Pow(1-Mathf.Pow(10, rayTracedObject.substrateLogDensity), 1);
+            var transmissibilityPerPuff = Mathf.Pow(transmissibilityPerPixel, transform.localScale.x * puffThickness / 2);
             var puffDensity = 1-transmissibilityPerPuff;
 
             if(backgroundObject)
