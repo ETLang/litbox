@@ -34,7 +34,7 @@ float4x4 g_lightToTarget;
 float3 g_lightEnergy;
 float g_lightEmissionOutscatter;
 float2 g_directionalLightDirection;
-
+float2 g_spotLightTightness;
 
 // HDR Conversion
 float g_hdr_scale;
@@ -233,8 +233,12 @@ struct ForwardMonteCarlo : BaseContext, IMonteCarloMethod
     Ray EmitSpotLight() {
         Ray emitted;
 
+        float directionSeed = 2*rand.Next()-1;
+
+        directionSeed = tan(directionSeed * g_spotLightTightness.y) / g_spotLightTightness.x;
+
         emitted.Origin = mul(float4(rand.Next()-0.5, rand.Next()-0.5, 0, 1), g_lightToTarget).xy;
-        emitted.Direction = normalize(mul(float4(2*rand.Next()-1, -1, 0, 0), g_lightToTarget).xy);
+        emitted.Direction = normalize(mul(float4(directionSeed, -1, 0, 0), g_lightToTarget).xy);
         emitted.Energy = g_lightEnergy;
 
         return emitted;

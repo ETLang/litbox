@@ -223,8 +223,9 @@ public class ForwardMonteCarlo : Disposable
                 simulateKernel = string.Format(kernelFormat, "PointLight");
                 emissionOutscatter = pt.emissionOutscatter;
                 break;
-            case RTSpotLight _:
+            case RTSpotLight spot:
                 simulateKernel = string.Format(kernelFormat, "SpotLight");
+                _forwardIntegrationShader.SetVector("g_spotLightTightness", new Vector2(spot.tightness, Mathf.Atan(spot.tightness)));
                 break;
             case RTLaserLight _:
                 simulateKernel = string.Format(kernelFormat, "LaserLight");
