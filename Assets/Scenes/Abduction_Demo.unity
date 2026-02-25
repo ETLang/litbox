@@ -65877,6 +65877,10 @@ PrefabInstance:
       value: SpotLight (2)
       objectReference: {fileID: 0}
     - target: {fileID: 6866047197773403249, guid: e352ba77fe7468bb8988f3d07aa3a902, type: 3}
+      propertyPath: pinch
+      value: 1
+      objectReference: {fileID: 0}
+    - target: {fileID: 6866047197773403249, guid: e352ba77fe7468bb8988f3d07aa3a902, type: 3}
       propertyPath: intensity
       value: 0.02
       objectReference: {fileID: 0}
@@ -73057,6 +73061,10 @@ PrefabInstance:
     - target: {fileID: 3944455307740111456, guid: e352ba77fe7468bb8988f3d07aa3a902, type: 3}
       propertyPath: m_Name
       value: SpotLight (3)
+      objectReference: {fileID: 0}
+    - target: {fileID: 6866047197773403249, guid: e352ba77fe7468bb8988f3d07aa3a902, type: 3}
+      propertyPath: pinch
+      value: 1
       objectReference: {fileID: 0}
     - target: {fileID: 6866047197773403249, guid: e352ba77fe7468bb8988f3d07aa3a902, type: 3}
       propertyPath: intensity
@@ -107076,6 +107084,10 @@ PrefabInstance:
       value: 0
       objectReference: {fileID: 0}
     - target: {fileID: 2232668876957911187, guid: 89ca6a0506bec49e099c4e4c12b6ce44, type: 3}
+      propertyPath: pinch
+      value: 0.01
+      objectReference: {fileID: 0}
+    - target: {fileID: 2232668876957911187, guid: 89ca6a0506bec49e099c4e4c12b6ce44, type: 3}
       propertyPath: intensity
       value: 1.66
       objectReference: {fileID: 0}
@@ -136976,6 +136988,10 @@ PrefabInstance:
     - target: {fileID: 3944455307740111456, guid: e352ba77fe7468bb8988f3d07aa3a902, type: 3}
       propertyPath: m_Name
       value: SpotLight (1)
+      objectReference: {fileID: 0}
+    - target: {fileID: 6866047197773403249, guid: e352ba77fe7468bb8988f3d07aa3a902, type: 3}
+      propertyPath: pinch
+      value: 1
       objectReference: {fileID: 0}
     - target: {fileID: 6866047197773403249, guid: e352ba77fe7468bb8988f3d07aa3a902, type: 3}
       propertyPath: intensity

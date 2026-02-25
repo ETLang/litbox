@@ -217,6 +217,8 @@ public class ForwardMonteCarlo : Disposable
 
         string kernelFormat = "Simulate_{0}";
 
+        float p = 0;
+
         switch (light)
         {
             case RTPointLight pt:
@@ -225,7 +227,8 @@ public class ForwardMonteCarlo : Disposable
                 break;
             case RTSpotLight spot:
                 simulateKernel = string.Format(kernelFormat, "SpotLight");
-                _forwardIntegrationShader.SetVector("g_spotLightTightness", new Vector2(spot.tightness, Mathf.Atan(spot.tightness)));
+                p = Mathf.Pow(spot.pinch, 2);
+                _forwardIntegrationShader.SetVector("g_lightPinch", new Vector2(p, Mathf.Atan(p)));
                 break;
             case RTLaserLight _:
                 simulateKernel = string.Format(kernelFormat, "LaserLight");
