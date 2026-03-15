@@ -20,10 +20,6 @@ public class RTLightSource : LitboxComponent
     }
 
     public bool Changed {get; protected set;}
-    private Vector4 _previousEnergy;
-    private uint _previousBounces;
-    private Color _previousColor;
-    private Matrix4x4 _previousMatrix;
 
     protected virtual void Start() {
         DetectChanges(() => Energy);
