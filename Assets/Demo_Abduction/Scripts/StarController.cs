@@ -18,6 +18,7 @@ public class StarController : MonoBehaviour
 
     [SerializeField] float brightStarMinScale = 0.9f;
     [SerializeField] float brightStarMaxScale = 1.2f;
+    [SerializeField] RTLayer starLayer = RTLayer.Background;
 
     const float _BlockSize = 10;
 
@@ -90,7 +91,10 @@ public class StarController : MonoBehaviour
                     brightness = Random.Range(normalStarMinBrightness, 1);
                 }
 
-                newStar.GetComponentInChildren<SpriteRenderer>().color = new Color(1, 1, 1, brightness);
+                var renderer = newStar.GetComponentInChildren<SpriteRenderer>();
+
+                renderer.color = new Color(1, 1, 1, brightness);
+                renderer.sortingLayerName = starLayer.ToString();
                 newStar.transform.localScale = new Vector3(scale, scale, 1);
 
                 _instances.Add(newStar);
