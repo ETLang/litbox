@@ -10,7 +10,7 @@ public class CloudGroupController : LitboxComponent
     [SerializeField] Material foregroundCloudMat;
     [SerializeField] int foregroundSimulationLOD = 5;
     [SerializeField, Range(0, 120)] int blurSize = 1; // kernelsize = 2 * blurSize + 1
-    [SerializeField, Range(0, 3)] float transmissionDepth = 1.5f;
+    [SerializeField, Range(0, 10)] float transmissionDepth = 1.5f;
     
     Simulation _simulation;
     BindSimulationToCamera _binder;
@@ -159,7 +159,7 @@ public class CloudGroupController : LitboxComponent
             float total = 0;
             for(int i = -blurSize;i <= blurSize;i++) {
                // for(int j = -blurSize;j <= blurSize;j++) {
-                    float weight = Mathf.Exp(-((i * i) / (float)blurSize * 1.5f));
+                    float weight = Mathf.Exp(-((i * i) / (float)blurSize * 0.5f));
                     _kernelWeights[i + blurSize] = weight;
                     total += weight;
                // }
@@ -174,7 +174,7 @@ public class CloudGroupController : LitboxComponent
 
             _weightsLUT = _kernelWeights.AsTexture();
             _gaussianBlurShader.SetInt("kernel_sample_count", _kernelSampleCount);
-            _gaussianBlurShader.SetFloats("kernel_weights", _kernelWeights);
+            _gaussianBlurShader.SetUnalignedFloatArray("kernel_weights", _kernelWeights);
             //_gaussianBlurShader.SetVectorArray("kernel_sample_points", _kernelSamples1);
         }
 

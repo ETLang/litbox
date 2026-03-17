@@ -114,4 +114,24 @@ public static class ComputeShaderExtensions
             mipLevel = mip,
         };
     }
+
+    public static void SetUnalignedFloatArray(this ComputeShader shader, int nameId, float[] arr)
+    {
+        float[] aligned = new float[arr.Length * 4];
+        for(int i = 0;i < arr.Length;i++)
+        {
+            aligned[4*i] = arr[i];
+        }
+        shader.SetFloats(nameId, aligned);
+    }
+
+    public static void SetUnalignedFloatArray(this ComputeShader shader, string name, float[] arr)
+    {
+        float[] aligned = new float[arr.Length * 4];
+        for(int i = 0;i < arr.Length;i++)
+        {
+            aligned[4*i] = arr[i];
+        }
+        shader.SetFloats(name, aligned);
+    }
 }

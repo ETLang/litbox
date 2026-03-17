@@ -39,6 +39,8 @@ public class BindSimulationToCamera : MonoBehaviour
         _sim.transform.localScale = new Vector3(
             xPaddingScale * _cam.orthographicSize * _cam.aspect * 2 / cameraScale.x, 
             yPaddingScale * _cam.orthographicSize * 2 / cameraScale.y, 1);
+        _sim.transform.localPosition = new Vector3(0, 0, _sim.transform.localPosition.z);
+        _sim.transform.localRotation = Quaternion.identity;
 
         ScreenToSimulationUVTransform =
             Matrix4x4.Translate(new Vector3(0.5f, -0.5f, 0)) *
