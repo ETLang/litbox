@@ -1,5 +1,6 @@
 import torch
 import torch.nn as nn
+import argparse
 
 def initialize_to_identity(model):
     for m in model.modules():
@@ -314,3 +315,46 @@ class LitboxDenoiserNet(nn.Module):
             ResidualBlock(2 * channels, channels, self.padding_mode),
             ResidualBlock(channels, channels, self.padding_mode)
         )
+
+    def export_onnx(self, path, input_channels=8, resolution=256):
+        self.eval()
+        dummy_input = torch.randn(1, input_channels, resolution, resolution).to(next(self.parameters()).device)
+        torch.onnx.export(self, 
+                         dummy_input, 
+                         path,
+                         input_names=['input'], 
+                         output_names=['output'],
+                         dynamic_axes={'input': {0: 'batch_size', 2: 'height', 3: 'width'},
+                                     'output': {0: 'batch_size', 2: 'height', 3: 'width'}},
+                         opset_version=11)
+    
+def main():
+    parser = argparse.ArgumentParser(description='Convert Litbox PTH checkpoint to ONNX')
+    parser.add_argument('--model-path', help='Path to the .pth model file')
+    parser.add_argument('--training-folder', help='Path to the folder of the training output')
+    parser.add_argument('--output-path', required=True, help='Path to save the .onnx file')
+    parser.add_argument('--upsample', type=int, default=1, help='Upsample factor used in the model')
+    parser.add_argument('--unet-size', type=int, default=5, help='U-Net depth (unet_size)')
+    parser.add_argument('--features', type=int, default=32, help='Initial features count')
+    parser.add_argument('--channels', type=int, default=8, help='Number of input channels (radiance, variance, albedo, density)')
+    parser.add_argument('--resolution', type=int, default=256, help='Dummy input resolution for export')
+    
+    args = parser.parse_args()
+    
+    device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
+    
+    model = LitboxDenoiserNet(
+        upsample_factor=args.upsample,
+        initial_features=args.features,
+        unet_size=args.unet_size
+    ).to(device)
+    
+    print(f"Loading weights from {args.model_path}...")
+    model.load_state_dict(torch.load(args.model_path, map_location=device))
+    
+    print(f"Exporting to {args.output_path}...")
+    model.export_onnx(args.output_path, input_channels=args.channels, resolution=args.resolution)
+    print("Done.")
+
+if __name__ == "__main__":
+    main()

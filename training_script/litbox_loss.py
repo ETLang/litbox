@@ -6,12 +6,17 @@ import torchvision.models as models
 from torchvision import transforms
 
 class RelativeCharbonnierLoss(nn.Module):
-    def __init__(self, eps=1e-6, eta=1e-3):
+    def __init__(self, mean=0.0, stddev=1.0, eps=1e-6, eta=1e-3):
         super(RelativeCharbonnierLoss, self).__init__()
+        self.mean_view = mean.view(1,3,1,1)
+        self.stddev_view = stddev.view(1,3,1,1)
         self.eps = eps   # Stability for the denominator
         self.eta = eta   # Smoothness constant for Charbonnier
 
     def forward(self, pred, target):
+        pred = (pred * self.stddev_view) + self.mean_view
+        target = (target * self.stddev_view) + self.mean_view
+
         # Calculate the absolute difference
         diff = pred - target
         
@@ -21,7 +26,7 @@ class RelativeCharbonnierLoss(nn.Module):
         
         # Relative component: Normalize by the target magnitude
         # We add eps to avoid division by zero on black pixels
-        relative_loss = loss_val / (target + self.eps)
+        relative_loss = loss_val / torch.clamp(target, min=self.eps)
         
         return torch.mean(relative_loss)
 

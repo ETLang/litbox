@@ -1,3 +1,5 @@
+import json
+
 import torch
 import torch.optim as optim
 from torch.utils.data import DataLoader
@@ -8,7 +10,9 @@ import glob
 import time
 import random
 import argparse
+import shutil
 from PIL import Image
+import matplotlib.pyplot as plt
 import OpenEXR
 import Imath
 from litbox_display import LitboxDenoiserDisplay
@@ -17,7 +21,7 @@ from litbox_loss import RelativeCharbonnierLoss
 from litbox_dataset import LitboxDenoiserDataset
 from litbox_model import LitboxDenoiserNet
 import data_processing
-from preprocess_data import build_cache
+from preprocess_data import build_cache, load_cached_stats
 from preprocess_data import create_litbox_cached_datasets
 from curriculum_manager import CurriculumManager
 from data_processing import augment_for_training
@@ -60,30 +64,27 @@ def parse_args():
     parser.add_argument('--skip-cache-validation', action='store_true', help='Trust that the cache is populated, and skip validating it')
     parser.add_argument('--cache-location', help='Path to preprocessed feature cache', default='./training_cache')
     parser.add_argument('--eval', action='store_true', help='Run in evaluation mode')
-    parser.add_argument('--output-folder', help='Output folder for evaluated images')
-    parser.add_argument('--model-path', required=True, help='Path to save/load model')
+    parser.add_argument('--output-folder', required=True, help='Output folder for evaluated images or training results/checkpoints')
+    parser.add_argument('--model-path', help='Path to model to use for eval')
     parser.add_argument('--checkpoint-interval', type=int, default=g_checkpoint_interval, help='Seconds between checkpoints')
-    parser.add_argument('--checkpoint-folder', help='Folder to save checkpoint data')
     parser.add_argument('--checkpoint-tests', help='Path to test images for checkpoints')
     parser.add_argument('--test-ratio', type=float, default=g_test_ratio, help='Percentage of data for testing')
     parser.add_argument('--epochs', type=int, default=g_epochs, help='Number of epochs to train, per curriculum stage')
     parser.add_argument('--log-space', action='store_true', help='Transform EXR data to log space')
     parser.add_argument('--crop-size', type=int, default=g_crop_size, help='Resolution of training crops')
     parser.add_argument('--upsample', type=int, default=g_output_upsample, choices=[1, 2, 4, 8], help='Upsampling factor')
-    parser.add_argument('--onnx-export', help='Path to export ONNX model')
     parser.add_argument('--batch-size', type=int, default=g_batch_size, help='Batch size for training and testing') 
     parser.add_argument('--learn-rate', type=float, default=g_learn_rate, help='Learning rate') 
     
     args = parser.parse_args()
-    args.compute_stats = args.recompute_stats
     
     # Validation
     if not args.eval and not args.reference_location:
         parser.error("--reference-location is required in training mode")
     if args.eval and not args.output_folder:
         parser.error("--output-folder is required in eval mode")
-    if args.checkpoint_interval and not args.checkpoint_folder:
-        parser.error("--checkpoint-folder is required when using --checkpoint-interval")
+    if args.eval and not args.model_path:
+        parser.error("--model-path is required in eval mode")
     data_processing.validate_dataset_args(args, parser)
         
     return args
@@ -101,12 +102,12 @@ def select_random_channel(img_batch, target_batch=None):
     else:
         return img_selected.unsqueeze(1)  # [batch, 1, H, W]
 
-def train(args):
+def train(args, stats):
     run = wandb.init(
         # Set the wandb entity where your project will be logged (generally your team name).
         entity="etlang-org",
         # Set the wandb project where this run will be logged.
-        project="my-awesome-project",
+        project="litbox-denoise",
         # Track hyperparameters and run metadata.
         config={
             "learning_rate": args.learn_rate,
@@ -114,9 +115,29 @@ def train(args):
             "dataset": f"Litbox-{os.path.basename(os.path.dirname(args.input_a_location))}",
             "epochs": args.epochs,
             "upsample": args.upsample,
-            
         },
     )
+
+    # Save training configuration to JSON
+    config_to_save = {
+    "upsample": args.upsample,
+    "epochs": args.epochs,
+    "test_ratio": args.test_ratio,
+    "crop_size": args.crop_size,
+    "batch_size": args.batch_size,
+    "learn_rate": args.learn_rate,
+    "unet_size": g_unet_size,
+    "initial_features": g_initial_features,
+    "input_a_location": args.input_a_location,
+    "input_b_location": args.input_b_location,
+    "input_albedo_location": args.input_albedo_location,
+    "input_transmissibility_location": args.input_transmissibility_location,
+    "reference_location": args.reference_location,
+    "input_a_easy_location": args.input_a_easy_location,
+    "input_b_easy_location": args.input_b_easy_location,
+    }
+    with open(os.path.join(args.output_folder, 'args.json'), 'w') as f:
+        json.dump(config_to_save, f, indent=4)
 
     display = LitboxDenoiserDisplay()
     training_datasets, validation_datasets = create_litbox_cached_datasets(args, device)
@@ -132,11 +153,6 @@ def train(args):
         unet_size=g_unet_size,
         epsilon=g_epsilon, 
         padding_mode=g_padding_mode).to(device)
-    
-    # Loss functions
-    loss_fn = torch.nn.MSELoss()
-    # loss_fn = HdrLoss(g_loss_bright_weight, g_loss_gradient_weight, g_loss_l1_weight, g_loss_dark_bias)
-    # loss_fn =  RelativeCharbonnierLoss()
 
     # Optimizer
     if g_use_adam_w:
@@ -151,12 +167,28 @@ def train(args):
     last_print = start_time
     
     model.train()
+    
+    stop_training = False
+    def on_key(event):
+        nonlocal stop_training
+        if event.key == 'q':
+            stop_training = True
+    display.fig.canvas.mpl_connect('key_press_event', on_key)
 
+    # TODO: Easy may still be too hard. Add 64spp and 256spp
     curriculum_weights = [1, 0, 0] # [Easy, Medium, Hard]
     curriculum_spp = [16, 4, 1]
-    # TODO: Easy may still be too hard. Add 64spp and 256spp
+    mean = torch.tensor(stats['final_mean']).to(device)
+    stddev = torch.tensor(stats['final_stddev']).to(device)
+
+    # Loss functions
+    # loss_fn = torch.nn.MSELoss()
+    # loss_fn = HdrLoss(g_loss_bright_weight, g_loss_gradient_weight, g_loss_l1_weight, g_loss_dark_bias)
+    loss_fn = RelativeCharbonnierLoss(mean=mean, stddev=stddev)
 
     for epoch in range(args.epochs):
+        if stop_training:
+            break
         curriculum = random.choices(training_datasets, curriculum_weights[:len(training_datasets)], k=1)[0]
 
         loader = DataLoader(curriculum, batch_size=args.batch_size, shuffle=False, num_workers=1) # TODO: Change to 4 workers when done debugging
@@ -183,8 +215,19 @@ def train(args):
 
             # Calculate losses 
             loss = loss_fn(output, reference)
+            
+            # Zero gradients, backward pass, and update
+            optimizer.zero_grad()
             loss.backward()
             optimizer.step()
+            
+            # Log to wandb
+            if batch_idx % 20 == 0:
+                wandb.log({
+                    "loss": loss.item(),
+                    "epoch": epoch,
+                    "curriculum": curriculum.name
+                })
             
             # Console output every 5 seconds
             current_time = time.time()
@@ -197,7 +240,7 @@ def train(args):
                 
                 # Checkpoint if needed
                 if args.checkpoint_interval and current_time - last_checkpoint >= args.checkpoint_interval:
-                    checkpoint_dir = os.path.join(args.checkpoint_folder, f"{int(elapsed)}")
+                    checkpoint_dir = os.path.join(args.output_folder, f"{int(elapsed)}")
                     os.makedirs(checkpoint_dir, exist_ok=True)
                     
                     # Save model
@@ -209,19 +252,19 @@ def train(args):
                         model.train()
                         
                     last_checkpoint = time.time()
+
+            if stop_training:
+                print("Stop key 'q' detected. Finishing training...")
+                break
     
     display.shutdown()
     
     # Save final model
-    torch.save(model.state_dict(), args.model_path)
-    
-    # Export to ONNX if requested
-    if args.onnx_export:
-        dummy_input = torch.randn(1, 1, args.crop_size, args.crop_size).to(device)
-        torch.onnx.export(model, dummy_input, args.onnx_export,
-                         input_names=['input'], output_names=['output'],
-                         dynamic_axes={'input': {0: 'batch_size'},
-                                     'output': {0: 'batch_size'}})
+    torch.save(model.state_dict(), os.path.join(args.output_folder, "final.pth"))
+
+    # Export to ONNX
+    # The model expects 8 input channels (radiance, variance, albedo, density)
+    model.export_onnx(os.path.join(args.output_folder, "final.onnx"), input_channels=8, resolution=args.crop_size)
         
 def infer_large(model, img, tile=256, overlap=8):
     _, C, H, W = img.shape
@@ -257,11 +300,9 @@ def infer_large(model, img, tile=256, overlap=8):
 
     return out / counts.clamp(min=1)
 
-def evaluate(model, input_pattern, output_folder, args):
+def evaluate(model, input_pattern, output_folder, args, stats):
     model.eval()
     input_files = sorted(glob.glob(input_pattern))
-    
-    os.makedirs(output_folder, exist_ok=True)
     
     with torch.no_grad():
         for input_path in input_files:
@@ -307,6 +348,14 @@ def main():
     args = parse_args()
     print(f"Using device: {device}")
 
+    if not args.skip_cache_validation:
+        build_cache(args)
+    stats = load_cached_stats(args)
+    
+    if os.path.exists(args.output_folder):
+        shutil.rmtree(args.output_folder)
+    os.makedirs(args.output_folder, exist_ok=True)
+
     if args.eval:
         input_files = sorted(glob.glob(args.input_location))
         use_sigmoid = g_use_sigmoid
@@ -320,11 +369,9 @@ def main():
             epsilon=g_epsilon, 
             padding_mode=g_padding_mode).to(device)
         model.load_state_dict(torch.load(args.model_path))
-        evaluate(model, args.input_location, args.output_folder, args)
+        evaluate(model, args.input_location, args.output_folder, args, stats)
     else:
-        if not args.skip_cache_validation:
-            build_cache(args)
-        train(args)
+        train(args, stats)
 
 if __name__ == "__main__":
     main() 

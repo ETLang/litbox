@@ -238,6 +238,15 @@ def test_batch_already_exists(batch_index: int, template: str):
             return False
     return True
 
+def load_cached_stats(args):
+    cache_dir = get_cache_path(args)
+    stats_file = os.path.join(cache_dir, 'stats.json')
+    if not Path(stats_file).exists():
+        print("No cached normalization stats found. They will have to be computed now...")
+        return None
+    with open(stats_file, 'r') as f:
+        return json.load(f)
+
 def build_cache(args):
     has_easy = args.input_a_easy_location is not None
     has_medium = args.input_a_medium_location is not None
@@ -245,7 +254,7 @@ def build_cache(args):
     dataset, loader = create_litbox_raw_data_loader(args)
     sample_count = len(dataset)
 
-    need_compute_stats = args.compute_stats
+    need_compute_stats = args.recompute_stats
 
     stats_file = os.path.join(cache_dir, 'stats.json')
     if not Path(stats_file).exists():
