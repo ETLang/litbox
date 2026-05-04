@@ -5,6 +5,7 @@ public class BindSimulationToCamera : MonoBehaviour
 {
     [SerializeField, Range(0.0625f, 1)] float resolutionScale = 0.25f;
     [SerializeField, Range(0, 100)] float paddingPercent = 0;
+    [SerializeField] int snapSize = 1;
 
     private Simulation _sim;
     private Camera _cam;
@@ -25,13 +26,18 @@ public class BindSimulationToCamera : MonoBehaviour
         }
     }
 
+    int Snap(int x)
+    {
+        return ((x - 1) / snapSize + 1) * snapSize;
+    }
+
     // Update is called once per frame
     void Update()
     {
         float padding = paddingPercent / 100.0f;
 
-        _sim.width = (int)((_cam.pixelWidth + 2 * _cam.pixelHeight * padding) * resolutionScale);
-        _sim.height = (int)((_cam.pixelHeight + 2 * _cam.pixelHeight * padding) * resolutionScale);
+        _sim.width = Snap((int)((_cam.pixelWidth + 2 * _cam.pixelHeight * padding) * resolutionScale));
+        _sim.height = Snap((int)((_cam.pixelHeight + 2 * _cam.pixelHeight * padding) * resolutionScale));
 
         var cameraScale = _cam.transform.lossyScale;
         var xPaddingScale = 1.0f + 2 * padding * _cam.pixelHeight / _cam.pixelWidth;

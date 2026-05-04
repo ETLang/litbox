@@ -1,4 +1,5 @@
 using System;
+using Unity.InferenceEngine;
 using Unity.Mathematics;
 using UnityEngine;
 
@@ -53,6 +54,11 @@ public static class ComputeShaderExtensions
                 break;
             case ComputeBuffer buffer:
                 shader.SetBuffer(kernelID, tuple.Item1, buffer);
+                break;
+            case Tensor<float> tensor:
+                using(var data = ComputeTensorData.Pin(tensor)) {
+                    shader.SetBuffer(kernelID, tuple.Item1, data.buffer);
+                }
                 break;
             case MipSpec mipSpec:
                 shader.SetTexture(kernelID, tuple.Item1, mipSpec.texture, mipSpec.mipLevel);
