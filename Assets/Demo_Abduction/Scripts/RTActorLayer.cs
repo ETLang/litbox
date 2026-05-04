@@ -69,7 +69,6 @@ public class RTActorLayer : LitboxComponent
 
     private void UpdateLayerProperties()
     {
-        Debug.Log(layer.ToString());
         _renderer.sortingLayerName = layer.ToString();
         _renderer.sortingOrder = sortingOrder;
     }
