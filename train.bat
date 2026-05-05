@@ -6,16 +6,32 @@
 ' and update the path below.
 
 SET TRAINING_DATA_FOLDER=training_data/2026-02-08-01-17-30
-SET CHECKPOINT_TESTS="checkpoint_tests/exr_easy/*"
+SET OUTPUT_FOLDER=training_output/latest
+SET UNITY_ONNX_FOLDER=Assets/onnx
+SET SKIP_CACHE_VALIDATION=True
 
+
+if "%SKIP_CACHE_VALIDATION%"=="True" (
+  SET ARG_SKIP_CACHE_VALIDATION=--skip-cache-validation
+) else (
+  SET ARG_SKIP_CACHE_VALIDATION=
+)
+    
+PUSHD %~dp0
 python training_script/train_litbox_denoiser.py ^
-    --input-a-location "%TRAINING_DATA_FOLDER%/input5_Radiance_A_*.exr" ^
-    --input-b-location "%TRAINING_DATA_FOLDER%/input5_Radiance_B_*.exr" ^
-    --input-albedo-location "%TRAINING_DATA_FOLDER%/albedo_*.exr" ^
-    --input-transmissibility-location "%TRAINING_DATA_FOLDER%/transmissibility_*.exr" ^
-    --reference-location "%TRAINING_DATA_FOLDER%/output_*.exr" ^
-    --model-path "training_output/model.pth" ^
-    --checkpoint-folder "training_output/checkpoints" ^
-    --checkpoint-tests %CHECKPOINT_TESTS% ^
-    --onnx-export "training_output/model.onnx"
-  '  --log-space
+    --input-a-location "%TRAINING_DATA_FOLDER%/Input5_Radiance_A_*.exr" ^
+    --input-b-location "%TRAINING_DATA_FOLDER%/Input5_Radiance_B_*.exr" ^
+    --input-albedo-location "%TRAINING_DATA_FOLDER%/Albedo_*.png" ^
+    --input-transmissibility-location "%TRAINING_DATA_FOLDER%/Transmissibility_*.exr" ^
+    --reference-location "%TRAINING_DATA_FOLDER%/Output_Reference_*.exr" ^
+    --output-folder "%OUTPUT_FOLDER%" ^
+    %ARG_SKIP_CACHE_VALIDATION%
+
+@IF NOT ERRORLEVEL 0 (
+    POPD
+    EXIT /B %ERRORLEVEL%
+)
+
+python -m onnxsim "%OUTPUT_FOLDER%/final.onnx" "%OUTPUT_FOLDER%/optimized.onnx"
+cp "%OUTPUT_FOLDER%/optimized.onnx" "%UNITY_ONNX_FOLDER%/optimized.onnx"
+POPD
