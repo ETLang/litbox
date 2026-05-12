@@ -27,11 +27,11 @@ python training_script/train_litbox_denoiser.py ^
     --output-folder "%OUTPUT_FOLDER%" ^
     %ARG_SKIP_CACHE_VALIDATION%
 
-@IF NOT ERRORLEVEL 0 (
-    POPD
-    EXIT /B %ERRORLEVEL%
-)
+@REM @IF NOT ERRORLEVEL 0 (
+@REM     POPD
+@REM     EXIT /B %ERRORLEVEL%
+@REM )
 
-python -m onnxsim "%OUTPUT_FOLDER%/final.onnx" "%OUTPUT_FOLDER%/optimized.onnx"
-cp "%OUTPUT_FOLDER%/optimized.onnx" "%UNITY_ONNX_FOLDER%/optimized.onnx"
+python -m onnxsim "%OUTPUT_FOLDER%\final.onnx" "%OUTPUT_FOLDER%\optimized.onnx"
+copy "%OUTPUT_FOLDER%\optimized.onnx" "%UNITY_ONNX_FOLDER%\optimized.onnx"
 POPD

@@ -26,10 +26,10 @@ def register_dataset_args(parser, require_ref_location):
     parser.add_argument('--input-b-easy-location', help='Path to easy input imageset B, for curriculum training')
     parser.add_argument('--input-a-medium-location', help='Path to input imageset A, for curriculum training')
     parser.add_argument('--input-b-medium-location', help='Path to input imageset B, for curriculum training')
-    parser.add_argument('--input-a-location', required=True, help='Path to input imageset A')
-    parser.add_argument('--input-b-location', required=True, help='Path to input imageset B')
-    parser.add_argument('--input-albedo-location', required=True, help='Path to albedo imageset')
-    parser.add_argument('--input-transmissibility-location', required=True, help='Path to transmissibility imageset')
+    parser.add_argument('--input-a-location', help='Path to input imageset A')
+    parser.add_argument('--input-b-location', help='Path to input imageset B')
+    parser.add_argument('--input-albedo-location', help='Path to albedo imageset')
+    parser.add_argument('--input-transmissibility-location', help='Path to transmissibility imageset')
     parser.add_argument('--reference-location', required=require_ref_location, help='Path to reference images for training')
 
 def validate_dataset_args(args, parser):

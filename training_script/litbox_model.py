@@ -296,10 +296,7 @@ class LitboxDenoiserNet(nn.Module):
     
     def make_bottleneck(self, channels_in):
         channels_out = channels_in * 2
-        module = nn.Sequential(
-            ResidualBlock(channels_in, channels_out, self.padding_mode),
-            ResidualBlock(channels_out, channels_out, self.padding_mode)
-        )
+        module = ResidualBlock(channels_in, channels_out, self.padding_mode)
         return module, channels_out
     
     def make_decoder(self, channels_in):
@@ -311,10 +308,7 @@ class LitboxDenoiserNet(nn.Module):
         return module, channels_out
     
     def make_skip_connector(self, channels):
-        return nn.Sequential(
-            ResidualBlock(2 * channels, channels, self.padding_mode),
-            ResidualBlock(channels, channels, self.padding_mode)
-        )
+        return ResidualBlock(2 * channels, channels, self.padding_mode)
 
     def export_onnx(self, path, input_channels=8, resolution=256):
         self.eval()

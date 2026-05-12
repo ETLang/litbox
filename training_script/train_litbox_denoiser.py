@@ -34,11 +34,11 @@ g_test_ratio = 0.0
 g_epochs = 20
 g_crop_size = 256
 g_batch_size = 4
-g_learn_rate = 0.00001 # 0.001
+g_learn_rate = 0.0001
 
 # Settings (internal)
 g_unet_size = 5
-g_padding_mode = 'reflect'
+g_padding_mode = 'replicate'
 g_initial_features = 32
 g_normalize_input = False
 g_use_adam_w = True
@@ -60,10 +60,11 @@ device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
 def parse_args():
     parser = argparse.ArgumentParser(description='Litbox Denoiser Training Script')
     data_processing.register_dataset_args(parser, False)
+    parser.add_argument('--eval', action='store_true', help='Run in evaluation mode')
+    parser.add_argument('--finalize-checkpoint', type=int, help='Checkpoint to finalize')
     parser.add_argument('--recompute-stats', action='store_true', help='Compute global normalization stats, even if they are cached.')
     parser.add_argument('--skip-cache-validation', action='store_true', help='Trust that the cache is populated, and skip validating it')
     parser.add_argument('--cache-location', help='Path to preprocessed feature cache', default='./training_cache')
-    parser.add_argument('--eval', action='store_true', help='Run in evaluation mode')
     parser.add_argument('--output-folder', required=True, help='Output folder for evaluated images or training results/checkpoints')
     parser.add_argument('--model-path', help='Path to model to use for eval')
     parser.add_argument('--checkpoint-interval', type=int, default=g_checkpoint_interval, help='Seconds between checkpoints')
@@ -79,7 +80,8 @@ def parse_args():
     args = parser.parse_args()
     
     # Validation
-    if not args.eval and not args.reference_location:
+    is_training = not args.eval and not args.finalize_checkpoint
+    if is_training and not args.reference_location:
         parser.error("--reference-location is required in training mode")
     if args.eval and not args.output_folder:
         parser.error("--output-folder is required in eval mode")
@@ -191,7 +193,7 @@ def train(args, stats):
             break
         curriculum = random.choices(training_datasets, curriculum_weights[:len(training_datasets)], k=1)[0]
 
-        loader = DataLoader(curriculum, batch_size=args.batch_size, shuffle=False, num_workers=1) # TODO: Change to 4 workers when done debugging
+        loader = DataLoader(curriculum, batch_size=args.batch_size, shuffle=True, num_workers=2)
 
         for batch_idx, features in enumerate(loader):
             radiance = features['radiance']
@@ -222,7 +224,7 @@ def train(args, stats):
             optimizer.step()
             
             # Log to wandb
-            if batch_idx % 20 == 0:
+            if batch_idx % 10 == 0:
                 wandb.log({
                     "loss": loss.item(),
                     "epoch": epoch,
@@ -241,7 +243,7 @@ def train(args, stats):
                 # Checkpoint if needed
                 if args.checkpoint_interval and current_time - last_checkpoint >= args.checkpoint_interval:
                     checkpoint_dir = os.path.join(args.output_folder, f"{int(elapsed)}")
-                    os.makedirs(checkpoint_dir, exist_ok=True)
+                    os.makedirs(checkpoint_dir)
                     
                     # Save model
                     torch.save(model.state_dict(), os.path.join(checkpoint_dir, "model.pth"))
@@ -347,14 +349,38 @@ def evaluate(model, input_pattern, output_folder, args, stats):
 def main():
     args = parse_args()
     print(f"Using device: {device}")
+    
+    if args.finalize_checkpoint:
+        config_path = os.path.join(args.output_folder, 'args.json')
+        if os.path.exists(config_path):
+            with open(config_path, 'r') as f:
+                saved_args = json.load(f)
+            # Override relevant model architecture params from saved config
+            args.upsample = saved_args.get('upsample', args.upsample)
+            args.crop_size = saved_args.get('crop_size', args.crop_size)
+            global g_unet_size, g_initial_features
+            g_unet_size = saved_args.get('unet_size', g_unet_size)
+            g_initial_features = saved_args.get('initial_features', g_initial_features)
+
+        checkpoint_path = os.path.join(args.output_folder, str(args.finalize_checkpoint), "model.pth")
+        if not os.path.exists(checkpoint_path):
+            print(f"Error: Checkpoint model not found at {checkpoint_path}")
+            return
+
+        final_pth = os.path.join(args.output_folder, "final.pth")
+        shutil.copy2(checkpoint_path, final_pth)
+
+        model = LitboxDenoiserNet(
+            upsample_factor=args.upsample, use_sigmoid=g_use_sigmoid, use_log_space=False,
+            normalize_input=g_normalize_input, initial_features=g_initial_features,
+            unet_size=g_unet_size, epsilon=g_epsilon, padding_mode=g_padding_mode).to(device)
+        model.load_state_dict(torch.load(final_pth, map_location=device))
+        model.export_onnx(os.path.join(args.output_folder, "final.onnx"), input_channels=8, resolution=args.crop_size)
+        return
 
     if not args.skip_cache_validation:
         build_cache(args)
     stats = load_cached_stats(args)
-    
-    if os.path.exists(args.output_folder):
-        shutil.rmtree(args.output_folder)
-    os.makedirs(args.output_folder, exist_ok=True)
 
     if args.eval:
         input_files = sorted(glob.glob(args.input_location))
@@ -371,7 +397,11 @@ def main():
         model.load_state_dict(torch.load(args.model_path))
         evaluate(model, args.input_location, args.output_folder, args, stats)
     else:
+        if os.path.exists(args.output_folder):
+            shutil.rmtree(args.output_folder)
+        os.makedirs(args.output_folder, exist_ok=True)
         train(args, stats)
 
 if __name__ == "__main__":
     main() 
+    exit(0)
