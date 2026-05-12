@@ -196,43 +196,380 @@ def publish_onnx(onnx_path, weights_path, json_path):
         
         ops_list.append(final_op_info)
 
-    # --- 3. Create the final JSON structure ---
+    # --- 3. Print un-consolidated graph for validation ---
+    print("\nUn-consolidated Graph Representation:")
+    print("-" * 40)
+    
+    output_to_idx_unconsolidated = {}
+    for i, op in enumerate(ops_list):
+        for out_name in op['outputs']:
+            output_to_idx_unconsolidated[out_name] = i + 1
+
+    for i, op in enumerate(ops_list):
+        input_indices = [str(output_to_idx_unconsolidated.get(inp, 0)) for inp in op['inputs']]
+        inputs_str = ", ".join(input_indices)
+        print(f"{i+1}. [{op['type']}] (Inputs: {inputs_str})")
+    print("-" * 40)
+
+    # --- 4. Consolidate operations into ResidualConv and BasicMaxPool ---
+    output_to_op = {}
+    tensor_consumers = {}
+    for op in ops_list:
+        for out in op['outputs']:
+            output_to_op[out] = op
+        for inp in op['inputs']:
+            if inp not in tensor_consumers:
+                tensor_consumers[inp] = []
+            tensor_consumers[inp].append(op)
+
+    consolidated_ops = []
+    consumed_op_names = set()
+    residual_group = []
+    residual_state = 0
+
+    def consume_residual_group():
+        nonlocal residual_group, residual_state
+        if not residual_group:
+            return
+        
+        residual_state = 0
+        concat_op = None
+        for op in residual_group:
+            if 'ConcatChannels' == op['type']:
+                concat_op = op
+                break
+
+        clamp_op = None
+        for op in residual_group:
+            if 'ClampPad' == op['type']:
+                clamp_op = op
+                break
+
+        conv_op = None
+        for op in residual_group:
+            if 'BasicConv' == op['type']:
+                conv_op = op
+                break
+
+        add_op = None
+        for op in residual_group:
+            if 'Add' == op['type']:
+                add_op = op
+                break
+
+        relu_op = None
+        for op in residual_group:
+            if 'Relu' == op['type']:
+                relu_op = op
+                break
+        
+        shuffle_op = None
+        for op in residual_group:
+            if 'BasicPixelShuffle' == op['type']:
+                shuffle_op = op
+                break
+
+        if conv_op == None:
+            # This group does not contain a Conv, so just add the ops as-is.
+            for op in residual_group:
+                if op['name'] not in consumed_op_names:
+                    consolidated_ops.append(op)
+                    consumed_op_names.add(op['name'])
+            return
+        
+        # Verify that the inputs/outputs of the ops in residual_group align with the sequence of ops in the list.
+        # This ensures that the operations are actually connected in a chain before fusing them.
+        for j in range(len(residual_group) - 1):
+            current_op = residual_group[j]
+            next_op = residual_group[j+1]
+            if not any(out in next_op['inputs'] for out in current_op['outputs']):
+                # The chain is broken, so we cannot safely fuse this as a single sequence.
+                for op in residual_group:
+                    if op['name'] not in consumed_op_names:
+                        consolidated_ops.append(op)
+                        consumed_op_names.add(op['name'])
+                residual_group = []
+                return
+
+        # This group should be fused into a single ResidualConv.
+        # The fusion logic below is adapted from the original 'BasicConv' block.
+        # It starts from the conv_op and traces backwards and forwards to find fusable neighbors.
+        op = conv_op  # Use 'op' to match the original code's variable names
+
+        residual_conv = {
+            'type': 'ResidualConv',
+            'name': op['name'],
+            'inputs': list(op['inputs']),
+            'outputs': list(op['outputs']),
+            'params': {
+                'weights': op['params'].get('weights'),
+                'bias': op['params'].get('bias'),
+                'strides': op['params'].get('strides'),
+                'dilations': op['params'].get('dilations'),
+                'relu': False,
+                'pixelShuffle2x2': False,
+            }
+        }
+
+        if clamp_op != None:
+            residual_conv['params']['pad'] = 'clamp'
+            residual_conv['inputs'][0] = clamp_op['inputs'][0]
+
+        if concat_op != None:
+            residual_conv['params']['concat'] = concat_op['inputs'][1]
+            residual_conv['inputs'][0] = concat_op['inputs'][0]
+
+        if add_op != None:
+            residual_conv['params']['add'] = add_op['inputs'][1]
+            residual_conv['outputs'][0] = add_op['outputs'][0]
+
+        if relu_op != None:
+            residual_conv['params']['relu'] = True
+            residual_conv['outputs'][0] = relu_op['outputs'][0]
+
+        if shuffle_op != None:
+            residual_conv['params']['pixelShuffle2x2'] = True
+            residual_conv['outputs'][0] = shuffle_op['outputs'][0]
+        
+        # consumed_op_names.add(op['name'])
+
+        # # --- Trace backwards for pre-operations ---
+        # current_input_tensor = op['inputs'][0]
+
+        # if current_input_tensor in output_to_op:
+        #     prev_op = output_to_op[current_input_tensor]
+        #     consumers = tensor_consumers.get(current_input_tensor, [])
+        #     if prev_op['name'] not in consumed_op_names and prev_op['type'] == 'ClampPad' and len(consumers) == 1:
+        #         residual_conv['params']['pad'] = 'clamp'
+        #         consumed_op_names.add(prev_op['name'])
+        #         current_input_tensor = prev_op['inputs'][0]
+
+        # if current_input_tensor in output_to_op:
+        #     prev_op = output_to_op[current_input_tensor]
+        #     consumers = tensor_consumers.get(current_input_tensor, [])
+        #     if prev_op['name'] not in consumed_op_names and prev_op['type'] == 'ConcatChannels' and len(consumers) == 1:
+        #         residual_conv['inputs'] = [prev_op['inputs'][0]]
+        #         residual_conv['params']['concat'] = prev_op['inputs'][1]
+        #         consumed_op_names.add(prev_op['name'])
+        #     else:
+        #         residual_conv['inputs'] = [current_input_tensor]
+        # else:
+        #     residual_conv['inputs'] = [current_input_tensor]
+
+        # # --- Trace forwards for post-operations ---
+        # current_output_tensor = op['outputs'][0]
+
+        # consumers = tensor_consumers.get(current_output_tensor, [])
+        # if len(consumers) == 1:
+        #     next_op = consumers[0]
+        #     if next_op and next_op['name'] not in consumed_op_names and next_op['type'] == 'Add':
+        #         add_inputs = list(next_op['inputs'])
+        #         add_inputs.remove(current_output_tensor)
+        #         residual_conv['params']['add'] = add_inputs[0]
+        #         consumed_op_names.add(next_op['name'])
+        #         current_output_tensor = next_op['outputs'][0]
+
+        # consumers = tensor_consumers.get(current_output_tensor, [])
+        # if len(consumers) == 1:
+        #     next_op = consumers[0]
+        #     if next_op and next_op['name'] not in consumed_op_names and next_op['type'] == 'Relu':
+        #         residual_conv['params']['relu'] = True
+        #         consumed_op_names.add(next_op['name'])
+        #         current_output_tensor = next_op['outputs'][0]
+
+        # consumers = tensor_consumers.get(current_output_tensor, [])
+        # if len(consumers) == 1:
+        #     next_op = consumers[0]
+        #     if next_op and next_op['name'] not in consumed_op_names and next_op['type'] == 'BasicPixelShuffle':
+        #         residual_conv['params']['pixelShuffle2x2'] = True
+        #         consumed_op_names.add(next_op['name'])
+        #         current_output_tensor = next_op['outputs'][0]
+
+        # residual_conv['outputs'] = [current_output_tensor]
+        consolidated_ops.append(residual_conv)
+        
+        residual_group = []
+
+    for op in ops_list:
+        if op['name'] in consumed_op_names:
+            continue
+
+        if op['type'] == 'BasicMaxPool':
+            consume_residual_group()
+            consolidated_ops.append(op)
+            consumed_op_names.add(op['name'])
+            continue
+
+        if op['type'] == 'ConcatChannels':
+            if residual_state != 0:
+                consume_residual_group()
+            residual_group.append(op)
+            residual_state = 1
+            continue
+
+        if op['type'] == 'ClampPad':
+            if residual_state >= 2:
+                consume_residual_group()
+            residual_group.append(op)
+            residual_state = 2
+            continue
+
+        if op['type'] == 'BasicConv':
+            if residual_state >= 3:
+                consume_residual_group()
+            residual_group.append(op)
+            residual_state = 3
+            continue
+
+        if op['type'] == 'Add':
+            if residual_state >= 4:
+                consume_residual_group()
+            residual_group.append(op)
+            residual_state = 4
+            continue
+
+        if op['type'] == 'Relu':
+            if residual_state >= 5:
+                consume_residual_group()
+            residual_group.append(op)
+            residual_state = 5
+            continue
+
+        if op['type'] == 'BasicPixelShuffle':
+            if residual_state >= 6:
+                consume_residual_group()
+            residual_group.append(op)
+            residual_state = 6
+            continue
+
+        # if op['type'] == 'BasicConv':
+        #     residual_conv = {
+        #         'type': 'ResidualConv',
+        #         'name': op['name'],
+        #         'inputs': list(op['inputs']),
+        #         'outputs': list(op['outputs']),
+        #         'params': {
+        #             'weights': op['params'].get('weights'),
+        #             'bias': op['params'].get('bias'),
+        #             'strides': op['params'].get('strides'),
+        #             'dilations': op['params'].get('dilations'),
+        #             'relu': False,
+        #             'pixelShuffle2x2': False,
+        #         }
+        #     }
+        #     consumed_op_names.add(op['name'])
+            
+        #     # --- Trace backwards for pre-operations ---
+        #     current_input_tensor = op['inputs'][0]
+            
+        #     if current_input_tensor in output_to_op:
+        #         prev_op = output_to_op[current_input_tensor]
+        #         consumers = tensor_consumers.get(current_input_tensor, [])
+        #         if prev_op['name'] not in consumed_op_names and prev_op['type'] == 'ClampPad' and len(consumers) == 1:
+        #             residual_conv['params']['pad'] = 'clamp'
+        #             consumed_op_names.add(prev_op['name'])
+        #             current_input_tensor = prev_op['inputs'][0]
+
+        #     if current_input_tensor in output_to_op:
+        #         prev_op = output_to_op[current_input_tensor]
+        #         consumers = tensor_consumers.get(current_input_tensor, [])
+        #         if prev_op['name'] not in consumed_op_names and prev_op['type'] == 'ConcatChannels' and len(consumers) == 1:
+        #             residual_conv['inputs'] = [prev_op['inputs'][0]]
+        #             residual_conv['params']['concat'] = prev_op['inputs'][1]
+        #             consumed_op_names.add(prev_op['name'])
+        #         else:
+        #             residual_conv['inputs'] = [current_input_tensor]
+        #     else:
+        #         residual_conv['inputs'] = [current_input_tensor]
+
+        #     # --- Trace forwards for post-operations ---
+        #     current_output_tensor = op['outputs'][0]
+            
+        #     consumers = tensor_consumers.get(current_output_tensor, [])
+        #     if len(consumers) == 1:
+        #         next_op = consumers[0]
+        #         if next_op and next_op['name'] not in consumed_op_names and next_op['type'] == 'Add':
+        #             add_inputs = list(next_op['inputs'])
+        #             add_inputs.remove(current_output_tensor)
+        #             residual_conv['params']['add'] = add_inputs[0]
+        #             consumed_op_names.add(next_op['name'])
+        #             current_output_tensor = next_op['outputs'][0]
+
+        #     consumers = tensor_consumers.get(current_output_tensor, [])
+        #     if len(consumers) == 1:
+        #         next_op = consumers[0]
+        #         if next_op and next_op['name'] not in consumed_op_names and next_op['type'] == 'Relu':
+        #             residual_conv['params']['relu'] = True
+        #             consumed_op_names.add(next_op['name'])
+        #             current_output_tensor = next_op['outputs'][0]
+
+        #     consumers = tensor_consumers.get(current_output_tensor, [])
+        #     if len(consumers) == 1:
+        #         next_op = consumers[0]
+        #         if next_op and next_op['name'] not in consumed_op_names and next_op['type'] == 'BasicPixelShuffle':
+        #             residual_conv['params']['pixelShuffle2x2'] = True
+        #             consumed_op_names.add(next_op['name'])
+        #             current_output_tensor = next_op['outputs'][0]
+            
+        #     residual_conv['outputs'] = [current_output_tensor]
+        #     consolidated_ops.append(residual_conv)
+
+    consume_residual_group()
+
+    # for op in ops_list:
+    #     if op['name'] not in consumed_op_names:
+    #         print(f"Warning: Operation '{op['name']}' of type '{op['type']}' was not consolidated.")
+
+    # --- 5. Create the final JSON structure ---
     final_json = {
         'graph_inputs': [inp.name for inp in graph.input if inp.name not in initializers],
         'graph_outputs': [out.name for out in graph.output],
-        'operations': ops_list
+        'operations': consolidated_ops
     }
 
-    # --- 4. Write files ---
+    # --- 6. Write files ---
     with open(weights_path, 'wb') as f:
         f.write(weights_blob)
     
     with open(json_path, 'w') as f:
         json.dump(final_json, f, indent=4, default=json_serializable)
 
-    # --- 5. Print simplified graph representation ---
+    # --- 7. Print simplified graph representation ---
     print("\nSimplified Graph Representation:")
     print("-" * 40)
     
-    # Map output names to the index of the operation that produced them
     output_to_idx = {}
-    for i, op in enumerate(ops_list):
+    for i, op in enumerate(consolidated_ops):
         for out_name in op['outputs']:
             output_to_idx[out_name] = i + 1
 
-    for i, op in enumerate(ops_list):
-        # Map input names to operation indices (0 if it's a graph input)
-        input_indices = []
-        for inp in op['inputs']:
-            idx = output_to_idx.get(inp, 0)
-            input_indices.append(str(idx))
-        
+    for i, op in enumerate(consolidated_ops):
+        input_indices = [str(output_to_idx.get(inp, 0)) for inp in op['inputs']]
         inputs_str = ", ".join(input_indices)
-        print(f"{i+1}. [{op['type']}] (Inputs: {inputs_str})")
+        
+        op_type_str = op['type']
+        if op['type'] == 'ResidualConv':
+            params = op.get('params', {})
+            desc_parts = []
+            if 'concat' in params:
+                desc_parts.append(f"Concat={output_to_idx.get(params['concat'], 0)}")
+            if params.get('pad') == 'clamp':
+                desc_parts.append("Pad=Clamp")
+            if 'add' in params:
+                desc_parts.append(f"Add={output_to_idx.get(params['add'], 0)}")
+            if params.get('relu', False):
+                desc_parts.append("Relu")
+            if params.get('pixelShuffle2x2', False):
+                desc_parts.append("PixelShuffle2x2")
+            
+            if desc_parts:
+                op_type_str = f"ResidualConv ({', '.join(desc_parts)})"
+
+        print(f"{i+1}. [{op_type_str}] (Inputs: {inputs_str})")
     print("-" * 40)
 
 
-    print(f"Successfully published ONNX model to:")
+    print(f"\nSuccessfully published ONNX model to:")
     print(f"  - Weights: {weights_path} ({len(weights_blob)} bytes)")
     print(f"  - JSON:    {json_path}")
 
