@@ -15,7 +15,8 @@ PUSHD %~dp0
 python training_script/publish_onnx.py ^
     "%ONNX_FILE%" ^
     --weights-out "%UNITY_ASSETS_FOLDER%/denoiser_weights.bytes" ^
-    --json-out "%UNITY_ASSETS_FOLDER%/denoiser_model.json"
+    --json-out "%UNITY_ASSETS_FOLDER%/denoiser_model.json" ^
+    --unconsolidated
 
 IF NOT ERRORLEVEL 0 (
     ECHO Failed to publish ONNX model.

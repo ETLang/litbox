@@ -3,7 +3,7 @@ import json
 import numpy as np
 import argparse
 
-def publish_onnx(onnx_path, weights_path, json_path):
+def publish_onnx(onnx_path, weights_path, json_path, unconsolidated=False):
     """
     Processes an ONNX file and publishes it into a binary weights blob and a
     JSON file describing the model's architecture for use in Unity.
@@ -212,319 +212,132 @@ def publish_onnx(onnx_path, weights_path, json_path):
     print("-" * 40)
 
     # --- 4. Consolidate operations into ResidualConv and BasicMaxPool ---
-    output_to_op = {}
-    tensor_consumers = {}
-    for op in ops_list:
-        for out in op['outputs']:
-            output_to_op[out] = op
-        for inp in op['inputs']:
-            if inp not in tensor_consumers:
-                tensor_consumers[inp] = []
-            tensor_consumers[inp].append(op)
+    if unconsolidated:
+        print("\nSkipping consolidation as requested. Writing unconsolidated ops.")
+        final_ops_for_json = ops_list
+    else:
+        output_to_op = {}
+        tensor_consumers = {}
+        for op in ops_list:
+            for out in op['outputs']:
+                output_to_op[out] = op
+            for inp in op['inputs']:
+                if inp not in tensor_consumers:
+                    tensor_consumers[inp] = []
+                tensor_consumers[inp].append(op)
 
-    consolidated_ops = []
-    consumed_op_names = set()
-    residual_group = []
-    residual_state = 0
 
-    def consume_residual_group():
-        nonlocal residual_group, residual_state
-        if not residual_group:
-            return
-        
-        residual_state = 0
-        concat_op = None
-        for op in residual_group:
-            if 'ConcatChannels' == op['type']:
-                concat_op = op
-                break
+        consolidated_ops = []
+        consumed_op_names = set()
 
-        clamp_op = None
-        for op in residual_group:
-            if 'ClampPad' == op['type']:
-                clamp_op = op
-                break
+        for op in ops_list:
+            if op['name'] in consumed_op_names:
+                continue
 
-        conv_op = None
-        for op in residual_group:
-            if 'BasicConv' == op['type']:
-                conv_op = op
-                break
+            if op['type'] == 'BasicConv':
+                residual_conv = {
+                    'type': 'ResidualConv',
+                    'name': op['name'],
+                    'inputs': list(op['inputs']),
+                    'outputs': list(op['outputs']),
+                    'params': {
+                        'weights': op['params'].get('weights'),
+                        'bias': op['params'].get('bias'),
+                        'strides': op['params'].get('strides'),
+                        'dilations': op['params'].get('dilations'),
+                        'relu': False,
+                        'pixelShuffle2x2': False,
+                    }
+                }
+                consumed_op_names.add(op['name'])
+                
+                # --- Trace backwards for pre-operations (Concat, Pad) ---
+                current_input_tensor = op['inputs'][0]
+                
+                # Check for ClampPad
+                if current_input_tensor in output_to_op:
+                    prev_op = output_to_op[current_input_tensor]
+                    consumers = tensor_consumers.get(current_input_tensor, [])
+                    if prev_op['name'] not in consumed_op_names and prev_op['type'] == 'ClampPad' and len(consumers) == 1:
+                        residual_conv['params']['pad'] = 'clamp'
+                        consumed_op_names.add(prev_op['name'])
+                        current_input_tensor = prev_op['inputs'][0]
 
-        add_op = None
-        for op in residual_group:
-            if 'Add' == op['type']:
-                add_op = op
-                break
+                # Check for Concat
+                if current_input_tensor in output_to_op:
+                    prev_op = output_to_op[current_input_tensor]
+                    is_concat = prev_op['type'] == 'ConcatChannels'
+                    is_consumed = prev_op['name'] in consumed_op_names
 
-        relu_op = None
-        for op in residual_group:
-            if 'Relu' == op['type']:
-                relu_op = op
-                break
-        
-        shuffle_op = None
-        for op in residual_group:
-            if 'BasicPixelShuffle' == op['type']:
-                shuffle_op = op
-                break
+                    # A Concat can be fused if it hasn't been claimed.
+                    # We allow multi-consumer concats to be fused into each consumer.
+                    if not is_consumed and is_concat:
+                        residual_conv['inputs'] = [prev_op['inputs'][0]]
+                        residual_conv['params']['concat'] = prev_op['inputs'][1]
+                        
+                        # Only mark the Concat as "consumed" if this is its ONLY consumer.
+                        # If it has multiple consumers, we leave it un-consumed so others can also fuse it.
+                        # The op is implicitly removed from the graph later because it's a fusable type.
+                        consumers = tensor_consumers.get(current_input_tensor, [])
+                        if len(consumers) == 1:
+                            consumed_op_names.add(prev_op['name'])
+                    else:
+                        residual_conv['inputs'] = [current_input_tensor]
+                else:
+                    residual_conv['inputs'] = [current_input_tensor]
 
-        if conv_op == None:
-            # This group does not contain a Conv, so just add the ops as-is.
-            for op in residual_group:
-                if op['name'] not in consumed_op_names:
-                    consolidated_ops.append(op)
-                    consumed_op_names.add(op['name'])
-            return
-        
-        # Verify that the inputs/outputs of the ops in residual_group align with the sequence of ops in the list.
-        # This ensures that the operations are actually connected in a chain before fusing them.
-        for j in range(len(residual_group) - 1):
-            current_op = residual_group[j]
-            next_op = residual_group[j+1]
-            if not any(out in next_op['inputs'] for out in current_op['outputs']):
-                # The chain is broken, so we cannot safely fuse this as a single sequence.
-                for op in residual_group:
-                    if op['name'] not in consumed_op_names:
-                        consolidated_ops.append(op)
-                        consumed_op_names.add(op['name'])
-                residual_group = []
-                return
+                # --- Trace forwards for post-operations (Add, Relu, PixelShuffle) in a loop ---
+                current_output_tensor = op['outputs'][0]
+                is_1x1_conv = op['params']['weights']['shape'][2] == 1 and op['params']['weights']['shape'][3] == 1
+                
+                while True:
+                    consumers = tensor_consumers.get(current_output_tensor, [])
+                    if len(consumers) != 1:
+                        break # End of chain
+                    
+                    next_op = consumers[0]
+                    if next_op['name'] in consumed_op_names:
+                        break # Already consumed
 
-        # This group should be fused into a single ResidualConv.
-        # The fusion logic below is adapted from the original 'BasicConv' block.
-        # It starts from the conv_op and traces backwards and forwards to find fusable neighbors.
-        op = conv_op  # Use 'op' to match the original code's variable names
+                    fused_something = False
 
-        residual_conv = {
-            'type': 'ResidualConv',
-            'name': op['name'],
-            'inputs': list(op['inputs']),
-            'outputs': list(op['outputs']),
-            'params': {
-                'weights': op['params'].get('weights'),
-                'bias': op['params'].get('bias'),
-                'strides': op['params'].get('strides'),
-                'dilations': op['params'].get('dilations'),
-                'relu': False,
-                'pixelShuffle2x2': False,
-            }
-        }
+                    # Fuse Add, but only if the root conv was not 1x1 (heuristic for shortcuts)
+                    if not is_1x1_conv and next_op['type'] == 'Add':
+                        add_inputs = list(next_op['inputs'])
+                        add_inputs.remove(current_output_tensor) # Find the other input
+                        residual_conv['params']['add'] = add_inputs[0]
+                        fused_something = True
+                    
+                    # Fuse Relu (always allowed after a Conv or Add)
+                    elif next_op['type'] == 'Relu':
+                        residual_conv['params']['relu'] = True
+                        fused_something = True
 
-        if clamp_op != None:
-            residual_conv['params']['pad'] = 'clamp'
-            residual_conv['inputs'][0] = clamp_op['inputs'][0]
+                    # Fuse PixelShuffle (always allowed)
+                    elif next_op['type'] == 'BasicPixelShuffle':
+                        residual_conv['params']['pixelShuffle2x2'] = True
+                        fused_something = True
 
-        if concat_op != None:
-            residual_conv['params']['concat'] = concat_op['inputs'][1]
-            residual_conv['inputs'][0] = concat_op['inputs'][0]
-
-        if add_op != None:
-            residual_conv['params']['add'] = add_op['inputs'][1]
-            residual_conv['outputs'][0] = add_op['outputs'][0]
-
-        if relu_op != None:
-            residual_conv['params']['relu'] = True
-            residual_conv['outputs'][0] = relu_op['outputs'][0]
-
-        if shuffle_op != None:
-            residual_conv['params']['pixelShuffle2x2'] = True
-            residual_conv['outputs'][0] = shuffle_op['outputs'][0]
-        
-        # consumed_op_names.add(op['name'])
-
-        # # --- Trace backwards for pre-operations ---
-        # current_input_tensor = op['inputs'][0]
-
-        # if current_input_tensor in output_to_op:
-        #     prev_op = output_to_op[current_input_tensor]
-        #     consumers = tensor_consumers.get(current_input_tensor, [])
-        #     if prev_op['name'] not in consumed_op_names and prev_op['type'] == 'ClampPad' and len(consumers) == 1:
-        #         residual_conv['params']['pad'] = 'clamp'
-        #         consumed_op_names.add(prev_op['name'])
-        #         current_input_tensor = prev_op['inputs'][0]
-
-        # if current_input_tensor in output_to_op:
-        #     prev_op = output_to_op[current_input_tensor]
-        #     consumers = tensor_consumers.get(current_input_tensor, [])
-        #     if prev_op['name'] not in consumed_op_names and prev_op['type'] == 'ConcatChannels' and len(consumers) == 1:
-        #         residual_conv['inputs'] = [prev_op['inputs'][0]]
-        #         residual_conv['params']['concat'] = prev_op['inputs'][1]
-        #         consumed_op_names.add(prev_op['name'])
-        #     else:
-        #         residual_conv['inputs'] = [current_input_tensor]
-        # else:
-        #     residual_conv['inputs'] = [current_input_tensor]
-
-        # # --- Trace forwards for post-operations ---
-        # current_output_tensor = op['outputs'][0]
-
-        # consumers = tensor_consumers.get(current_output_tensor, [])
-        # if len(consumers) == 1:
-        #     next_op = consumers[0]
-        #     if next_op and next_op['name'] not in consumed_op_names and next_op['type'] == 'Add':
-        #         add_inputs = list(next_op['inputs'])
-        #         add_inputs.remove(current_output_tensor)
-        #         residual_conv['params']['add'] = add_inputs[0]
-        #         consumed_op_names.add(next_op['name'])
-        #         current_output_tensor = next_op['outputs'][0]
-
-        # consumers = tensor_consumers.get(current_output_tensor, [])
-        # if len(consumers) == 1:
-        #     next_op = consumers[0]
-        #     if next_op and next_op['name'] not in consumed_op_names and next_op['type'] == 'Relu':
-        #         residual_conv['params']['relu'] = True
-        #         consumed_op_names.add(next_op['name'])
-        #         current_output_tensor = next_op['outputs'][0]
-
-        # consumers = tensor_consumers.get(current_output_tensor, [])
-        # if len(consumers) == 1:
-        #     next_op = consumers[0]
-        #     if next_op and next_op['name'] not in consumed_op_names and next_op['type'] == 'BasicPixelShuffle':
-        #         residual_conv['params']['pixelShuffle2x2'] = True
-        #         consumed_op_names.add(next_op['name'])
-        #         current_output_tensor = next_op['outputs'][0]
-
-        # residual_conv['outputs'] = [current_output_tensor]
-        consolidated_ops.append(residual_conv)
-        
-        residual_group = []
-
-    for op in ops_list:
-        if op['name'] in consumed_op_names:
-            continue
-
-        if op['type'] == 'BasicMaxPool':
-            consume_residual_group()
-            consolidated_ops.append(op)
-            consumed_op_names.add(op['name'])
-            continue
-
-        if op['type'] == 'ConcatChannels':
-            if residual_state != 0:
-                consume_residual_group()
-            residual_group.append(op)
-            residual_state = 1
-            continue
-
-        if op['type'] == 'ClampPad':
-            if residual_state >= 2:
-                consume_residual_group()
-            residual_group.append(op)
-            residual_state = 2
-            continue
-
-        if op['type'] == 'BasicConv':
-            if residual_state >= 3:
-                consume_residual_group()
-            residual_group.append(op)
-            residual_state = 3
-            continue
-
-        if op['type'] == 'Add':
-            if residual_state >= 4:
-                consume_residual_group()
-            residual_group.append(op)
-            residual_state = 4
-            continue
-
-        if op['type'] == 'Relu':
-            if residual_state >= 5:
-                consume_residual_group()
-            residual_group.append(op)
-            residual_state = 5
-            continue
-
-        if op['type'] == 'BasicPixelShuffle':
-            if residual_state >= 6:
-                consume_residual_group()
-            residual_group.append(op)
-            residual_state = 6
-            continue
-
-        # if op['type'] == 'BasicConv':
-        #     residual_conv = {
-        #         'type': 'ResidualConv',
-        #         'name': op['name'],
-        #         'inputs': list(op['inputs']),
-        #         'outputs': list(op['outputs']),
-        #         'params': {
-        #             'weights': op['params'].get('weights'),
-        #             'bias': op['params'].get('bias'),
-        #             'strides': op['params'].get('strides'),
-        #             'dilations': op['params'].get('dilations'),
-        #             'relu': False,
-        #             'pixelShuffle2x2': False,
-        #         }
-        #     }
-        #     consumed_op_names.add(op['name'])
+                    if fused_something:
+                        consumed_op_names.add(next_op['name'])
+                        current_output_tensor = next_op['outputs'][0]
+                    else:
+                        # Consumer exists but is not fusable, break the chain.
+                        break
+                
+                residual_conv['outputs'] = [current_output_tensor]
+                consolidated_ops.append(residual_conv)
             
-        #     # --- Trace backwards for pre-operations ---
-        #     current_input_tensor = op['inputs'][0]
-            
-        #     if current_input_tensor in output_to_op:
-        #         prev_op = output_to_op[current_input_tensor]
-        #         consumers = tensor_consumers.get(current_input_tensor, [])
-        #         if prev_op['name'] not in consumed_op_names and prev_op['type'] == 'ClampPad' and len(consumers) == 1:
-        #             residual_conv['params']['pad'] = 'clamp'
-        #             consumed_op_names.add(prev_op['name'])
-        #             current_input_tensor = prev_op['inputs'][0]
-
-        #     if current_input_tensor in output_to_op:
-        #         prev_op = output_to_op[current_input_tensor]
-        #         consumers = tensor_consumers.get(current_input_tensor, [])
-        #         if prev_op['name'] not in consumed_op_names and prev_op['type'] == 'ConcatChannels' and len(consumers) == 1:
-        #             residual_conv['inputs'] = [prev_op['inputs'][0]]
-        #             residual_conv['params']['concat'] = prev_op['inputs'][1]
-        #             consumed_op_names.add(prev_op['name'])
-        #         else:
-        #             residual_conv['inputs'] = [current_input_tensor]
-        #     else:
-        #         residual_conv['inputs'] = [current_input_tensor]
-
-        #     # --- Trace forwards for post-operations ---
-        #     current_output_tensor = op['outputs'][0]
-            
-        #     consumers = tensor_consumers.get(current_output_tensor, [])
-        #     if len(consumers) == 1:
-        #         next_op = consumers[0]
-        #         if next_op and next_op['name'] not in consumed_op_names and next_op['type'] == 'Add':
-        #             add_inputs = list(next_op['inputs'])
-        #             add_inputs.remove(current_output_tensor)
-        #             residual_conv['params']['add'] = add_inputs[0]
-        #             consumed_op_names.add(next_op['name'])
-        #             current_output_tensor = next_op['outputs'][0]
-
-        #     consumers = tensor_consumers.get(current_output_tensor, [])
-        #     if len(consumers) == 1:
-        #         next_op = consumers[0]
-        #         if next_op and next_op['name'] not in consumed_op_names and next_op['type'] == 'Relu':
-        #             residual_conv['params']['relu'] = True
-        #             consumed_op_names.add(next_op['name'])
-        #             current_output_tensor = next_op['outputs'][0]
-
-        #     consumers = tensor_consumers.get(current_output_tensor, [])
-        #     if len(consumers) == 1:
-        #         next_op = consumers[0]
-        #         if next_op and next_op['name'] not in consumed_op_names and next_op['type'] == 'BasicPixelShuffle':
-        #             residual_conv['params']['pixelShuffle2x2'] = True
-        #             consumed_op_names.add(next_op['name'])
-        #             current_output_tensor = next_op['outputs'][0]
-            
-        #     residual_conv['outputs'] = [current_output_tensor]
-        #     consolidated_ops.append(residual_conv)
-
-    consume_residual_group()
-
-    # for op in ops_list:
-    #     if op['name'] not in consumed_op_names:
-    #         print(f"Warning: Operation '{op['name']}' of type '{op['type']}' was not consolidated.")
+            elif op['type'] not in ['Relu', 'Add', 'ConcatChannels', 'ClampPad', 'BasicPixelShuffle']:
+                consolidated_ops.append(op)
+                consumed_op_names.add(op['name'])
+        final_ops_for_json = consolidated_ops
 
     # --- 5. Create the final JSON structure ---
     final_json = {
         'graph_inputs': [inp.name for inp in graph.input if inp.name not in initializers],
         'graph_outputs': [out.name for out in graph.output],
-        'operations': consolidated_ops
+        'operations': final_ops_for_json
     }
 
     # --- 6. Write files ---
@@ -539,16 +352,16 @@ def publish_onnx(onnx_path, weights_path, json_path):
     print("-" * 40)
     
     output_to_idx = {}
-    for i, op in enumerate(consolidated_ops):
+    for i, op in enumerate(final_ops_for_json):
         for out_name in op['outputs']:
             output_to_idx[out_name] = i + 1
 
-    for i, op in enumerate(consolidated_ops):
+    for i, op in enumerate(final_ops_for_json):
         input_indices = [str(output_to_idx.get(inp, 0)) for inp in op['inputs']]
         inputs_str = ", ".join(input_indices)
         
         op_type_str = op['type']
-        if op['type'] == 'ResidualConv':
+        if not unconsolidated and op['type'] == 'ResidualConv':
             params = op.get('params', {})
             desc_parts = []
             if 'concat' in params:
@@ -582,10 +395,11 @@ def main():
     parser.add_argument('onnx_file', help='Path to the input .onnx file.')
     parser.add_argument('--weights-out', required=True, help='Path to save the output weights blob.')
     parser.add_argument('--json-out', required=True, help='Path to save the output JSON definition.')
+    parser.add_argument('--unconsolidated', action='store_true', help='Write each individual op to the JSON instead of consolidating into ResidualConv ops.')
     
     args = parser.parse_args()
     
-    publish_onnx(args.onnx_file, args.weights_out, args.json_out)
+    publish_onnx(args.onnx_file, args.weights_out, args.json_out, args.unconsolidated)
 
 if __name__ == '__main__':
     main()

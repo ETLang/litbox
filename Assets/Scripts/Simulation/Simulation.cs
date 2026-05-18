@@ -75,6 +75,7 @@ public class Simulation : LitboxComponent
     Matrix4x4 _worldToPresentation;
     MeshFilter _meshFilter;
     MeshRenderer _meshRenderer;
+    Denoiser _denoiser;
     ITracer[] _activeTracer = new ITracer[2]; // Two parallel tracers allow easy computation of variance
     ConvergenceMeasurement _convergenceMeasurement;
     ImportanceMap _importanceMap;
@@ -214,6 +215,7 @@ public class Simulation : LitboxComponent
 
         _meshFilter = GetComponent<MeshFilter>();
         _meshRenderer = GetComponent<MeshRenderer>();
+        _denoiser = GetComponent<Denoiser>();
 
         if(_meshFilter.sharedMesh == null) {
             _meshFilter.sharedMesh = GetBuiltInQuadMesh();
@@ -416,7 +418,13 @@ public class Simulation : LitboxComponent
 
         TracerPostProcessor.Instance.ComputeCVAndMips(_activeTracer[0].TracerOutput, _activeTracer[1].TracerOutput, SimulationOutputHDR, VarianceMap);
 
-        _compositorMat.SetTexture(_MainTexID, SimulationOutputHDR);
+        if(_denoiser != null && _denoiser.DenoisedOutput != null && _denoiser.isActiveAndEnabled)
+        {
+            _compositorMat.SetTexture(_MainTexID, _denoiser.DenoisedOutput);
+        } else {
+            _compositorMat.SetTexture(_MainTexID, SimulationOutputHDR);
+        }
+        
         OnStep?.Invoke(iterationsSinceClear);
 
         bool fireConvergedEvent = false;

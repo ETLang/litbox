@@ -106513,12 +106513,11 @@ MonoBehaviour:
   m_GameObject: {fileID: 1325829393}
   m_Enabled: 1
   m_EditorHideFlags: 0
-  m_Script: {fileID: 11500000, guid: 7c8064739b87e7b8ebb9d4a267ae6f17, type: 3}
+  m_Script: {fileID: 11500000, guid: 3459f0b9ed8f78c4e8a78d812ab6f5e1, type: 3}
   m_Name: 
-  m_EditorClassIdentifier: Assembly-CSharp::AIAccelerator
-  simulation: {fileID: 1325829396}
-  accelerationModel: {fileID: 5022602860645237092, guid: f16b6e89aafc20141943f7356c9ad587, type: 3}
-  operateOnToneMapped: 0
+  m_EditorClassIdentifier: Assembly-CSharp::Denoiser
+  modelJson: {fileID: 4900000, guid: 0933d973b49bd81439d34a1e04fa64b7, type: 3}
+  modelWeights: {fileID: 4900000, guid: fe6b5867624df33449e44fe7233fe333, type: 3}
 --- !u!1 &1327242219
 GameObject:
   m_ObjectHideFlags: 0
