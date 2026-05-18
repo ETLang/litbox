@@ -12,6 +12,7 @@ training_output/**
 training_cache/**
 UserSettings/**
 .vscode/**
+*.lscache
 *.csproj
 *.sln
 *.onnx
@@ -23,6 +24,7 @@ UserSettings/**
 /bin
 .utmp/**
 Assets/Resources/PerformanceTestRun**
+Assets/Resources/Denoiser**
 
 !Packages/manifest.json
 !Packages/packages-lock.json
