@@ -12,6 +12,8 @@ ECHO Publishing %ONNX_FILE% for Unity...
 
 PUSHD %~dp0
 
+FOR %%I IN ("%ONNX_FILE%") DO SET "TRAINING_DIR=%%~dpI"
+
 python training_script/publish_onnx.py ^
     "%ONNX_FILE%" ^
     --weights-out "%UNITY_ASSETS_FOLDER%/denoiser_weights.bytes" ^
@@ -22,6 +24,12 @@ IF NOT ERRORLEVEL 0 (
     ECHO Failed to publish ONNX model.
     POPD
     EXIT /B %ERRORLEVEL%
+)
+
+IF EXIST "%TRAINING_DIR%stats.json" (
+    COPY /Y "%TRAINING_DIR%stats.json" "%UNITY_ASSETS_FOLDER%\denoiser_stats.json" > NUL
+) ELSE (
+    ECHO Warning: "%TRAINING_DIR%stats.json" not found.
 )
 
 ECHO Done.
