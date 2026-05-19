@@ -7,6 +7,7 @@ using System.Text;
 
 
 public delegate void SimulationStepEvent(int frameCount);
+public delegate RenderTexture SimulationPostprocessor(RenderTexture source);
 public delegate void SimulationConvergedEvent();
 
 [Serializable]
@@ -75,13 +76,13 @@ public class Simulation : LitboxComponent
     Matrix4x4 _worldToPresentation;
     MeshFilter _meshFilter;
     MeshRenderer _meshRenderer;
-    Denoiser _denoiser;
     ITracer[] _activeTracer = new ITracer[2]; // Two parallel tracers allow easy computation of variance
     ConvergenceMeasurement _convergenceMeasurement;
     ImportanceMap _importanceMap;
     Action _updateTracerProperties;
 
     public LitboxGBuffer GBuffer { get; private set; }
+    public RenderTexture SimulationOutputRaw { get; private set; }
     public RenderTexture SimulationOutput { get; private set; }
     public RenderTexture VarianceMap { get; private set; }
     public RenderTexture ImportanceMap => _importanceMap?.Map;
@@ -103,6 +104,13 @@ public class Simulation : LitboxComponent
     public float Convergence => convergenceProgress;
     public float EstimatedConvergenceTime => (Time.time - ConvergenceStartTime) * Convergence / _convergenceThreshold;
     public float EstimatedRemainingConvergenceTime => EstimatedConvergenceTime - (Time.time - ConvergenceStartTime);
+
+    List<SimulationPostprocessor> _postProcessors = new List<SimulationPostprocessor>();
+    public event SimulationPostprocessor OnPostProcess
+    {
+        add { _postProcessors.Add(value); }
+        remove { _postProcessors.Remove(value); }
+    }
 
     public event SimulationStepEvent OnStep;
     public event SimulationConvergedEvent OnConverged;
@@ -215,7 +223,6 @@ public class Simulation : LitboxComponent
 
         _meshFilter = GetComponent<MeshFilter>();
         _meshRenderer = GetComponent<MeshRenderer>();
-        _denoiser = GetComponent<Denoiser>();
 
         if(_meshFilter.sharedMesh == null) {
             _meshFilter.sharedMesh = GetBuiltInQuadMesh();
@@ -297,7 +304,8 @@ public class Simulation : LitboxComponent
 
         TracerTask(t => t.GBuffer = GBuffer);
 
-        SimulationOutput = this.CreateRWTextureWithMips(GBuffer.AlbedoAlpha.width, GBuffer.AlbedoAlpha.height, RenderTextureFormat.ARGBFloat);
+        SimulationOutputRaw = this.CreateRWTextureWithMips(GBuffer.AlbedoAlpha.width, GBuffer.AlbedoAlpha.height, RenderTextureFormat.ARGBFloat);
+        SimulationOutput = SimulationOutputRaw;
         VarianceMap = this.CreateRWTexture(GBuffer.AlbedoAlpha.width / 4, GBuffer.AlbedoAlpha.height / 4, RenderTextureFormat.RFloat);
 
         _presentationToTargetSpace = Matrix4x4.Scale(new Vector3(width, height, 1)) * Matrix4x4.Translate(new Vector3(0.5f, 0.5f, 0));
@@ -416,15 +424,18 @@ public class Simulation : LitboxComponent
 
         TracerTask(t => t.EndTrace(_importanceMap.Map));
 
-        TracerPostProcessor.Instance.ComputeCVAndMips(_activeTracer[0].TracerOutput, _activeTracer[1].TracerOutput, SimulationOutput, VarianceMap);
+        TracerPostProcessor.Instance.ComputeCVAndMips(_activeTracer[0].TracerOutput, _activeTracer[1].TracerOutput, SimulationOutputRaw, VarianceMap);
 
-        if(_denoiser != null && _denoiser.DenoisedOutput != null && _denoiser.isActiveAndEnabled)
+        var processed = SimulationOutputRaw;
+        for(int i = 0;i < _postProcessors.Count;i++)
         {
-            _compositorMat.SetTexture(_MainTexID, _denoiser.DenoisedOutput);
-        } else {
-            _compositorMat.SetTexture(_MainTexID, SimulationOutput);
+            processed = _postProcessors[i](processed);
         }
-        
+
+        SimulationOutput = processed;
+
+        _compositorMat.SetTexture(_MainTexID, SimulationOutput);
+
         OnStep?.Invoke(iterationsSinceClear);
 
         bool fireConvergedEvent = false;

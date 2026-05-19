@@ -101,14 +101,14 @@ public class Denoiser : LitboxComponent
         ConsolidateGraph();
         FindKernels();
 
-        simulation.OnStep += OnSimulationStep;
+        simulation.OnPostProcess += OnSimulationPostProcess;
     }
 
     protected override void OnDisable()
     {
         if (simulation != null)
         {
-            simulation.OnStep -= OnSimulationStep;
+            simulation.OnPostProcess -= OnSimulationPostProcess;
         }
 
         ReleaseTensors();
@@ -394,9 +394,9 @@ public class Denoiser : LitboxComponent
         return rt;
     }
 
-    private void OnSimulationStep(int frameCount)
+    private RenderTexture OnSimulationPostProcess(RenderTexture source)
     {
-        if (_model == null) return;
+        if (_model == null) return source;
 
         if (simulation.width % 32 != 0 || simulation.height % 32 != 0)
         {
@@ -428,7 +428,7 @@ public class Denoiser : LitboxComponent
             _inputCompilerShader.SetFloat("density_stddev", _stats.density_stddev[0]);
         }
 
-        _inputCompilerShader.SetTexture(_inputCompilerKernel, "radiance", simulation.SimulationOutput);
+        _inputCompilerShader.SetTexture(_inputCompilerKernel, "radiance", source);
         _inputCompilerShader.SetTexture(_inputCompilerKernel, "variance", simulation.VarianceMap);
         _inputCompilerShader.SetTexture(_inputCompilerKernel, "albedo", simulation.GBuffer.AlbedoAlpha);
         _inputCompilerShader.SetTexture(_inputCompilerKernel, "transmissibility", simulation.GBuffer.Transmissibility);
@@ -504,5 +504,7 @@ public class Denoiser : LitboxComponent
             // to the public-facing 2D texture.
             Graphics.CopyTexture(DenoisedOutputArray, 0, 0, DenoisedOutput, 0, 0);
         }
+
+        return DenoisedOutput;
     }
 }
