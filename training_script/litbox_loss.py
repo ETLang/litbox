@@ -66,7 +66,7 @@ class HdrLoss(nn.Module):
         # --- 1. Adaptive L2 Loss (Primary Loss) ---
         # The weight is based directly on the linear luminance values, but with a
         # base_weight added to ensure even dark pixels have a non-zero contribution.
-        weights = (target_linear + self.base_weight) ** self.alpha
+        weights = (torch.clamp(target_linear + self.base_weight, min=0.0)) ** self.alpha
         
         # Calculate the L2 difference in linear space
         l2_diff = (pred_linear - target_linear) ** 2

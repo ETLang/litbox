@@ -248,7 +248,7 @@ public class ProceduralHill : LitboxComponent
 
         if(_binder)
         {
-            _hdrLightMap = _binder.GetComponent<Simulation>().SimulationOutputHDR;
+            _hdrLightMap = _binder.GetComponent<Simulation>().SimulationOutput;
             _simulationUVTransform = _binder.ScreenToSimulationUVTransform;
         }
 

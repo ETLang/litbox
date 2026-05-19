@@ -114,7 +114,7 @@ class LitboxDenoiserNet(nn.Module):
 
     def pre_transform(self, x): # [B, 1, H, W]
         if self.use_log_space:
-            x = torch.log2(x + self.epsilon)
+            x = torch.log2(torch.clamp(x, min=0.0) + self.epsilon)
         if self.normalize_input:
             if self.previous_range != -1:
                 raise Exception('Cannot pre_transform without first matching a post_transform call for the previous call to pre_transform')

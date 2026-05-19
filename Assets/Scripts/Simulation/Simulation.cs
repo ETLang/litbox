@@ -82,7 +82,7 @@ public class Simulation : LitboxComponent
     Action _updateTracerProperties;
 
     public LitboxGBuffer GBuffer { get; private set; }
-    public RenderTexture SimulationOutputHDR { get; private set; }
+    public RenderTexture SimulationOutput { get; private set; }
     public RenderTexture VarianceMap { get; private set; }
     public RenderTexture ImportanceMap => _importanceMap?.Map;
 
@@ -297,7 +297,7 @@ public class Simulation : LitboxComponent
 
         TracerTask(t => t.GBuffer = GBuffer);
 
-        SimulationOutputHDR = this.CreateRWTextureWithMips(GBuffer.AlbedoAlpha.width, GBuffer.AlbedoAlpha.height, RenderTextureFormat.ARGBFloat);
+        SimulationOutput = this.CreateRWTextureWithMips(GBuffer.AlbedoAlpha.width, GBuffer.AlbedoAlpha.height, RenderTextureFormat.ARGBFloat);
         VarianceMap = this.CreateRWTexture(GBuffer.AlbedoAlpha.width / 4, GBuffer.AlbedoAlpha.height / 4, RenderTextureFormat.RFloat);
 
         _presentationToTargetSpace = Matrix4x4.Scale(new Vector3(width, height, 1)) * Matrix4x4.Translate(new Vector3(0.5f, 0.5f, 0));
@@ -416,13 +416,13 @@ public class Simulation : LitboxComponent
 
         TracerTask(t => t.EndTrace(_importanceMap.Map));
 
-        TracerPostProcessor.Instance.ComputeCVAndMips(_activeTracer[0].TracerOutput, _activeTracer[1].TracerOutput, SimulationOutputHDR, VarianceMap);
+        TracerPostProcessor.Instance.ComputeCVAndMips(_activeTracer[0].TracerOutput, _activeTracer[1].TracerOutput, SimulationOutput, VarianceMap);
 
         if(_denoiser != null && _denoiser.DenoisedOutput != null && _denoiser.isActiveAndEnabled)
         {
             _compositorMat.SetTexture(_MainTexID, _denoiser.DenoisedOutput);
         } else {
-            _compositorMat.SetTexture(_MainTexID, SimulationOutputHDR);
+            _compositorMat.SetTexture(_MainTexID, SimulationOutput);
         }
         
         OnStep?.Invoke(iterationsSinceClear);

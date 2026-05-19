@@ -114,7 +114,7 @@ public class AIAccelerator : MonoBehaviour {
         // Combine Radiance.rgb, variance, albedo.rgb, and density into sourceTensor
         // Channels: 0-2: Radiance, 3: Variance, 4-6: Albedo, 7: Density
         _inputCompilerShader.RunKernel(_inputCompilerKernel, simulation.width, simulation.height,
-            ("radiance", simulation.SimulationOutputHDR),
+            ("radiance", simulation.SimulationOutput),
             ("variance", simulation.VarianceMap),
             ("albedo", simulation.GBuffer.AlbedoAlpha),
             ("transmissibility", simulation.GBuffer.Transmissibility),

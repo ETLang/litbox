@@ -276,11 +276,11 @@ public class TrainingManager : DisposalHelperComponent {
         }   
 
         if(_referencePathEXR != null) {
-            _simulation.SimulationOutputHDR.SaveTextureEXR(_referencePathEXR);
+            _simulation.SimulationOutput.SaveTextureEXR(_referencePathEXR);
         }
 
         if(_previewPathPNG != null) {
-            _simulation.SimulationOutputHDR.SaveTexturePNG(_previewPathPNG, _exposureController.exposure);
+            _simulation.SimulationOutput.SaveTexturePNG(_previewPathPNG, _exposureController.exposure);
         }
 
         if (_activeProfile == inputProfiles.Length)
@@ -289,9 +289,9 @@ public class TrainingManager : DisposalHelperComponent {
         }
         else
         {
-            var sample = new RenderTexture(_simulation.SimulationOutputHDR);
+            var sample = new RenderTexture(_simulation.SimulationOutput);
             var tmp = RenderTexture.active;
-            Graphics.Blit(_simulation.SimulationOutputHDR, sample);
+            Graphics.Blit(_simulation.SimulationOutput, sample);
             RenderTexture.active = tmp;
             profileSamples[_activeProfile] = sample;
         }

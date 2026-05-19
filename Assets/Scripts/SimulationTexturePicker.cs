@@ -10,7 +10,7 @@ public class SimulationTexturePicker : LitboxComponent {
         Importance,
         ForwardAccumulation,
         AI_ToneMapped,
-        AI_HDR,
+        Denoised_HDR,
         Albedo,
         Transmissibility,
         NormalRoughness,
@@ -68,14 +68,14 @@ public class SimulationTexturePicker : LitboxComponent {
 
         switch(type) {
         case TextureType.HDR:
-            value = simulation?.SimulationOutputHDR;
+            value = simulation?.SimulationOutput;
             break;
         // case TextureType.AI_ToneMapped:
         //     //value = aiAccelerator?.ToneMappedOutputTexture;
         //     break;
-        // case TextureType.AI_HDR:
-        //     //value = aiAccelerator?.HDROutputTexture;
-        //     break;
+        case TextureType.Denoised_HDR:
+            value = simulation?.GetComponent<Denoiser>()?.DenoisedOutput;
+            break;
         case TextureType.Albedo:
             value = simulation?.GBuffer.AlbedoAlpha;
             break;
@@ -198,7 +198,7 @@ public class SimulationTexturePicker : LitboxComponent {
             ("_in_hdr_forward_b", simulation.TracerB.EarlyRadianceForImportanceSampling),
             ("_in_hdr_a", simulation.TracerA.TracerOutput),
             ("_in_hdr_b", simulation.TracerB.TracerOutput),
-            ("_in_hdr_final", simulation.SimulationOutputHDR),
+            ("_in_hdr_final", simulation.SimulationOutput),
             ("_in_importance", simulation.ImportanceMap),
             ("_in_variance", simulation.VarianceMap),
             ("_in_previous_analysis", previous)

@@ -38,8 +38,8 @@ public class CloudGroupController : LitboxComponent
         DetectChanges(() => foregroundSimulationLOD, "foregroundSimulation");
         DetectChanges(() => blurSize);
         DetectChanges(() => _simulationUVTransform);
-        DetectChanges(() => _simulation?.SimulationOutputHDR.width, "foregroundSimulation");
-        DetectChanges(() => _simulation?.SimulationOutputHDR.height, "foregroundSimulation");
+        DetectChanges(() => _simulation?.SimulationOutput.width, "foregroundSimulation");
+        DetectChanges(() => _simulation?.SimulationOutput.height, "foregroundSimulation");
         DetectChanges(() => transmissionDepth);
     }
 
@@ -76,7 +76,7 @@ public class CloudGroupController : LitboxComponent
 
         if(blurSize != 0) {
             _gaussianBlurShader.RunKernel("CloudForegroundBlur", _foregroundSimulationTex.width, _foregroundSimulationTex.height,
-                ("blur_input", _simulation.SimulationOutputHDR),
+                ("blur_input", _simulation.SimulationOutput),
                 ("blur_output", _intermediateSimulationTex),
                 ("transmissibility", _simulation.GBuffer.Transmissibility),
                 ("transmission_depth", transmissionDepth),
@@ -127,14 +127,14 @@ public class CloudGroupController : LitboxComponent
             }
 
             _intermediateSimulationTex = this.CreateRWTexture(
-                _simulation.SimulationOutputHDR.MipWidth(foregroundSimulationLOD),
-                _simulation.SimulationOutputHDR.MipHeight(foregroundSimulationLOD),
-                _simulation.SimulationOutputHDR.format);
+                _simulation.SimulationOutput.MipWidth(foregroundSimulationLOD),
+                _simulation.SimulationOutput.MipHeight(foregroundSimulationLOD),
+                _simulation.SimulationOutput.format);
 
             _foregroundSimulationTex = this.CreateRWTexture(
-                _simulation.SimulationOutputHDR.MipWidth(foregroundSimulationLOD),
-                _simulation.SimulationOutputHDR.MipHeight(foregroundSimulationLOD),
-                _simulation.SimulationOutputHDR.format);
+                _simulation.SimulationOutput.MipWidth(foregroundSimulationLOD),
+                _simulation.SimulationOutput.MipHeight(foregroundSimulationLOD),
+                _simulation.SimulationOutput.format);
             
             _kernelSampleCount = 0; // Force kernel recalculation
         }
@@ -182,7 +182,7 @@ public class CloudGroupController : LitboxComponent
         foregroundCloudMat.SetFloat(_transmissionDepthId, transmissionDepth);
         foregroundCloudMat.SetMatrix(_foregroundSimulationUVTransformId, _simulationUVTransform);
         if(blurSize == 0) {
-            foregroundCloudMat.SetTexture(_foregroundSimulationTexId, _simulation.SimulationOutputHDR);
+            foregroundCloudMat.SetTexture(_foregroundSimulationTexId, _simulation.SimulationOutput);
             foregroundCloudMat.SetInteger(_foregroundSimuilationLodId, foregroundSimulationLOD);
         } else {
             foregroundCloudMat.SetTexture(_foregroundSimulationTexId, _foregroundSimulationTex);

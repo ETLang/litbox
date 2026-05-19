@@ -68,7 +68,7 @@ public class SilhouetteActor : LitboxComponent
 
         if(_binder)
         {
-            _lightMap = _binder.GetComponent<Simulation>().SimulationOutputHDR;
+            _lightMap = _binder.GetComponent<Simulation>().SimulationOutput;
             _simulationUVTransform = _binder.ScreenToSimulationUVTransform;
         }
     }
