@@ -121,6 +121,7 @@ def parse_args():
     parser.add_argument('--learn-rate-max', type=float, default=g_learn_rate_max, help='Maximum Learning rate') 
     parser.add_argument('--momentum-min', type=float, default=g_momentum_min, help='Minimum momentum') 
     parser.add_argument('--momentum-max', type=float, default=g_momentum_max, help='Maximum momentum') 
+    parser.add_argument('--debug', action='store_true', help='Enable remote debugging and wait for debugger to attach on port 5678')
     
     args = parser.parse_args()
     
@@ -268,7 +269,7 @@ def train(args, stats):
                 radiance=radiance,
                 variance=variance,
                 albedo=albedo,
-                transmissibility=density,
+                density=density,
                 reference=reference,
                 upsample_factor=args.upsample,
                 crop_size=args.crop_size
@@ -454,6 +455,17 @@ def evaluate(model, input_pattern, output_folder, args, stats):
 
 def main():
     args = parse_args()
+    
+    if args.debug:
+        try:
+            import debugpy
+            print("Waiting for debugger to attach on port 5678...")
+            debugpy.listen(("0.0.0.0", 5678))
+            debugpy.wait_for_client()
+            print("Debugger attached!")
+        except ImportError:
+            print("Warning: debugpy is not installed. Cannot enable remote debugging. Please run 'pip install debugpy'.")
+
     print(f"Using device: {device}")
     
     if args.finalize_checkpoint:

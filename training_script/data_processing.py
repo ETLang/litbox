@@ -225,7 +225,7 @@ def augment_for_training(radiance_stddev, radiance, variance, albedo, density, r
     # Variance is log10(Var(x)). Var(k*x) = k^2 * Var(x)
     # log10((10^exposure)^2 * Var(x)) = log10(10^(2*exposure) * Var(x)) = 2*exposure + log10(Var(x))
     # New variance = variance + (2 * exposure / stddev)
-    variance = variance + (2.0 * exposure_offset)
+    variance = variance + (2.0 * exposure_offset.mean(dim=0, keepdim=True))
     
     # Reference follows the same logic as radiance
     reference = reference + exposure_offset
