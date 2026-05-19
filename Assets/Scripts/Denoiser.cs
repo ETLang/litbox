@@ -7,6 +7,15 @@ using UnityEngine;
 #region Model Definition
 
 [Serializable]
+public class DenoiserStats
+{
+    public float[] final_mean;
+    public float[] final_stddev;
+    public float[] density_mean;
+    public float[] density_stddev;
+}
+
+[Serializable]
 public class DenoiserModelDefinition
 {
     public string[] graph_inputs;
@@ -54,11 +63,13 @@ public class Denoiser : LitboxComponent
     [Header("Model Files")]
     [SerializeField] private TextAsset modelJson;
     [SerializeField] private TextAsset modelWeights;
+    [SerializeField] private TextAsset statsJson;
 
     public RenderTexture DenoisedOutput { get; private set; }
     private RenderTexture DenoisedOutputArray { get; set; }
 
     private DenoiserModelDefinition _model;
+    private DenoiserStats _stats;
     private ComputeBuffer _weightsBuffer;
     private Dictionary<string, RenderTexture> _tensors = new Dictionary<string, RenderTexture>();
     private Dictionary<string, (int c, int h, int w)> _tensorShapes = new Dictionary<string, (int c, int h, int w)>();
@@ -66,6 +77,7 @@ public class Denoiser : LitboxComponent
     private ComputeShader _inputCompilerShader;
 
     private int _inputCompilerKernel;
+    private int _unnormalizeKernel = -1;
     private int _residualConvKernel;
     private int _maxPoolKernel;
 
@@ -75,7 +87,7 @@ public class Denoiser : LitboxComponent
 
         _inputCompilerShader = (ComputeShader)Resources.Load("CompileInputTensor");
         denoiserShader = (ComputeShader)Resources.Load("DenoiserOps");
-        if (denoiserShader == null || _inputCompilerShader == null || modelJson == null || modelWeights == null)
+        if (denoiserShader == null || _inputCompilerShader == null || modelJson == null || modelWeights == null || statsJson == null)
         {
             Debug.LogError("Denoiser is missing one or more required assets.");
             enabled = false;
@@ -105,6 +117,9 @@ public class Denoiser : LitboxComponent
     {
         // Parse the model architecture
         _model = JsonUtility.FromJson<DenoiserModelDefinition>(modelJson.text);
+
+        // Parse the normalization stats
+        _stats = JsonUtility.FromJson<DenoiserStats>(statsJson.text);
 
         // Load weights into a compute buffer
         // Note: Weights are loaded as raw bytes. The ComputeShader will interpret them as floats.
@@ -237,6 +252,10 @@ public class Denoiser : LitboxComponent
     private void FindKernels()
     {
         _inputCompilerKernel = _inputCompilerShader.FindKernel("CSMain");
+        if (_inputCompilerShader.HasKernel("UnnormalizeOutput"))
+        {
+            _unnormalizeKernel = _inputCompilerShader.FindKernel("UnnormalizeOutput");
+        }
         
         // These kernels need to be implemented in your denoiserShader
         _residualConvKernel = denoiserShader.FindKernel("ResidualConv");
@@ -370,6 +389,15 @@ public class Denoiser : LitboxComponent
         // to write to a RWTexture2D<float4> named "output". If not, this will fail at runtime.
         _inputCompilerShader.SetVector("size", new Vector2(simulation.width, simulation.height));
         _inputCompilerShader.SetInt("stride", simulation.width * simulation.height);
+
+        if (_stats != null)
+        {
+            _inputCompilerShader.SetVector("final_mean", new Vector4(_stats.final_mean[0], _stats.final_mean[1], _stats.final_mean[2], 0));
+            _inputCompilerShader.SetVector("final_stddev", new Vector4(_stats.final_stddev[0], _stats.final_stddev[1], _stats.final_stddev[2], 0));
+            _inputCompilerShader.SetFloat("density_mean", _stats.density_mean[0]);
+            _inputCompilerShader.SetFloat("density_stddev", _stats.density_stddev[0]);
+        }
+
         _inputCompilerShader.SetTexture(_inputCompilerKernel, "radiance", simulation.SimulationOutputHDR);
         _inputCompilerShader.SetTexture(_inputCompilerKernel, "variance", simulation.VarianceMap);
         _inputCompilerShader.SetTexture(_inputCompilerKernel, "albedo", simulation.GBuffer.AlbedoAlpha);
@@ -433,8 +461,18 @@ public class Denoiser : LitboxComponent
             }
         }
 
-        // Copy the first slice of the compute output (which is a Tex2DArray)
-        // to the public-facing 2D texture.
-        Graphics.CopyTexture(DenoisedOutputArray, 0, 0, DenoisedOutput, 0, 0);
+        // 3. Output and optionally un-normalize
+        if (_unnormalizeKernel != -1)
+        {
+            _inputCompilerShader.SetTexture(_unnormalizeKernel, "tensor_output", DenoisedOutputArray);
+            _inputCompilerShader.SetTexture(_unnormalizeKernel, "final_output", DenoisedOutput);
+            _inputCompilerShader.Dispatch(_unnormalizeKernel, (DenoisedOutput.width + 7) / 8, (DenoisedOutput.height + 7) / 8, 1);
+        }
+        else
+        {
+            // Copy the first slice of the compute output (which is a Tex2DArray)
+            // to the public-facing 2D texture.
+            Graphics.CopyTexture(DenoisedOutputArray, 0, 0, DenoisedOutput, 0, 0);
+        }
     }
 }

@@ -2,30 +2,63 @@
 #include "../Shaders/LitboxCommon.cginc"
 
 #pragma kernel CSMain
+#pragma kernel UnnormalizeOutput
 
 Texture2D<float3> radiance;
 Texture2D<float> variance;
 Texture2D<float3> albedo;
 Texture2D<float> transmissibility;
 
-RWStructuredBuffer<float> output;
+RWTexture2DArray<float4> output;
 
 uint2 size;
 uint stride;
 
-[numthreads(16, 16, 1)]
+float4 final_mean;
+float4 final_stddev;
+float density_mean;
+float density_stddev;
+
+[numthreads(8, 8, 1)]
 void CSMain(uint3 id : SV_DispatchThreadID)
 {
-    if (any(id >= size)) return;
+    if (any(id.xy >= size)) return;
 
-    uint pixelIndex = id.y * size.x + id.x;
+    if (id.z == 0)
+    {
+        float3 rad = log10(max(radiance[id.xy], 0.0) + 1e-6);
+        rad = (rad - final_mean.rgb) / (final_stddev.rgb + 1e-6);
 
-    output[pixelIndex + 0 * stride] = radiance[id.xy].r;
-    output[pixelIndex + 1 * stride] = radiance[id.xy].g;
-    output[pixelIndex + 2 * stride] = radiance[id.xy].b;
-    output[pixelIndex + 3 * stride] = variance[id.xy];
-    output[pixelIndex + 4 * stride] = albedo[id.xy].r;
-    output[pixelIndex + 5 * stride] = albedo[id.xy].g;
-    output[pixelIndex + 6 * stride] = albedo[id.xy].b;
-    output[pixelIndex + 7 * stride] = transmissibility[id.xy];
+        float var = log10(max(variance[id.xy], 0.0) + 1e-6);
+        var = (var - final_mean.r) / (final_stddev.r + 1e-6);
+
+        output[id] = float4(rad, var);
+    }
+    else if (id.z == 1)
+    {
+        float3 alb = albedo[id.xy];
+
+        float trans = transmissibility[id.xy];
+        float density = -log10(1.0 - clamp(trans, 0.0, 1.0 - 1e-6));
+        density = (density - density_mean) / (density_stddev + 1e-6);
+
+        output[id] = float4(alb, density);
+    }
+}
+
+Texture2DArray<float4> tensor_output;
+RWTexture2D<float4> final_output;
+
+[numthreads(8, 8, 1)]
+void UnnormalizeOutput(uint3 id : SV_DispatchThreadID)
+{
+    uint w, h, elements;
+    tensor_output.GetDimensions(w, h, elements);
+    if (id.x >= w || id.y >= h) return;
+
+    float3 val = tensor_output[uint3(id.xy, 0)].rgb;
+    val = val * (final_stddev.rgb + 1e-6) + final_mean.rgb;
+    val = pow(10.0, val);
+
+    final_output[id.xy] = float4(val, 1.0);
 }
