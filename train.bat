@@ -25,6 +25,7 @@ python training_script/train_litbox_denoiser.py ^
     --input-transmissibility-location "%TRAINING_DATA_FOLDER%/Transmissibility_*.exr" ^
     --reference-location "%TRAINING_DATA_FOLDER%/Output_Reference_*.exr" ^
     --output-folder "%OUTPUT_FOLDER%" ^
+    --test-ratio 0.1 ^
     %ARG_SKIP_CACHE_VALIDATION%
 
 @REM @IF NOT ERRORLEVEL 0 (

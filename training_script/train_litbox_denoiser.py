@@ -1,5 +1,6 @@
 import json
 
+import math
 import torch
 import torch.optim as optim
 from torch.utils.data import DataLoader
@@ -34,7 +35,10 @@ g_test_ratio = 0.0
 g_epochs = 20
 g_crop_size = 256
 g_batch_size = 4
-g_learn_rate = 0.0001
+g_learn_rate_min = 1e-6
+g_learn_rate_max = 0.0001
+g_momentum_min = 0.85
+g_momentum_max = 0.95
 
 # Settings (internal)
 g_unet_size = 5
@@ -50,12 +54,50 @@ g_loss_bright_weight = 1.5
 g_loss_gradient_weight = 0.4 # 0.1 is OK
 g_loss_l1_weight = 0.2
 
+# Cosine Annealing with Warmup settings
+g_warmup_epochs = 2
+
 # TODO
 g_gaussian_initialization = True
 
 
 # Check for CUDA availability
 device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
+
+def get_cosine_schedule_with_warmup(optimizer, num_warmup_steps, num_training_steps, num_cycles=0.5, last_epoch=-1):
+    """
+    Create a schedule with a learning rate that decreases following the values of the cosine function between
+    the initial LR set in the optimizer to a minimum LR, after a warmup period during which it increases linearly
+    between 0 and the initial LR set in the optimizer.
+    """
+    def lr_lambda(current_step):
+        if current_step < num_warmup_steps:
+            return float(current_step) / float(max(1, num_warmup_steps))
+
+        progress = float(current_step - num_warmup_steps) / float(max(1, num_training_steps - num_warmup_steps))
+        cosine_decay = 0.5 * (1.0 + math.cos(math.pi * float(num_cycles) * 2.0 * progress))
+        min_lr_ratio = g_learn_rate_min / g_learn_rate_max
+        return max(0.0, min_lr_ratio + (1.0 - min_lr_ratio) * cosine_decay)
+
+    return torch.optim.lr_scheduler.LambdaLR(optimizer, lr_lambda, last_epoch)
+
+def adjust_momentum(optimizer, current_step, num_warmup_steps, num_training_steps):
+    """
+    Adjusts momentum opposite to learning rate.
+    High momentum for low LR, low momentum for high LR.
+    """
+    if current_step < num_warmup_steps:
+        # During warmup, LR increases, so momentum decreases from max to base
+        progress = float(current_step) / float(max(1, num_warmup_steps))
+        momentum = g_momentum_max - (g_momentum_max - g_momentum_min) * progress
+    else:
+        # After warmup, LR decreases, so momentum increases from base to max (cosine schedule)
+        progress = float(current_step - num_warmup_steps) / float(max(1, num_training_steps - num_warmup_steps))
+        momentum = g_momentum_min + (g_momentum_max - g_momentum_min) * 0.5 * (1.0 - math.cos(math.pi * progress))
+
+    for param_group in optimizer.param_groups:
+        if 'betas' in param_group:
+            param_group['betas'] = (momentum, param_group['betas'][1])
 
 def parse_args():
     parser = argparse.ArgumentParser(description='Litbox Denoiser Training Script')
@@ -75,7 +117,10 @@ def parse_args():
     parser.add_argument('--crop-size', type=int, default=g_crop_size, help='Resolution of training crops')
     parser.add_argument('--upsample', type=int, default=g_output_upsample, choices=[1, 2, 4, 8], help='Upsampling factor')
     parser.add_argument('--batch-size', type=int, default=g_batch_size, help='Batch size for training and testing') 
-    parser.add_argument('--learn-rate', type=float, default=g_learn_rate, help='Learning rate') 
+    parser.add_argument('--learn-rate-min', type=float, default=g_learn_rate_min, help='Minimum Learning rate') 
+    parser.add_argument('--learn-rate-max', type=float, default=g_learn_rate_max, help='Maximum Learning rate') 
+    parser.add_argument('--momentum-min', type=float, default=g_momentum_min, help='Minimum momentum') 
+    parser.add_argument('--momentum-max', type=float, default=g_momentum_max, help='Maximum momentum') 
     
     args = parser.parse_args()
     
@@ -112,7 +157,10 @@ def train(args, stats):
         project="litbox-denoise",
         # Track hyperparameters and run metadata.
         config={
-            "learning_rate": args.learn_rate,
+            "learn_rate_min": args.learn_rate_min,
+            "learn_rate_max": args.learn_rate_max,
+            "momentum_min": args.momentum_min,
+            "momentum_max": args.momentum_max,
             "architecture": "UNet-5",
             "dataset": f"Litbox-{os.path.basename(os.path.dirname(args.input_a_location))}",
             "epochs": args.epochs,
@@ -127,7 +175,10 @@ def train(args, stats):
     "test_ratio": args.test_ratio,
     "crop_size": args.crop_size,
     "batch_size": args.batch_size,
-    "learn_rate": args.learn_rate,
+    "learn_rate_min": args.learn_rate_min,
+    "learn_rate_max": args.learn_rate_max,
+    "momentum_min": args.momentum_min,
+    "momentum_max": args.momentum_max,
     "unet_size": g_unet_size,
     "initial_features": g_initial_features,
     "input_a_location": args.input_a_location,
@@ -161,7 +212,17 @@ def train(args, stats):
         weight_decay = g_weight_decay
     else:
         weight_decay = 0
-    optimizer = optim.Adam(model.parameters(), lr=args.learn_rate, weight_decay=weight_decay)
+    optimizer = optim.Adam(model.parameters(), lr=args.learn_rate_max, weight_decay=weight_decay)
+
+    # Calculate total training steps for scheduler
+    # Assuming all curriculum datasets have the same length
+    num_samples = len(training_datasets[0])
+    steps_per_epoch = (num_samples + args.batch_size - 1) // args.batch_size
+    total_steps = steps_per_epoch * args.epochs
+    warmup_steps = steps_per_epoch * g_warmup_epochs
+
+    # LR Scheduler
+    lr_scheduler = get_cosine_schedule_with_warmup(optimizer, num_warmup_steps=warmup_steps, num_training_steps=total_steps)
 
     # Training loop
     start_time = time.time()
@@ -201,7 +262,18 @@ def train(args, stats):
             albedo = features['albedo']
             density = features['density']
             reference = features['reference']
-                
+
+            radiance, variance, albedo, density, reference = augment_for_training(
+                radiance_stddev=stddev,
+                radiance=radiance,
+                variance=variance,
+                albedo=albedo,
+                transmissibility=density,
+                reference=reference,
+                upsample_factor=args.upsample,
+                crop_size=args.crop_size
+            )
+
             input_tensor = torch.cat([radiance, variance, albedo, density], dim=1)
             if ~torch.isfinite(input_tensor).all():
                 print("oops input_tensor")
@@ -222,11 +294,17 @@ def train(args, stats):
             optimizer.zero_grad()
             loss.backward()
             optimizer.step()
+
+            # Update LR and momentum
+            lr_scheduler.step()
+            adjust_momentum(optimizer, lr_scheduler.last_epoch, warmup_steps, total_steps)
             
             # Log to wandb
             if batch_idx % 10 == 0:
                 wandb.log({
                     "loss": loss.item(),
+                    "lr": optimizer.param_groups[0]['lr'],
+                    "momentum": optimizer.param_groups[0]['betas'][0],
                     "epoch": epoch,
                     "curriculum": curriculum.name
                 })
@@ -258,8 +336,36 @@ def train(args, stats):
             if stop_training:
                 print("Stop key 'q' detected. Finishing training...")
                 break
-    
-    display.shutdown()
+
+        # Validation stage
+        model.eval()
+        val_loss_total = 0.0
+        val_steps = 0
+        
+        with torch.no_grad():
+            for val_dataset in validation_datasets:
+                val_loader = DataLoader(val_dataset, batch_size=args.batch_size, shuffle=False, num_workers=2)
+                for val_features in val_loader:
+                    v_radiance = val_features['radiance']
+                    v_variance = val_features['variance']
+                    v_albedo = val_features['albedo']
+                    v_density = val_features['density']
+                    v_reference = val_features['reference']
+                    
+                    v_input = torch.cat([v_radiance, v_variance, v_albedo, v_density], dim=1)
+                    v_output = model(v_input)
+                    
+                    v_loss = loss_fn(v_output, v_reference)
+                    val_loss_total += v_loss.item()
+                    val_steps += 1
+        
+        avg_val_loss = val_loss_total / max(val_steps, 1)
+        wandb.log({ "val_loss": avg_val_loss })
+        print(f"Epoch {epoch} Validation Loss: {avg_val_loss:.6f}")
+        
+        model.train()
+
+    plt.close(display.fig)
     
     # Save final model
     torch.save(model.state_dict(), os.path.join(args.output_folder, "final.pth"))
@@ -400,6 +506,10 @@ def main():
         if os.path.exists(args.output_folder):
             shutil.rmtree(args.output_folder)
         os.makedirs(args.output_folder, exist_ok=True)
+
+        with open(os.path.join(args.output_folder, 'stats.json'), 'w') as f:
+            json.dump(stats, f, indent=4)
+
         train(args, stats)
 
 if __name__ == "__main__":

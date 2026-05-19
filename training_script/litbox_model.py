@@ -290,17 +290,17 @@ class LitboxDenoiserNet(nn.Module):
         return module, channels_out
     
     def make_encoder(self, channels_in):
-        channels_out = channels_in * 2
+        channels_out = channels_in # * 2  (Evidence suggests each layer only uses 32 channels no matter how deep)
         module = ResidualBlock(channels_in, channels_out, self.padding_mode)
         return module, channels_out
     
     def make_bottleneck(self, channels_in):
-        channels_out = channels_in * 2
+        channels_out = channels_in # * 2  (Evidence suggests each layer only uses 32 channels no matter how deep)
         module = ResidualBlock(channels_in, channels_out, self.padding_mode)
         return module, channels_out
     
     def make_decoder(self, channels_in):
-        channels_out = channels_in // 2
+        channels_out = channels_in # // 2  (Evidence suggests each layer only uses 32 channels no matter how deep)
         module = nn.Sequential(
             nn.Conv2d(channels_in, channels_out * (2*2), kernel_size=3, padding=1), # Output for 2x upsample
             nn.PixelShuffle(2), # Upsamples features by 2x

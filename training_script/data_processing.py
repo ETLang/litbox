@@ -198,7 +198,7 @@ def jittered_subsample(image, upsample_factor):
     # 3. Crop to ensure dimensions match exactly (safety for non-multiples)
     return low_res[:, :, :new_h, :new_w]
 
-def augment_for_training(radiance, variance, albedo, transmissibility, reference, upsample_factor: int = 1, crop_size: int = 64):
+def augment_for_training(radiance_stddev, radiance, variance, albedo, density, reference, upsample_factor: int = 1, crop_size: int = 64):
     height, width = radiance.shape[2:]
 
     # Random crop
@@ -210,8 +210,26 @@ def augment_for_training(radiance, variance, albedo, transmissibility, reference
     radiance = radiance[:, top:top+crop_size, left:left+crop_size]
     variance = variance[:, top:top+crop_size, left:left+crop_size]
     albedo = albedo[:, top:top+crop_size, left:left+crop_size]
-    transmissibility = transmissibility[:, top:top+crop_size, left:left+crop_size]
+    density = density[:, top:top+crop_size, left:left+crop_size]
     reference = reference[:, top:top+crop_size, left:left+crop_size]
+
+    # Random rescaling of exposure
+    exposure = random.uniform(-3.0, 3.0)
+    # Since radiance is (log10(x) - mean) / stddev:
+    # log10(x * 10^exposure) = log10(x) + exposure
+    # New radiance = ((log10(x) + exposure) - mean) / stddev
+    # New radiance = radiance + (exposure / stddev)
+    exposure_offset = exposure / torch.clamp(radiance_stddev.view(3, 1, 1), min=1e-6)
+    radiance = radiance + exposure_offset
+    
+    # Variance is log10(Var(x)). Var(k*x) = k^2 * Var(x)
+    # log10((10^exposure)^2 * Var(x)) = log10(10^(2*exposure) * Var(x)) = 2*exposure + log10(Var(x))
+    # New variance = variance + (2 * exposure / stddev)
+    variance = variance + (2.0 * exposure_offset)
+    
+    # Reference follows the same logic as radiance
+    reference = reference + exposure_offset
+
 
     # Squish inputs to demonstrate upsampling for training
     if upsample_factor > 1:
@@ -219,17 +237,28 @@ def augment_for_training(radiance, variance, albedo, transmissibility, reference
         radiance = jittered_subsample(radiance, upsample_factor)
         variance = jittered_subsample(variance, upsample_factor)
         albedo = jittered_subsample(albedo, upsample_factor)
-        transmissibility = jittered_subsample(transmissibility, upsample_factor)
-        transmissibility = transmissibility * upsample_factor  #transmissibility should already be in -log10 space
+        density = jittered_subsample(density, upsample_factor)
+        density = density * upsample_factor  #density should already be in -log10 space
     
+    # Random flip
+    if random.random() > 0.5:
+        radiance = TF.hflip(radiance)
+        variance = TF.hflip(variance)
+        albedo = TF.hflip(albedo)
+        density = TF.hflip(density)
+        reference = TF.hflip(reference)
+
     # Random rotation to remove alignment bias
     angles = [0, 90, 180, 270]
     chosen_angle = random.choice(angles)
     radiance = TF.rotate(radiance, chosen_angle)
     variance = TF.rotate(variance, chosen_angle)
-    albedo_tensor = TF.rotate(albedo_tensor, chosen_angle)
-    transmissibility = TF.rotate(transmissibility, chosen_angle)
+    albedo = TF.rotate(albedo, chosen_angle)
+    density = TF.rotate(density, chosen_angle)
     reference = TF.rotate(reference, chosen_angle)
+    
+    return radiance, variance, albedo, density, reference
+
 
 def check_tensor_fidelity(original_tensor, reprocessed_tensor):
     # Ensure both are on CPU and NumPy
