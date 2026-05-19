@@ -81,6 +81,9 @@ public class Denoiser : LitboxComponent
     private int _residualConvKernel;
     private int _maxPoolKernel;
 
+    private int _currentWidth = -1;
+    private int _currentHeight = -1;
+
     void OnEnable()
     {
         if (simulation == null) simulation = GetComponent<Simulation>();
@@ -96,7 +99,6 @@ public class Denoiser : LitboxComponent
 
         LoadModelAndWeights();
         ConsolidateGraph();
-        AnalyzeGraph();
         FindKernels();
 
         simulation.OnStep += OnSimulationStep;
@@ -109,8 +111,24 @@ public class Denoiser : LitboxComponent
             simulation.OnStep -= OnSimulationStep;
         }
 
+        ReleaseTensors();
+    }
+
+    private void ReleaseTensors()
+    {
+        foreach (var rt in _tensors.Values)
+        {
+            if (rt != null) DestroyImmediate(rt);
+        }
         _tensors.Clear();
         _tensorShapes.Clear();
+
+        if (DenoisedOutput != null)
+        {
+            DestroyImmediate(DenoisedOutput);
+            DenoisedOutput = null;
+        }
+        DenoisedOutputArray = null;
     }
 
     private void LoadModelAndWeights()
@@ -268,7 +286,7 @@ public class Denoiser : LitboxComponent
     /// </summary>
     private void AnalyzeGraph()
     {
-        _tensorShapes.Clear();
+        ReleaseTensors();
         
         // The input tensor shape is known: 8 channels at simulation resolution.
         var inputShape = (c: 8, h: simulation.height, w: simulation.width);
@@ -331,6 +349,9 @@ public class Denoiser : LitboxComponent
 
         // The public-facing output is a regular 2D RenderTexture for material binding
         var shape = _tensorShapes[_model.graph_outputs[0]];
+        
+        Debug.Log($"Denoiser Graph Analyzed - Input Shape: {inputShape.c}x{inputShape.h}x{inputShape.w} | Expected Output Shape: {shape.c}x{shape.h}x{shape.w}");
+
         var desc = new RenderTextureDescriptor(shape.w, shape.h, RenderTextureFormat.ARGBFloat, 0)
         {
             enableRandomWrite = true,
@@ -339,8 +360,6 @@ public class Denoiser : LitboxComponent
         DenoisedOutput = new RenderTexture(desc);
         DenoisedOutput.name = "DenoisedOutput_Final2D";
         DenoisedOutput.Create();
-
-        DisposeOnDisable(() => DestroyImmediate(DenoisedOutput));
     }
 
     private RenderTexture GetOrCreateTensor(string name)
@@ -372,13 +391,24 @@ public class Denoiser : LitboxComponent
         rt.Create();
 
         _tensors[name] = rt;
-        DisposeOnDisable(() => DestroyImmediate(rt));
         return rt;
     }
 
     private void OnSimulationStep(int frameCount)
     {
         if (_model == null) return;
+
+        if (simulation.width % 32 != 0 || simulation.height % 32 != 0)
+        {
+            Debug.LogWarning($"Simulation dimensions ({simulation.width}x{simulation.height}) are not a multiple of 32. This may cause dimension mismatches in the U-Net skip connections! Set snapSize to 32.");
+        }
+
+        if (simulation.width != _currentWidth || simulation.height != _currentHeight)
+        {
+            _currentWidth = simulation.width;
+            _currentHeight = simulation.height;
+            AnalyzeGraph();
+        }
 
         // 1. Compile inputs into the first 8-channel tensor
         var inputTensor = GetOrCreateTensor(_model.graph_inputs[0]);
@@ -387,7 +417,7 @@ public class Denoiser : LitboxComponent
         // That shader was designed to write to a ComputeBuffer (Tensor<float>).
         // This pipeline uses RenderTextures. This call assumes the shader has been adapted
         // to write to a RWTexture2D<float4> named "output". If not, this will fail at runtime.
-        _inputCompilerShader.SetVector("size", new Vector2(simulation.width, simulation.height));
+        _inputCompilerShader.SetInts("size", new int[] { simulation.width, simulation.height });
         _inputCompilerShader.SetInt("stride", simulation.width * simulation.height);
 
         if (_stats != null)
@@ -398,13 +428,13 @@ public class Denoiser : LitboxComponent
             _inputCompilerShader.SetFloat("density_stddev", _stats.density_stddev[0]);
         }
 
-        _inputCompilerShader.SetTexture(_inputCompilerKernel, "radiance", simulation.SimulationOutputHDR);
+        _inputCompilerShader.SetTexture(_inputCompilerKernel, "radiance", simulation.SimulationOutput);
         _inputCompilerShader.SetTexture(_inputCompilerKernel, "variance", simulation.VarianceMap);
         _inputCompilerShader.SetTexture(_inputCompilerKernel, "albedo", simulation.GBuffer.AlbedoAlpha);
         _inputCompilerShader.SetTexture(_inputCompilerKernel, "transmissibility", simulation.GBuffer.Transmissibility);
         _inputCompilerShader.SetTexture(_inputCompilerKernel, "output", inputTensor);
         // The input tensor has 8 channels, so it's a Texture2DArray with 2 slices.
-        _inputCompilerShader.Dispatch(_inputCompilerKernel, simulation.width / 8, simulation.height / 8, 2);
+        _inputCompilerShader.Dispatch(_inputCompilerKernel, (simulation.width + 7) / 8, (simulation.height + 7) / 8, 2);
 
         // 2. Execute all operations in the graph
         foreach (var op in _model.operations)
