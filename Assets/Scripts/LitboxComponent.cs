@@ -77,7 +77,7 @@ public class LitboxComponent : DisposalHelperComponent
         return changed;
     }
 
-    protected virtual void Update()
+    protected override void Update()
     {
         if (_autoUpdate) {
             CheckChanged();

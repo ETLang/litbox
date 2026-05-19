@@ -109,6 +109,10 @@ public class CloudGroupController : LitboxComponent
         if(_binder != null) {
             _simulationUVTransform = _binder.ScreenToSimulationUVTransform;
         }
+
+        if(blurSize == 0) {
+            foregroundCloudMat.SetTexture(_foregroundSimulationTexId, _simulation.SimulationOutput);
+        }
     }
 
     protected override void OnInvalidated(string group)

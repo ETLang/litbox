@@ -2,6 +2,7 @@ using System;
 using System.Collections.Generic;
 using System.IO;
 using System.Linq;
+using System.Threading.Tasks;
 using UnityEngine;
 
 #region Model Definition
@@ -114,7 +115,7 @@ public class Denoiser : LitboxComponent
         ReleaseTensors();
     }
 
-    private void ReleaseTensors()
+    private async Task ReleaseTensors()
     {
         foreach (var rt in _tensors.Values)
         {
@@ -122,10 +123,14 @@ public class Denoiser : LitboxComponent
         }
         _tensors.Clear();
         _tensorShapes.Clear();
+        _currentWidth = -1;
+        _currentHeight = -1;
+
+        var toDestroy = DenoisedOutput;
 
         if (DenoisedOutput != null)
         {
-            DestroyImmediate(DenoisedOutput);
+            DisposeOnNextFrame(() => DestroyImmediate(DenoisedOutput));
             DenoisedOutput = null;
         }
         DenoisedOutputArray = null;
@@ -349,8 +354,6 @@ public class Denoiser : LitboxComponent
 
         // The public-facing output is a regular 2D RenderTexture for material binding
         var shape = _tensorShapes[_model.graph_outputs[0]];
-        
-        Debug.Log($"Denoiser Graph Analyzed - Input Shape: {inputShape.c}x{inputShape.h}x{inputShape.w} | Expected Output Shape: {shape.c}x{shape.h}x{shape.w}");
 
         var desc = new RenderTextureDescriptor(shape.w, shape.h, RenderTextureFormat.ARGBFloat, 0)
         {
