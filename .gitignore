@@ -24,7 +24,6 @@ UserSettings/**
 /bin
 .utmp/**
 Assets/Resources/PerformanceTestRun**
-Assets/Resources/Denoiser**
 
 !Packages/manifest.json
 !Packages/packages-lock.json
