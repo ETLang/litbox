@@ -10,6 +10,7 @@ import os
 import glob
 import time
 import random
+import sys
 import argparse
 import shutil
 from PIL import Image
@@ -30,7 +31,6 @@ import wandb
 
 # Settings (overridable via command line arguments)
 g_output_upsample = 1 # 4
-g_checkpoint_interval = 900
 g_test_ratio = 0.0
 g_epochs = 20
 g_crop_size = 256
@@ -64,7 +64,7 @@ g_gaussian_initialization = True
 # Check for CUDA availability
 device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
 
-def get_cosine_schedule_with_warmup(optimizer, num_warmup_steps, num_training_steps, num_cycles=0.5, last_epoch=-1):
+def get_cosine_schedule_with_warmup(optimizer, num_warmup_steps, num_training_steps, num_cycles=0.5, last_step=-1):
     """
     Create a schedule with a learning rate that decreases following the values of the cosine function between
     the initial LR set in the optimizer to a minimum LR, after a warmup period during which it increases linearly
@@ -79,7 +79,7 @@ def get_cosine_schedule_with_warmup(optimizer, num_warmup_steps, num_training_st
         min_lr_ratio = g_learn_rate_min / g_learn_rate_max
         return max(0.0, min_lr_ratio + (1.0 - min_lr_ratio) * cosine_decay)
 
-    return torch.optim.lr_scheduler.LambdaLR(optimizer, lr_lambda, last_epoch)
+    return torch.optim.lr_scheduler.LambdaLR(optimizer, lr_lambda, last_step)
 
 def adjust_momentum(optimizer, current_step, num_warmup_steps, num_training_steps):
     """
@@ -103,14 +103,13 @@ def parse_args():
     parser = argparse.ArgumentParser(description='Litbox Denoiser Training Script')
     data_processing.register_dataset_args(parser, False)
     parser.add_argument('--eval', action='store_true', help='Run in evaluation mode')
-    parser.add_argument('--finalize-checkpoint', type=int, help='Checkpoint to finalize')
+    parser.add_argument('--finalize-checkpoint', type=str, help='Path to a checkpoint file to finalize')
+    parser.add_argument('--resume', type=str, help='Path to a checkpoint file to resume training from')
     parser.add_argument('--recompute-stats', action='store_true', help='Compute global normalization stats, even if they are cached.')
     parser.add_argument('--skip-cache-validation', action='store_true', help='Trust that the cache is populated, and skip validating it')
     parser.add_argument('--cache-location', help='Path to preprocessed feature cache', default='./training_cache')
-    parser.add_argument('--output-folder', required=True, help='Output folder for evaluated images or training results/checkpoints')
+    parser.add_argument('--output-folder', help='Output folder for evaluated images or training results/checkpoints')
     parser.add_argument('--model-path', help='Path to model to use for eval')
-    parser.add_argument('--checkpoint-interval', type=int, default=g_checkpoint_interval, help='Seconds between checkpoints')
-    parser.add_argument('--checkpoint-tests', help='Path to test images for checkpoints')
     parser.add_argument('--test-ratio', type=float, default=g_test_ratio, help='Percentage of data for testing')
     parser.add_argument('--epochs', type=int, default=g_epochs, help='Number of epochs to train, per curriculum stage')
     parser.add_argument('--log-space', action='store_true', help='Transform EXR data to log space')
@@ -125,12 +124,44 @@ def parse_args():
     
     args = parser.parse_args()
     
+    if args.resume or args.finalize_checkpoint:
+        active_arg = '--resume' if args.resume else '--finalize-checkpoint'
+        active_val = args.resume or args.finalize_checkpoint
+        
+        allowed_args = {active_arg, '--debug'}
+        for arg in sys.argv[1:]:
+            if arg.startswith('--'):
+                arg_name = arg.split('=')[0]
+                if arg_name not in allowed_args:
+                    parser.error(f"When {active_arg} is provided, no other arguments are allowed except --debug. Found: {arg_name}")
+        
+        checkpoint_path = active_val
+        if not os.path.exists(checkpoint_path):
+            parser.error(f"Checkpoint not found at {checkpoint_path}")
+            
+        checkpoint = torch.load(checkpoint_path, map_location='cpu')
+        saved_args = checkpoint.get('args', {})
+        
+        debug_val = args.debug
+        
+        for k, v in saved_args.items():
+            setattr(args, k, v)
+            
+        args.debug = debug_val
+        if active_arg == '--resume':
+            args.resume = active_val
+        else:
+            args.finalize_checkpoint = active_val
+            
+        args.output_folder = os.path.dirname(os.path.normpath(active_val))
+        return args
+
     # Validation
     is_training = not args.eval and not args.finalize_checkpoint
     if is_training and not args.reference_location:
         parser.error("--reference-location is required in training mode")
-    if args.eval and not args.output_folder:
-        parser.error("--output-folder is required in eval mode")
+    if not args.output_folder:
+        parser.error("--output-folder is required")
     if args.eval and not args.model_path:
         parser.error("--model-path is required in eval mode")
     data_processing.validate_dataset_args(args, parser)
@@ -215,6 +246,19 @@ def train(args, stats):
         weight_decay = 0
     optimizer = optim.Adam(model.parameters(), lr=args.learn_rate_max, weight_decay=weight_decay)
 
+    start_epoch = 0
+    if getattr(args, 'resume', None):
+        checkpoint_path = args.resume
+        print(f"Resuming from checkpoint {checkpoint_path}...")
+        checkpoint = torch.load(checkpoint_path, map_location=device)
+        model.load_state_dict(checkpoint['model_state_dict'])
+        optimizer.load_state_dict(checkpoint['optimizer_state_dict'])
+        start_epoch = checkpoint['epoch'] + 1
+        if 'rng_state' in checkpoint:
+            torch.set_rng_state(checkpoint['rng_state'].cpu())
+        if 'cuda_rng_state' in checkpoint and checkpoint['cuda_rng_state'] is not None:
+            torch.cuda.set_rng_state_all([state.cpu() for state in checkpoint['cuda_rng_state']])
+
     # Calculate total training steps for scheduler
     # Assuming all curriculum datasets have the same length
     num_samples = len(training_datasets[0])
@@ -223,11 +267,11 @@ def train(args, stats):
     warmup_steps = steps_per_epoch * g_warmup_epochs
 
     # LR Scheduler
-    lr_scheduler = get_cosine_schedule_with_warmup(optimizer, num_warmup_steps=warmup_steps, num_training_steps=total_steps)
+    current_step = start_epoch * steps_per_epoch
+    lr_scheduler = get_cosine_schedule_with_warmup(optimizer, num_warmup_steps=warmup_steps, num_training_steps=total_steps, last_step=current_step - 1)
 
     # Training loop
     start_time = time.time()
-    last_checkpoint = start_time
     last_print = start_time
     
     model.train()
@@ -250,7 +294,7 @@ def train(args, stats):
     # loss_fn = HdrLoss(g_loss_bright_weight, g_loss_gradient_weight, g_loss_l1_weight, g_loss_dark_bias)
     loss_fn = RelativeCharbonnierLoss(mean=mean, stddev=stddev)
 
-    for epoch in range(args.epochs):
+    for epoch in range(start_epoch, args.epochs):
         if stop_training:
             break
         curriculum = random.choices(training_datasets, curriculum_weights[:len(training_datasets)], k=1)[0]
@@ -318,26 +362,25 @@ def train(args, stats):
                 last_print = current_time
 
                 display.show(radiance, output, reference)
-                
-                # Checkpoint if needed
-                if args.checkpoint_interval and current_time - last_checkpoint >= args.checkpoint_interval:
-                    checkpoint_dir = os.path.join(args.output_folder, f"{int(elapsed)}")
-                    os.makedirs(checkpoint_dir)
-                    
-                    # Save model
-                    torch.save(model.state_dict(), os.path.join(checkpoint_dir, "model.pth"))
-                    
-                    # Evaluate checkpoint tests if provided
-                    if args.checkpoint_tests:
-                        evaluate(model, args.checkpoint_tests, checkpoint_dir, args)
-                        model.train()
-                        
-                    last_checkpoint = time.time()
 
             if stop_training:
                 print("Stop key 'q' detected. Finishing training...")
                 break
 
+        # Checkpoint
+        checkpoint_path = os.path.join(args.output_folder, f"{epoch}.checkpoint")
+        
+        # Save model
+        checkpoint = {
+            'args': vars(args),
+            'epoch': epoch,
+            'model_state_dict': model.state_dict(),
+            'optimizer_state_dict': optimizer.state_dict(),
+            'rng_state': torch.get_rng_state(),
+            'cuda_rng_state': torch.cuda.get_rng_state_all() if torch.cuda.is_available() else None
+        }
+        torch.save(checkpoint, checkpoint_path)
+        
         # Validation stage
         model.eval()
         val_loss_total = 0.0
@@ -369,7 +412,15 @@ def train(args, stats):
     plt.close(display.fig)
     
     # Save final model
-    torch.save(model.state_dict(), os.path.join(args.output_folder, "final.pth"))
+    final_checkpoint = {
+        'args': vars(args),
+        'epoch': args.epochs - 1,
+        'model_state_dict': model.state_dict(),
+        'optimizer_state_dict': optimizer.state_dict(),
+        'rng_state': torch.get_rng_state(),
+        'cuda_rng_state': torch.cuda.get_rng_state_all() if torch.cuda.is_available() else None
+    }
+    torch.save(final_checkpoint, os.path.join(args.output_folder, "final.pth"))
 
     # Export to ONNX
     # The model expects 8 input channels (radiance, variance, albedo, density)
@@ -480,23 +531,26 @@ def main():
             g_unet_size = saved_args.get('unet_size', g_unet_size)
             g_initial_features = saved_args.get('initial_features', g_initial_features)
 
-        checkpoint_path = os.path.join(args.output_folder, str(args.finalize_checkpoint), "model.pth")
+        checkpoint_path = args.finalize_checkpoint
         if not os.path.exists(checkpoint_path):
             print(f"Error: Checkpoint model not found at {checkpoint_path}")
             return
 
         final_pth = os.path.join(args.output_folder, "final.pth")
-        shutil.copy2(checkpoint_path, final_pth)
+        
+        checkpoint_data = torch.load(checkpoint_path, map_location=device)
+        model_state = checkpoint_data.get('model_state_dict', checkpoint_data)
+        torch.save(checkpoint_data, final_pth)
 
         model = LitboxDenoiserNet(
             upsample_factor=args.upsample, use_sigmoid=g_use_sigmoid, use_log_space=False,
             normalize_input=g_normalize_input, initial_features=g_initial_features,
             unet_size=g_unet_size, epsilon=g_epsilon, padding_mode=g_padding_mode).to(device)
-        model.load_state_dict(torch.load(final_pth, map_location=device))
+        model.load_state_dict(model_state)
         model.export_onnx(os.path.join(args.output_folder, "final.onnx"), input_channels=8, resolution=args.crop_size)
         return
 
-    if not args.skip_cache_validation:
+    if not args.skip_cache_validation and not getattr(args, 'resume', None):
         build_cache(args)
     stats = load_cached_stats(args)
 
@@ -512,7 +566,9 @@ def main():
             unet_size=g_unet_size, 
             epsilon=g_epsilon, 
             padding_mode=g_padding_mode).to(device)
-        model.load_state_dict(torch.load(args.model_path))
+        checkpoint_data = torch.load(args.model_path, map_location=device)
+        model_state = checkpoint_data.get('model_state_dict', checkpoint_data)
+        model.load_state_dict(model_state)
         evaluate(model, args.input_location, args.output_folder, args, stats)
     else:
         if os.path.exists(args.output_folder):
