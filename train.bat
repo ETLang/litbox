@@ -26,7 +26,9 @@ python training_script/train_litbox_denoiser.py ^
     --reference-location "%TRAINING_DATA_FOLDER%/Output_Reference_*.exr" ^
     --output-folder "%OUTPUT_FOLDER%" ^
     --test-ratio 0.1 ^
+    --epochs 25 ^
     %ARG_SKIP_CACHE_VALIDATION%
+@REM    --debug
 
 @REM @IF NOT ERRORLEVEL 0 (
 @REM     POPD

@@ -571,8 +571,11 @@ def main():
         model.load_state_dict(model_state)
         evaluate(model, args.input_location, args.output_folder, args, stats)
     else:
-        if os.path.exists(args.output_folder):
-            shutil.rmtree(args.output_folder)
+        if not getattr(args, 'resume', None) and os.path.exists(args.output_folder):
+            backup_folder = args.output_folder + ".backup"
+            if os.path.exists(backup_folder):
+                shutil.rmtree(backup_folder)
+            os.rename(args.output_folder, backup_folder)
         os.makedirs(args.output_folder, exist_ok=True)
 
         with open(os.path.join(args.output_folder, 'stats.json'), 'w') as f:
