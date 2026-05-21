@@ -44,6 +44,8 @@ public class DenoiserOpParams
     public string pad;
     public string add;
     public string concat;
+    public int[] dilations;
+    public int[] strides;
 }
 
 [Serializable]
@@ -112,7 +114,7 @@ public class Denoiser : LitboxComponent
             simulation.OnPostProcess -= OnSimulationPostProcess;
         }
 
-        ReleaseTensors();
+        _ = ReleaseTensors();
     }
 
     private async Task ReleaseTensors()
@@ -140,6 +142,14 @@ public class Denoiser : LitboxComponent
     {
         // Parse the model architecture
         _model = JsonUtility.FromJson<DenoiserModelDefinition>(modelJson.text);
+
+        foreach (var op in _model.operations)
+        {
+            if (op.type == "UNMATCHED")
+            {
+                throw new NotSupportedException($"UNMATCHED operation detected in model JSON: {op.name}");
+            }
+        }
 
         // Parse the normalization stats
         _stats = JsonUtility.FromJson<DenoiserStats>(statsJson.text);
@@ -189,7 +199,7 @@ public class Denoiser : LitboxComponent
                 continue;
             }
 
-            if (op.type == "BasicConv")
+            if (op.type == "BasicConv" || op.type == "ComplexConv")
             {
                 // This is the core of a potential ResidualConv
                 var residualConv = new DenoiserOperation
@@ -289,81 +299,91 @@ public class Denoiser : LitboxComponent
     /// Traverses the model graph to determine the shape of each intermediate tensor.
     /// This is necessary for allocating RenderTextures of the correct size and channel count.
     /// </summary>
-    private void AnalyzeGraph()
+    private async Task AnalyzeGraph()
     {
-        ReleaseTensors();
-        
-        for (int i = 0; i < _model.graph_inputs.Length; i++)
+        try
         {
-            _tensorShapes[_model.graph_inputs[i]] = (c: 8, h: Math.Max(1, simulation.height >> i), w: Math.Max(1, simulation.width >> i));
-        }
-
-        foreach (var op in _model.operations)
-        {
-            // This will throw if the graph is disconnected, which is the desired behavior for a malformed model.
-            var mainInputShape = _tensorShapes[op.inputs[0]];
-            (int c, int h, int w) outputShape = mainInputShape;
-
-            switch (op.type)
+            await ReleaseTensors();
+            
+            for (int i = 0; i < _model.graph_inputs.Length; i++)
             {
-                case "ResidualConv":
-                    var p = op.@params;
+                _tensorShapes[_model.graph_inputs[i]] = (c: 8, h: Math.Max(1, simulation.height >> i), w: Math.Max(1, simulation.width >> i));
+            }
 
-                    // The actual number of input channels for the convolution includes the concatenated tensor.
-                    int inputChannels = mainInputShape.c;
-                    if (p.concat != null)
-                    {
-                        // The concat tensor must have been produced by a previous op.
-                        if (!_tensorShapes.ContainsKey(p.concat))
+            foreach (var op in _model.operations)
+            {
+                if (!_tensorShapes.TryGetValue(op.inputs[0], out var mainInputShape))
+                {
+                    throw new KeyNotFoundException($"Shape for input tensor '{op.inputs[0]}' of operation '{op.name}' not found. Graph analysis failed.");
+                }
+                (int c, int h, int w) outputShape = mainInputShape;
+
+                switch (op.type)
+                {
+                    case "ResidualConv":
+                        var p = op.@params;
+
+                        // The actual number of input channels for the convolution includes the concatenated tensor.
+                        int inputChannels = mainInputShape.c;
+                        if (p.concat != null)
                         {
-                            throw new KeyNotFoundException($"Shape for concat tensor '{p.concat}' not found. Graph analysis failed.");
+                            // The concat tensor must have been produced by a previous op.
+                            if (!_tensorShapes.ContainsKey(p.concat))
+                            {
+                                throw new KeyNotFoundException($"Shape for concat tensor '{p.concat}' not found. Graph analysis failed.");
+                            }
+                            inputChannels += _tensorShapes[p.concat].c;
                         }
-                        inputChannels += _tensorShapes[p.concat].c;
-                    }
 
-                    // Sanity check: does the weight tensor match our calculated input channels?
-                    if (p.weights.shape[1] != inputChannels)
-                    {
-                        Debug.LogWarning($"Weight mismatch for op '{op.name}'. Expected {inputChannels} input channels, but weights have {p.weights.shape[1]}.");
-                    }
+                        // Sanity check: does the weight tensor match our calculated input channels?
+                        if (p.weights.shape[1] != inputChannels)
+                        {
+                            Debug.LogWarning($"Weight mismatch for op '{op.name}'. Expected {inputChannels} input channels, but weights have {p.weights.shape[1]}.");
+                        }
 
-                    // The number of output channels is defined by the weights shape.
-                    outputShape.c = p.weights.shape[0];
+                        // The number of output channels is defined by the weights shape.
+                        outputShape.c = p.weights.shape[0];
 
-                    if (p.pixelShuffle2x2)
-                    {
-                        outputShape.c /= 4; // Depth-to-space with 2x2 blocks reduces channels by 4
-                        outputShape.h *= 2;
-                        outputShape.w *= 2;
-                    }
-                    break;
+                        if (p.pixelShuffle2x2)
+                        {
+                            outputShape.c /= 4; // Depth-to-space with 2x2 blocks reduces channels by 4
+                            outputShape.h *= 2;
+                            outputShape.w *= 2;
+                        }
+                        break;
 
-                case "BasicMaxPool":
-                    outputShape.h /= 2;
-                    outputShape.w /= 2;
-                    break;
+                    case "BasicMaxPool":
+                        outputShape.h /= 2;
+                        outputShape.w /= 2;
+                        break;
+                }
+
+                foreach (var outputName in op.outputs)
+                {
+                    _tensorShapes[outputName] = outputShape;
+                }
             }
 
-            foreach (var outputName in op.outputs)
+            // The internal output from the compute shader is a Tex2DArray
+            DenoisedOutputArray = GetOrCreateTensor(_model.graph_outputs[0]);
+
+            // The public-facing output is a regular 2D RenderTexture for material binding
+            var shape = _tensorShapes[_model.graph_outputs[0]];
+
+            var desc = new RenderTextureDescriptor(shape.w, shape.h, RenderTextureFormat.ARGBFloat, 0)
             {
-                _tensorShapes[outputName] = outputShape;
-            }
+                enableRandomWrite = true,
+                autoGenerateMips = false
+            };
+            DenoisedOutput = new RenderTexture(desc);
+            DenoisedOutput.name = "DenoisedOutput_Final2D";
+            DenoisedOutput.Create();
         }
-
-        // The internal output from the compute shader is a Tex2DArray
-        DenoisedOutputArray = GetOrCreateTensor(_model.graph_outputs[0]);
-
-        // The public-facing output is a regular 2D RenderTexture for material binding
-        var shape = _tensorShapes[_model.graph_outputs[0]];
-
-        var desc = new RenderTextureDescriptor(shape.w, shape.h, RenderTextureFormat.ARGBFloat, 0)
+        catch (Exception ex)
         {
-            enableRandomWrite = true,
-            autoGenerateMips = false
-        };
-        DenoisedOutput = new RenderTexture(desc);
-        DenoisedOutput.name = "DenoisedOutput_Final2D";
-        DenoisedOutput.Create();
+            Debug.LogException(ex);
+            throw;
+        }
     }
 
     private RenderTexture GetOrCreateTensor(string name)
@@ -411,7 +431,7 @@ public class Denoiser : LitboxComponent
         {
             _currentWidth = simulation.width;
             _currentHeight = simulation.height;
-            AnalyzeGraph();
+            _ = AnalyzeGraph();
         }
 
         if (_stats != null)
@@ -458,6 +478,13 @@ public class Denoiser : LitboxComponent
                     denoiserShader.SetShaderFlag("USE_CLAMP_PAD", p.pad == "clamp");
                     denoiserShader.SetShaderFlag("USE_ADD", p.add != null);
                     denoiserShader.SetShaderFlag("USE_VIRTUAL_CONCAT", p.concat != null);
+                    
+                    bool hasDilation = p.dilations != null && p.dilations.Length >= 2 && (p.dilations[0] > 1 || p.dilations[1] > 1);
+                    denoiserShader.SetShaderFlag("USE_DILATION", hasDilation);
+                    if (hasDilation)
+                    {
+                        denoiserShader.SetInts("_Dilation", p.dilations);
+                    }
 
                     denoiserShader.SetTexture(_residualConvKernel, "_Input", input);
                     denoiserShader.SetTexture(_residualConvKernel, "_Output", output);

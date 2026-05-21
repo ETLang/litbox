@@ -60,7 +60,12 @@ def publish_onnx(onnx_path, weights_path, json_path, unconsolidated=False):
             if isinstance(mode, bytes):
                 mode = mode.decode('utf-8')
             
-            if mode == 'edge' and pads == [0, 0, 1, 1, 0, 0, 1, 1]:
+            is_spatial_pad = (len(pads) == 8 and 
+                              pads[0] == 0 and pads[1] == 0 and 
+                              pads[4] == 0 and pads[5] == 0 and 
+                              sum(pads) > 0)
+            
+            if mode == 'edge' and is_spatial_pad:
                 final_op_info['type'] = 'ClampPad'
                 if len(node.input) > 1 and node.input[1] in initializers:
                     final_op_info['inputs'].remove(node.input[1])
@@ -134,8 +139,8 @@ def publish_onnx(onnx_path, weights_path, json_path, unconsolidated=False):
                 pads = attrs.get('pads', [0] * 2 * kernel_dims)
                 strides = attrs.get('strides', [1] * kernel_dims)
 
-                # If pads are [1, 1, 1, 1], inject a ClampPad before this Conv
-                if pads == [1, 1, 1, 1]:
+                # If pads match dilations, inject a ClampPad before this Conv
+                if len(pads) == 2 * kernel_dims and pads == (dilations * 2):
                     clamp_pad_op = {
                         'type': 'ClampPad',
                         'name': node.name + '_pre_clamp_pad',
@@ -148,7 +153,7 @@ def publish_onnx(onnx_path, weights_path, json_path, unconsolidated=False):
                     # Update current Conv to use the output of the new ClampPad
                     final_op_info['inputs'][0] = clamp_pad_op['outputs'][0]
                     # Reset pads to zero as they are now handled by ClampPad
-                    pads = [0, 0, 0, 0]
+                    pads = [0] * 2 * kernel_dims
 
                 # --- Perform matching ---
                 if group == 1 and pads == [0, 0, 0, 0]:
@@ -234,7 +239,7 @@ def publish_onnx(onnx_path, weights_path, json_path, unconsolidated=False):
             if op['name'] in consumed_op_names:
                 continue
 
-            if op['type'] == 'BasicConv':
+            if op['type'] in ('BasicConv', 'ComplexConv'):
                 residual_conv = {
                     'type': 'ResidualConv',
                     'name': op['name'],

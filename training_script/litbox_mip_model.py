@@ -91,8 +91,7 @@ class LitboxMipDenoiserNet(nn.Module):
                 nn.Conv2d(pipeline_channels, unet_features * 4, kernel_size=3, padding=1),
                 nn.PixelShuffle(2)
             ))
-            skip_channels = micro_features if i == num_mips - 2 else unet_features + micro_features
-            self.unet_skipconns.append(ResidualBlock(unet_features + skip_channels, unet_features, padding_mode))
+            self.unet_skipconns.append(ResidualBlock(unet_features + unet_features, unet_features, padding_mode))
             pipeline_channels = unet_features
             
         self.conv_out = nn.Conv2d(pipeline_channels, num_mips, kernel_size=3, padding=1)
@@ -100,14 +99,14 @@ class LitboxMipDenoiserNet(nn.Module):
         
     def forward(self, *mip_inputs):
         micro_features = [self.micro_filter(mip) for mip in mip_inputs]
-        unet_skip_sources = [micro_features[0]]
+        unet_skip_sources = []
         pipeline_state = micro_features[0]
         
         for i in range(self.num_mips - 1):
             pipeline_state = self.unet_encoders[i](pipeline_state)
+            unet_skip_sources.append(pipeline_state)
             pipeline_state = self.unet_downsamplers[i](pipeline_state)
             pipeline_state = torch.cat([pipeline_state, micro_features[i + 1]], dim=1)
-            unet_skip_sources.append(pipeline_state)
             
         pipeline_state = self.bottleneck(pipeline_state)
         
@@ -117,7 +116,10 @@ class LitboxMipDenoiserNet(nn.Module):
             pipeline_state = torch.cat([pipeline_state, skip_feature], dim=1)
             pipeline_state = self.unet_skipconns[i](pipeline_state)
             
-        return self.softmax(self.conv_out(pipeline_state))
+        logits = self.conv_out(pipeline_state)
+        if torch.onnx.is_in_onnx_export():
+            return logits
+        return self.softmax(logits)
 
     def export_onnx(self, path, input_channels=8, resolution=256):
         self.eval()

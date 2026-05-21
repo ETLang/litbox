@@ -66,15 +66,22 @@ void AssembleOutput(uint3 id : SV_DispatchThreadID)
     uint limit = min(num_mips, 8u);
 
     float weights[8];
+    float weight_sum = 0.0;
+
     float4 w0 = tensor_output[uint3(id.xy, 0)];
-    weights[0] = w0.r; weights[1] = w0.g; weights[2] = w0.b; weights[3] = w0.a;
+    weights[0] = exp(w0.r); weights[1] = exp(w0.g); weights[2] = exp(w0.b); weights[3] = exp(w0.a);
     float4 w1 = elements > 1 ? tensor_output[uint3(id.xy, 1)] : float4(0, 0, 0, 0);
-    weights[4] = w1.r; weights[5] = w1.g; weights[6] = w1.b; weights[7] = w1.a;
+    weights[4] = exp(w1.r); weights[5] = exp(w1.g); weights[6] = exp(w1.b); weights[7] = exp(w1.a);
+
+    for (uint j = 0; j < limit; j++)
+    {
+        weight_sum += weights[j];
+    }
 
     for (uint i = 0; i < limit; i++)
     {
         float3 rad = radiance.SampleLevel(sampler_radiance, uv, i).rgb;
-        assembled += weights[i] * rad;
+        assembled += (weights[i] / weight_sum) * rad;
     }
 
     final_output[id.xy] = float4(assembled, 1.0);

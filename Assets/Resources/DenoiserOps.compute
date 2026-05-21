@@ -7,6 +7,7 @@
 #pragma multi_compile __ USE_CLAMP_PAD
 #pragma multi_compile __ USE_ADD
 #pragma multi_compile __ USE_VIRTUAL_CONCAT
+#pragma multi_compile __ USE_DILATION
 
 // --- UNIFORMS ---
 
@@ -28,6 +29,8 @@ int _WeightOffset;
 int _BiasOffset;
 
 int _InputSlices; // Number of slices for _Input, used for virtual concat logic
+
+int2 _Dilation;
 
 
 // --- HELPERS ---
@@ -130,7 +133,11 @@ void ResidualConv(uint3 id : SV_DispatchThreadID)
     {
         for (uint kx = 0; kx < kernel_w; ++kx)
         {
-            int2 sample_coord = src_coord_base + uint2(kx, ky) - kernel_half;
+            int2 offset = int2(kx, ky) - int2(kernel_half);
+        #if USE_DILATION
+            offset *= _Dilation.yx;
+        #endif
+            int2 sample_coord = int2(src_coord_base) + offset;
 
         #if USE_CLAMP_PAD
             uint in_w, in_h, in_slices;

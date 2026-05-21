@@ -1,37 +1,72 @@
 {
     "graph_inputs": [
-        "input"
+        "input_mip0",
+        "input_mip1",
+        "input_mip2",
+        "input_mip3",
+        "input_mip4"
     ],
     "graph_outputs": [
         "output"
     ],
     "operations": [
         {
-            "type": "ClampPad",
-            "name": "/conv_in/conv_in.0/Pad",
+            "type": "BasicConv",
+            "name": "/micro_filter/shortcut/Conv",
             "inputs": [
-                "input"
+                "input_mip0"
             ],
             "outputs": [
-                "/conv_in/conv_in.0/Pad_output_0"
+                "/micro_filter/shortcut/Conv_output_0"
+            ],
+            "params": {
+                "weights": {
+                    "offset": 0,
+                    "size": 512,
+                    "shape": [
+                        16,
+                        8,
+                        1,
+                        1
+                    ],
+                    "dtype": "float32"
+                },
+                "bias": {
+                    "offset": 512,
+                    "size": 64,
+                    "shape": [
+                        16
+                    ],
+                    "dtype": "float32"
+                }
+            }
+        },
+        {
+            "type": "ClampPad",
+            "name": "/micro_filter/conv1/Pad",
+            "inputs": [
+                "input_mip0"
+            ],
+            "outputs": [
+                "/micro_filter/conv1/Pad_output_0"
             ],
             "params": {}
         },
         {
             "type": "BasicConv",
-            "name": "/conv_in/conv_in.0/Conv",
+            "name": "/micro_filter/conv1/Conv",
             "inputs": [
-                "/conv_in/conv_in.0/Pad_output_0"
+                "/micro_filter/conv1/Pad_output_0"
             ],
             "outputs": [
-                "/conv_in/conv_in.0/Conv_output_0"
+                "/micro_filter/conv1/Conv_output_0"
             ],
             "params": {
                 "weights": {
-                    "offset": 0,
-                    "size": 9216,
+                    "offset": 576,
+                    "size": 4608,
                     "shape": [
-                        32,
+                        16,
                         8,
                         3,
                         3
@@ -39,10 +74,10 @@
                     "dtype": "float32"
                 },
                 "bias": {
-                    "offset": 9216,
-                    "size": 128,
+                    "offset": 5184,
+                    "size": 64,
                     "shape": [
-                        32
+                        16
                     ],
                     "dtype": "float32"
                 }
@@ -50,52 +85,60 @@
         },
         {
             "type": "Relu",
-            "name": "/conv_in/conv_in.1/Relu",
+            "name": "/micro_filter/relu1/Relu",
             "inputs": [
-                "/conv_in/conv_in.0/Conv_output_0"
+                "/micro_filter/conv1/Conv_output_0"
             ],
             "outputs": [
-                "/conv_in/conv_in.1/Relu_output_0"
+                "/micro_filter/relu1/Relu_output_0"
             ],
             "params": {}
         },
         {
             "type": "ClampPad",
-            "name": "/conv_in/conv_in.2/primary/primary.0/Pad",
+            "name": "/micro_filter/conv2/Pad",
             "inputs": [
-                "/conv_in/conv_in.1/Relu_output_0"
+                "/micro_filter/relu1/Relu_output_0"
             ],
             "outputs": [
-                "/conv_in/conv_in.2/primary/primary.0/Pad_output_0"
+                "/micro_filter/conv2/Pad_output_0"
             ],
             "params": {}
         },
         {
-            "type": "BasicConv",
-            "name": "/conv_in/conv_in.2/primary/primary.0/Conv",
+            "type": "ComplexConv",
+            "name": "/micro_filter/conv2/Conv",
             "inputs": [
-                "/conv_in/conv_in.2/primary/primary.0/Pad_output_0"
+                "/micro_filter/conv2/Pad_output_0"
             ],
             "outputs": [
-                "/conv_in/conv_in.2/primary/primary.0/Conv_output_0"
+                "/micro_filter/conv2/Conv_output_0"
             ],
             "params": {
+                "strides": [
+                    1,
+                    1
+                ],
+                "dilations": [
+                    2,
+                    2
+                ],
                 "weights": {
-                    "offset": 9344,
-                    "size": 36864,
+                    "offset": 5248,
+                    "size": 9216,
                     "shape": [
-                        32,
-                        32,
+                        16,
+                        16,
                         3,
                         3
                     ],
                     "dtype": "float32"
                 },
                 "bias": {
-                    "offset": 46208,
-                    "size": 128,
+                    "offset": 14464,
+                    "size": 64,
                     "shape": [
-                        32
+                        16
                     ],
                     "dtype": "float32"
                 }
@@ -103,52 +146,52 @@
         },
         {
             "type": "Relu",
-            "name": "/conv_in/conv_in.2/primary/primary.2/Relu",
+            "name": "/micro_filter/relu2/Relu",
             "inputs": [
-                "/conv_in/conv_in.2/primary/primary.0/Conv_output_0"
+                "/micro_filter/conv2/Conv_output_0"
             ],
             "outputs": [
-                "/conv_in/conv_in.2/primary/primary.2/Relu_output_0"
+                "/micro_filter/relu2/Relu_output_0"
             ],
             "params": {}
         },
         {
             "type": "ClampPad",
-            "name": "/conv_in/conv_in.2/primary/primary.3/Pad",
+            "name": "/micro_filter/conv3/Pad",
             "inputs": [
-                "/conv_in/conv_in.2/primary/primary.2/Relu_output_0"
+                "/micro_filter/relu2/Relu_output_0"
             ],
             "outputs": [
-                "/conv_in/conv_in.2/primary/primary.3/Pad_output_0"
+                "/micro_filter/conv3/Pad_output_0"
             ],
             "params": {}
         },
         {
             "type": "BasicConv",
-            "name": "/conv_in/conv_in.2/primary/primary.3/Conv",
+            "name": "/micro_filter/conv3/Conv",
             "inputs": [
-                "/conv_in/conv_in.2/primary/primary.3/Pad_output_0"
+                "/micro_filter/conv3/Pad_output_0"
             ],
             "outputs": [
-                "/conv_in/conv_in.2/primary/primary.3/Conv_output_0"
+                "/micro_filter/conv3/Conv_output_0"
             ],
             "params": {
                 "weights": {
-                    "offset": 46336,
-                    "size": 36864,
+                    "offset": 14528,
+                    "size": 9216,
                     "shape": [
-                        32,
-                        32,
+                        16,
+                        16,
                         3,
                         3
                     ],
                     "dtype": "float32"
                 },
                 "bias": {
-                    "offset": 83200,
-                    "size": 128,
+                    "offset": 23744,
+                    "size": 64,
                     "shape": [
-                        32
+                        16
                     ],
                     "dtype": "float32"
                 }
@@ -156,32 +199,903 @@
         },
         {
             "type": "Add",
-            "name": "/conv_in/conv_in.2/Add",
+            "name": "/micro_filter/Add",
             "inputs": [
-                "/conv_in/conv_in.2/primary/primary.3/Conv_output_0",
-                "/conv_in/conv_in.1/Relu_output_0"
+                "/micro_filter/conv3/Conv_output_0",
+                "/micro_filter/shortcut/Conv_output_0"
             ],
             "outputs": [
-                "/conv_in/conv_in.2/Add_output_0"
+                "/micro_filter/Add_output_0"
             ],
             "params": {}
         },
         {
             "type": "Relu",
-            "name": "/conv_in/conv_in.2/final/Relu",
+            "name": "/micro_filter/final_relu/Relu",
             "inputs": [
-                "/conv_in/conv_in.2/Add_output_0"
+                "/micro_filter/Add_output_0"
             ],
             "outputs": [
-                "/conv_in/conv_in.2/final/Relu_output_0"
+                "/micro_filter/final_relu/Relu_output_0"
+            ],
+            "params": {}
+        },
+        {
+            "type": "BasicConv",
+            "name": "/micro_filter/shortcut_1/Conv",
+            "inputs": [
+                "input_mip1"
+            ],
+            "outputs": [
+                "/micro_filter/shortcut_1/Conv_output_0"
+            ],
+            "params": {
+                "weights": {
+                    "offset": 23808,
+                    "size": 512,
+                    "shape": [
+                        16,
+                        8,
+                        1,
+                        1
+                    ],
+                    "dtype": "float32"
+                },
+                "bias": {
+                    "offset": 24320,
+                    "size": 64,
+                    "shape": [
+                        16
+                    ],
+                    "dtype": "float32"
+                }
+            }
+        },
+        {
+            "type": "ClampPad",
+            "name": "/micro_filter/conv1_1/Pad",
+            "inputs": [
+                "input_mip1"
+            ],
+            "outputs": [
+                "/micro_filter/conv1_1/Pad_output_0"
+            ],
+            "params": {}
+        },
+        {
+            "type": "BasicConv",
+            "name": "/micro_filter/conv1_1/Conv",
+            "inputs": [
+                "/micro_filter/conv1_1/Pad_output_0"
+            ],
+            "outputs": [
+                "/micro_filter/conv1_1/Conv_output_0"
+            ],
+            "params": {
+                "weights": {
+                    "offset": 24384,
+                    "size": 4608,
+                    "shape": [
+                        16,
+                        8,
+                        3,
+                        3
+                    ],
+                    "dtype": "float32"
+                },
+                "bias": {
+                    "offset": 28992,
+                    "size": 64,
+                    "shape": [
+                        16
+                    ],
+                    "dtype": "float32"
+                }
+            }
+        },
+        {
+            "type": "Relu",
+            "name": "/micro_filter/relu1_1/Relu",
+            "inputs": [
+                "/micro_filter/conv1_1/Conv_output_0"
+            ],
+            "outputs": [
+                "/micro_filter/relu1_1/Relu_output_0"
             ],
             "params": {}
         },
         {
             "type": "ClampPad",
+            "name": "/micro_filter/conv2_1/Pad",
+            "inputs": [
+                "/micro_filter/relu1_1/Relu_output_0"
+            ],
+            "outputs": [
+                "/micro_filter/conv2_1/Pad_output_0"
+            ],
+            "params": {}
+        },
+        {
+            "type": "ComplexConv",
+            "name": "/micro_filter/conv2_1/Conv",
+            "inputs": [
+                "/micro_filter/conv2_1/Pad_output_0"
+            ],
+            "outputs": [
+                "/micro_filter/conv2_1/Conv_output_0"
+            ],
+            "params": {
+                "strides": [
+                    1,
+                    1
+                ],
+                "dilations": [
+                    2,
+                    2
+                ],
+                "weights": {
+                    "offset": 29056,
+                    "size": 9216,
+                    "shape": [
+                        16,
+                        16,
+                        3,
+                        3
+                    ],
+                    "dtype": "float32"
+                },
+                "bias": {
+                    "offset": 38272,
+                    "size": 64,
+                    "shape": [
+                        16
+                    ],
+                    "dtype": "float32"
+                }
+            }
+        },
+        {
+            "type": "Relu",
+            "name": "/micro_filter/relu2_1/Relu",
+            "inputs": [
+                "/micro_filter/conv2_1/Conv_output_0"
+            ],
+            "outputs": [
+                "/micro_filter/relu2_1/Relu_output_0"
+            ],
+            "params": {}
+        },
+        {
+            "type": "ClampPad",
+            "name": "/micro_filter/conv3_1/Pad",
+            "inputs": [
+                "/micro_filter/relu2_1/Relu_output_0"
+            ],
+            "outputs": [
+                "/micro_filter/conv3_1/Pad_output_0"
+            ],
+            "params": {}
+        },
+        {
+            "type": "BasicConv",
+            "name": "/micro_filter/conv3_1/Conv",
+            "inputs": [
+                "/micro_filter/conv3_1/Pad_output_0"
+            ],
+            "outputs": [
+                "/micro_filter/conv3_1/Conv_output_0"
+            ],
+            "params": {
+                "weights": {
+                    "offset": 38336,
+                    "size": 9216,
+                    "shape": [
+                        16,
+                        16,
+                        3,
+                        3
+                    ],
+                    "dtype": "float32"
+                },
+                "bias": {
+                    "offset": 47552,
+                    "size": 64,
+                    "shape": [
+                        16
+                    ],
+                    "dtype": "float32"
+                }
+            }
+        },
+        {
+            "type": "Add",
+            "name": "/micro_filter_1/Add",
+            "inputs": [
+                "/micro_filter/conv3_1/Conv_output_0",
+                "/micro_filter/shortcut_1/Conv_output_0"
+            ],
+            "outputs": [
+                "/micro_filter_1/Add_output_0"
+            ],
+            "params": {}
+        },
+        {
+            "type": "Relu",
+            "name": "/micro_filter/final_relu_1/Relu",
+            "inputs": [
+                "/micro_filter_1/Add_output_0"
+            ],
+            "outputs": [
+                "/micro_filter/final_relu_1/Relu_output_0"
+            ],
+            "params": {}
+        },
+        {
+            "type": "BasicConv",
+            "name": "/micro_filter/shortcut_2/Conv",
+            "inputs": [
+                "input_mip2"
+            ],
+            "outputs": [
+                "/micro_filter/shortcut_2/Conv_output_0"
+            ],
+            "params": {
+                "weights": {
+                    "offset": 47616,
+                    "size": 512,
+                    "shape": [
+                        16,
+                        8,
+                        1,
+                        1
+                    ],
+                    "dtype": "float32"
+                },
+                "bias": {
+                    "offset": 48128,
+                    "size": 64,
+                    "shape": [
+                        16
+                    ],
+                    "dtype": "float32"
+                }
+            }
+        },
+        {
+            "type": "ClampPad",
+            "name": "/micro_filter/conv1_2/Pad",
+            "inputs": [
+                "input_mip2"
+            ],
+            "outputs": [
+                "/micro_filter/conv1_2/Pad_output_0"
+            ],
+            "params": {}
+        },
+        {
+            "type": "BasicConv",
+            "name": "/micro_filter/conv1_2/Conv",
+            "inputs": [
+                "/micro_filter/conv1_2/Pad_output_0"
+            ],
+            "outputs": [
+                "/micro_filter/conv1_2/Conv_output_0"
+            ],
+            "params": {
+                "weights": {
+                    "offset": 48192,
+                    "size": 4608,
+                    "shape": [
+                        16,
+                        8,
+                        3,
+                        3
+                    ],
+                    "dtype": "float32"
+                },
+                "bias": {
+                    "offset": 52800,
+                    "size": 64,
+                    "shape": [
+                        16
+                    ],
+                    "dtype": "float32"
+                }
+            }
+        },
+        {
+            "type": "Relu",
+            "name": "/micro_filter/relu1_2/Relu",
+            "inputs": [
+                "/micro_filter/conv1_2/Conv_output_0"
+            ],
+            "outputs": [
+                "/micro_filter/relu1_2/Relu_output_0"
+            ],
+            "params": {}
+        },
+        {
+            "type": "ClampPad",
+            "name": "/micro_filter/conv2_2/Pad",
+            "inputs": [
+                "/micro_filter/relu1_2/Relu_output_0"
+            ],
+            "outputs": [
+                "/micro_filter/conv2_2/Pad_output_0"
+            ],
+            "params": {}
+        },
+        {
+            "type": "ComplexConv",
+            "name": "/micro_filter/conv2_2/Conv",
+            "inputs": [
+                "/micro_filter/conv2_2/Pad_output_0"
+            ],
+            "outputs": [
+                "/micro_filter/conv2_2/Conv_output_0"
+            ],
+            "params": {
+                "strides": [
+                    1,
+                    1
+                ],
+                "dilations": [
+                    2,
+                    2
+                ],
+                "weights": {
+                    "offset": 52864,
+                    "size": 9216,
+                    "shape": [
+                        16,
+                        16,
+                        3,
+                        3
+                    ],
+                    "dtype": "float32"
+                },
+                "bias": {
+                    "offset": 62080,
+                    "size": 64,
+                    "shape": [
+                        16
+                    ],
+                    "dtype": "float32"
+                }
+            }
+        },
+        {
+            "type": "Relu",
+            "name": "/micro_filter/relu2_2/Relu",
+            "inputs": [
+                "/micro_filter/conv2_2/Conv_output_0"
+            ],
+            "outputs": [
+                "/micro_filter/relu2_2/Relu_output_0"
+            ],
+            "params": {}
+        },
+        {
+            "type": "ClampPad",
+            "name": "/micro_filter/conv3_2/Pad",
+            "inputs": [
+                "/micro_filter/relu2_2/Relu_output_0"
+            ],
+            "outputs": [
+                "/micro_filter/conv3_2/Pad_output_0"
+            ],
+            "params": {}
+        },
+        {
+            "type": "BasicConv",
+            "name": "/micro_filter/conv3_2/Conv",
+            "inputs": [
+                "/micro_filter/conv3_2/Pad_output_0"
+            ],
+            "outputs": [
+                "/micro_filter/conv3_2/Conv_output_0"
+            ],
+            "params": {
+                "weights": {
+                    "offset": 62144,
+                    "size": 9216,
+                    "shape": [
+                        16,
+                        16,
+                        3,
+                        3
+                    ],
+                    "dtype": "float32"
+                },
+                "bias": {
+                    "offset": 71360,
+                    "size": 64,
+                    "shape": [
+                        16
+                    ],
+                    "dtype": "float32"
+                }
+            }
+        },
+        {
+            "type": "Add",
+            "name": "/micro_filter_2/Add",
+            "inputs": [
+                "/micro_filter/conv3_2/Conv_output_0",
+                "/micro_filter/shortcut_2/Conv_output_0"
+            ],
+            "outputs": [
+                "/micro_filter_2/Add_output_0"
+            ],
+            "params": {}
+        },
+        {
+            "type": "Relu",
+            "name": "/micro_filter/final_relu_2/Relu",
+            "inputs": [
+                "/micro_filter_2/Add_output_0"
+            ],
+            "outputs": [
+                "/micro_filter/final_relu_2/Relu_output_0"
+            ],
+            "params": {}
+        },
+        {
+            "type": "BasicConv",
+            "name": "/micro_filter/shortcut_3/Conv",
+            "inputs": [
+                "input_mip3"
+            ],
+            "outputs": [
+                "/micro_filter/shortcut_3/Conv_output_0"
+            ],
+            "params": {
+                "weights": {
+                    "offset": 71424,
+                    "size": 512,
+                    "shape": [
+                        16,
+                        8,
+                        1,
+                        1
+                    ],
+                    "dtype": "float32"
+                },
+                "bias": {
+                    "offset": 71936,
+                    "size": 64,
+                    "shape": [
+                        16
+                    ],
+                    "dtype": "float32"
+                }
+            }
+        },
+        {
+            "type": "ClampPad",
+            "name": "/micro_filter/conv1_3/Pad",
+            "inputs": [
+                "input_mip3"
+            ],
+            "outputs": [
+                "/micro_filter/conv1_3/Pad_output_0"
+            ],
+            "params": {}
+        },
+        {
+            "type": "BasicConv",
+            "name": "/micro_filter/conv1_3/Conv",
+            "inputs": [
+                "/micro_filter/conv1_3/Pad_output_0"
+            ],
+            "outputs": [
+                "/micro_filter/conv1_3/Conv_output_0"
+            ],
+            "params": {
+                "weights": {
+                    "offset": 72000,
+                    "size": 4608,
+                    "shape": [
+                        16,
+                        8,
+                        3,
+                        3
+                    ],
+                    "dtype": "float32"
+                },
+                "bias": {
+                    "offset": 76608,
+                    "size": 64,
+                    "shape": [
+                        16
+                    ],
+                    "dtype": "float32"
+                }
+            }
+        },
+        {
+            "type": "Relu",
+            "name": "/micro_filter/relu1_3/Relu",
+            "inputs": [
+                "/micro_filter/conv1_3/Conv_output_0"
+            ],
+            "outputs": [
+                "/micro_filter/relu1_3/Relu_output_0"
+            ],
+            "params": {}
+        },
+        {
+            "type": "ClampPad",
+            "name": "/micro_filter/conv2_3/Pad",
+            "inputs": [
+                "/micro_filter/relu1_3/Relu_output_0"
+            ],
+            "outputs": [
+                "/micro_filter/conv2_3/Pad_output_0"
+            ],
+            "params": {}
+        },
+        {
+            "type": "ComplexConv",
+            "name": "/micro_filter/conv2_3/Conv",
+            "inputs": [
+                "/micro_filter/conv2_3/Pad_output_0"
+            ],
+            "outputs": [
+                "/micro_filter/conv2_3/Conv_output_0"
+            ],
+            "params": {
+                "strides": [
+                    1,
+                    1
+                ],
+                "dilations": [
+                    2,
+                    2
+                ],
+                "weights": {
+                    "offset": 76672,
+                    "size": 9216,
+                    "shape": [
+                        16,
+                        16,
+                        3,
+                        3
+                    ],
+                    "dtype": "float32"
+                },
+                "bias": {
+                    "offset": 85888,
+                    "size": 64,
+                    "shape": [
+                        16
+                    ],
+                    "dtype": "float32"
+                }
+            }
+        },
+        {
+            "type": "Relu",
+            "name": "/micro_filter/relu2_3/Relu",
+            "inputs": [
+                "/micro_filter/conv2_3/Conv_output_0"
+            ],
+            "outputs": [
+                "/micro_filter/relu2_3/Relu_output_0"
+            ],
+            "params": {}
+        },
+        {
+            "type": "ClampPad",
+            "name": "/micro_filter/conv3_3/Pad",
+            "inputs": [
+                "/micro_filter/relu2_3/Relu_output_0"
+            ],
+            "outputs": [
+                "/micro_filter/conv3_3/Pad_output_0"
+            ],
+            "params": {}
+        },
+        {
+            "type": "BasicConv",
+            "name": "/micro_filter/conv3_3/Conv",
+            "inputs": [
+                "/micro_filter/conv3_3/Pad_output_0"
+            ],
+            "outputs": [
+                "/micro_filter/conv3_3/Conv_output_0"
+            ],
+            "params": {
+                "weights": {
+                    "offset": 85952,
+                    "size": 9216,
+                    "shape": [
+                        16,
+                        16,
+                        3,
+                        3
+                    ],
+                    "dtype": "float32"
+                },
+                "bias": {
+                    "offset": 95168,
+                    "size": 64,
+                    "shape": [
+                        16
+                    ],
+                    "dtype": "float32"
+                }
+            }
+        },
+        {
+            "type": "Add",
+            "name": "/micro_filter_3/Add",
+            "inputs": [
+                "/micro_filter/conv3_3/Conv_output_0",
+                "/micro_filter/shortcut_3/Conv_output_0"
+            ],
+            "outputs": [
+                "/micro_filter_3/Add_output_0"
+            ],
+            "params": {}
+        },
+        {
+            "type": "Relu",
+            "name": "/micro_filter/final_relu_3/Relu",
+            "inputs": [
+                "/micro_filter_3/Add_output_0"
+            ],
+            "outputs": [
+                "/micro_filter/final_relu_3/Relu_output_0"
+            ],
+            "params": {}
+        },
+        {
+            "type": "BasicConv",
+            "name": "/micro_filter/shortcut_4/Conv",
+            "inputs": [
+                "input_mip4"
+            ],
+            "outputs": [
+                "/micro_filter/shortcut_4/Conv_output_0"
+            ],
+            "params": {
+                "weights": {
+                    "offset": 95232,
+                    "size": 512,
+                    "shape": [
+                        16,
+                        8,
+                        1,
+                        1
+                    ],
+                    "dtype": "float32"
+                },
+                "bias": {
+                    "offset": 95744,
+                    "size": 64,
+                    "shape": [
+                        16
+                    ],
+                    "dtype": "float32"
+                }
+            }
+        },
+        {
+            "type": "ClampPad",
+            "name": "/micro_filter/conv1_4/Pad",
+            "inputs": [
+                "input_mip4"
+            ],
+            "outputs": [
+                "/micro_filter/conv1_4/Pad_output_0"
+            ],
+            "params": {}
+        },
+        {
+            "type": "BasicConv",
+            "name": "/micro_filter/conv1_4/Conv",
+            "inputs": [
+                "/micro_filter/conv1_4/Pad_output_0"
+            ],
+            "outputs": [
+                "/micro_filter/conv1_4/Conv_output_0"
+            ],
+            "params": {
+                "weights": {
+                    "offset": 95808,
+                    "size": 4608,
+                    "shape": [
+                        16,
+                        8,
+                        3,
+                        3
+                    ],
+                    "dtype": "float32"
+                },
+                "bias": {
+                    "offset": 100416,
+                    "size": 64,
+                    "shape": [
+                        16
+                    ],
+                    "dtype": "float32"
+                }
+            }
+        },
+        {
+            "type": "Relu",
+            "name": "/micro_filter/relu1_4/Relu",
+            "inputs": [
+                "/micro_filter/conv1_4/Conv_output_0"
+            ],
+            "outputs": [
+                "/micro_filter/relu1_4/Relu_output_0"
+            ],
+            "params": {}
+        },
+        {
+            "type": "ClampPad",
+            "name": "/micro_filter/conv2_4/Pad",
+            "inputs": [
+                "/micro_filter/relu1_4/Relu_output_0"
+            ],
+            "outputs": [
+                "/micro_filter/conv2_4/Pad_output_0"
+            ],
+            "params": {}
+        },
+        {
+            "type": "ComplexConv",
+            "name": "/micro_filter/conv2_4/Conv",
+            "inputs": [
+                "/micro_filter/conv2_4/Pad_output_0"
+            ],
+            "outputs": [
+                "/micro_filter/conv2_4/Conv_output_0"
+            ],
+            "params": {
+                "strides": [
+                    1,
+                    1
+                ],
+                "dilations": [
+                    2,
+                    2
+                ],
+                "weights": {
+                    "offset": 100480,
+                    "size": 9216,
+                    "shape": [
+                        16,
+                        16,
+                        3,
+                        3
+                    ],
+                    "dtype": "float32"
+                },
+                "bias": {
+                    "offset": 109696,
+                    "size": 64,
+                    "shape": [
+                        16
+                    ],
+                    "dtype": "float32"
+                }
+            }
+        },
+        {
+            "type": "Relu",
+            "name": "/micro_filter/relu2_4/Relu",
+            "inputs": [
+                "/micro_filter/conv2_4/Conv_output_0"
+            ],
+            "outputs": [
+                "/micro_filter/relu2_4/Relu_output_0"
+            ],
+            "params": {}
+        },
+        {
+            "type": "ClampPad",
+            "name": "/micro_filter/conv3_4/Pad",
+            "inputs": [
+                "/micro_filter/relu2_4/Relu_output_0"
+            ],
+            "outputs": [
+                "/micro_filter/conv3_4/Pad_output_0"
+            ],
+            "params": {}
+        },
+        {
+            "type": "BasicConv",
+            "name": "/micro_filter/conv3_4/Conv",
+            "inputs": [
+                "/micro_filter/conv3_4/Pad_output_0"
+            ],
+            "outputs": [
+                "/micro_filter/conv3_4/Conv_output_0"
+            ],
+            "params": {
+                "weights": {
+                    "offset": 109760,
+                    "size": 9216,
+                    "shape": [
+                        16,
+                        16,
+                        3,
+                        3
+                    ],
+                    "dtype": "float32"
+                },
+                "bias": {
+                    "offset": 118976,
+                    "size": 64,
+                    "shape": [
+                        16
+                    ],
+                    "dtype": "float32"
+                }
+            }
+        },
+        {
+            "type": "Add",
+            "name": "/micro_filter_4/Add",
+            "inputs": [
+                "/micro_filter/conv3_4/Conv_output_0",
+                "/micro_filter/shortcut_4/Conv_output_0"
+            ],
+            "outputs": [
+                "/micro_filter_4/Add_output_0"
+            ],
+            "params": {}
+        },
+        {
+            "type": "Relu",
+            "name": "/micro_filter/final_relu_4/Relu",
+            "inputs": [
+                "/micro_filter_4/Add_output_0"
+            ],
+            "outputs": [
+                "/micro_filter/final_relu_4/Relu_output_0"
+            ],
+            "params": {}
+        },
+        {
+            "type": "BasicConv",
+            "name": "/unet_encoders.0/shortcut/Conv",
+            "inputs": [
+                "/micro_filter/final_relu/Relu_output_0"
+            ],
+            "outputs": [
+                "/unet_encoders.0/shortcut/Conv_output_0"
+            ],
+            "params": {
+                "weights": {
+                    "offset": 119040,
+                    "size": 2048,
+                    "shape": [
+                        32,
+                        16,
+                        1,
+                        1
+                    ],
+                    "dtype": "float32"
+                },
+                "bias": {
+                    "offset": 121088,
+                    "size": 128,
+                    "shape": [
+                        32
+                    ],
+                    "dtype": "float32"
+                }
+            }
+        },
+        {
+            "type": "ClampPad",
             "name": "/unet_encoders.0/primary/primary.0/Pad",
             "inputs": [
-                "/conv_in/conv_in.2/final/Relu_output_0"
+                "/micro_filter/final_relu/Relu_output_0"
             ],
             "outputs": [
                 "/unet_encoders.0/primary/primary.0/Pad_output_0"
@@ -199,18 +1113,18 @@
             ],
             "params": {
                 "weights": {
-                    "offset": 83328,
-                    "size": 36864,
+                    "offset": 121216,
+                    "size": 18432,
                     "shape": [
                         32,
-                        32,
+                        16,
                         3,
                         3
                     ],
                     "dtype": "float32"
                 },
                 "bias": {
-                    "offset": 120192,
+                    "offset": 139648,
                     "size": 128,
                     "shape": [
                         32
@@ -252,7 +1166,7 @@
             ],
             "params": {
                 "weights": {
-                    "offset": 120320,
+                    "offset": 139776,
                     "size": 36864,
                     "shape": [
                         32,
@@ -263,7 +1177,7 @@
                     "dtype": "float32"
                 },
                 "bias": {
-                    "offset": 157184,
+                    "offset": 176640,
                     "size": 128,
                     "shape": [
                         32
@@ -277,7 +1191,7 @@
             "name": "/unet_encoders.0/Add",
             "inputs": [
                 "/unet_encoders.0/primary/primary.3/Conv_output_0",
-                "/conv_in/conv_in.2/final/Relu_output_0"
+                "/unet_encoders.0/shortcut/Conv_output_0"
             ],
             "outputs": [
                 "/unet_encoders.0/Add_output_0"
@@ -307,10 +1221,53 @@
             "params": {}
         },
         {
+            "type": "ConcatChannels",
+            "name": "/Concat",
+            "inputs": [
+                "/unet_downsamplers.0/MaxPool_output_0",
+                "/micro_filter/final_relu_1/Relu_output_0"
+            ],
+            "outputs": [
+                "/Concat_output_0"
+            ],
+            "params": {}
+        },
+        {
+            "type": "BasicConv",
+            "name": "/unet_encoders.1/shortcut/Conv",
+            "inputs": [
+                "/Concat_output_0"
+            ],
+            "outputs": [
+                "/unet_encoders.1/shortcut/Conv_output_0"
+            ],
+            "params": {
+                "weights": {
+                    "offset": 176768,
+                    "size": 6144,
+                    "shape": [
+                        32,
+                        48,
+                        1,
+                        1
+                    ],
+                    "dtype": "float32"
+                },
+                "bias": {
+                    "offset": 182912,
+                    "size": 128,
+                    "shape": [
+                        32
+                    ],
+                    "dtype": "float32"
+                }
+            }
+        },
+        {
             "type": "ClampPad",
             "name": "/unet_encoders.1/primary/primary.0/Pad",
             "inputs": [
-                "/unet_downsamplers.0/MaxPool_output_0"
+                "/Concat_output_0"
             ],
             "outputs": [
                 "/unet_encoders.1/primary/primary.0/Pad_output_0"
@@ -328,18 +1285,18 @@
             ],
             "params": {
                 "weights": {
-                    "offset": 157312,
-                    "size": 36864,
+                    "offset": 183040,
+                    "size": 55296,
                     "shape": [
                         32,
-                        32,
+                        48,
                         3,
                         3
                     ],
                     "dtype": "float32"
                 },
                 "bias": {
-                    "offset": 194176,
+                    "offset": 238336,
                     "size": 128,
                     "shape": [
                         32
@@ -381,7 +1338,7 @@
             ],
             "params": {
                 "weights": {
-                    "offset": 194304,
+                    "offset": 238464,
                     "size": 36864,
                     "shape": [
                         32,
@@ -392,7 +1349,7 @@
                     "dtype": "float32"
                 },
                 "bias": {
-                    "offset": 231168,
+                    "offset": 275328,
                     "size": 128,
                     "shape": [
                         32
@@ -406,7 +1363,7 @@
             "name": "/unet_encoders.1/Add",
             "inputs": [
                 "/unet_encoders.1/primary/primary.3/Conv_output_0",
-                "/unet_downsamplers.0/MaxPool_output_0"
+                "/unet_encoders.1/shortcut/Conv_output_0"
             ],
             "outputs": [
                 "/unet_encoders.1/Add_output_0"
@@ -436,10 +1393,53 @@
             "params": {}
         },
         {
+            "type": "ConcatChannels",
+            "name": "/Concat_1",
+            "inputs": [
+                "/unet_downsamplers.1/MaxPool_output_0",
+                "/micro_filter/final_relu_2/Relu_output_0"
+            ],
+            "outputs": [
+                "/Concat_1_output_0"
+            ],
+            "params": {}
+        },
+        {
+            "type": "BasicConv",
+            "name": "/unet_encoders.2/shortcut/Conv",
+            "inputs": [
+                "/Concat_1_output_0"
+            ],
+            "outputs": [
+                "/unet_encoders.2/shortcut/Conv_output_0"
+            ],
+            "params": {
+                "weights": {
+                    "offset": 275456,
+                    "size": 6144,
+                    "shape": [
+                        32,
+                        48,
+                        1,
+                        1
+                    ],
+                    "dtype": "float32"
+                },
+                "bias": {
+                    "offset": 281600,
+                    "size": 128,
+                    "shape": [
+                        32
+                    ],
+                    "dtype": "float32"
+                }
+            }
+        },
+        {
             "type": "ClampPad",
             "name": "/unet_encoders.2/primary/primary.0/Pad",
             "inputs": [
-                "/unet_downsamplers.1/MaxPool_output_0"
+                "/Concat_1_output_0"
             ],
             "outputs": [
                 "/unet_encoders.2/primary/primary.0/Pad_output_0"
@@ -457,18 +1457,18 @@
             ],
             "params": {
                 "weights": {
-                    "offset": 231296,
-                    "size": 36864,
+                    "offset": 281728,
+                    "size": 55296,
                     "shape": [
                         32,
-                        32,
+                        48,
                         3,
                         3
                     ],
                     "dtype": "float32"
                 },
                 "bias": {
-                    "offset": 268160,
+                    "offset": 337024,
                     "size": 128,
                     "shape": [
                         32
@@ -510,7 +1510,7 @@
             ],
             "params": {
                 "weights": {
-                    "offset": 268288,
+                    "offset": 337152,
                     "size": 36864,
                     "shape": [
                         32,
@@ -521,7 +1521,7 @@
                     "dtype": "float32"
                 },
                 "bias": {
-                    "offset": 305152,
+                    "offset": 374016,
                     "size": 128,
                     "shape": [
                         32
@@ -535,7 +1535,7 @@
             "name": "/unet_encoders.2/Add",
             "inputs": [
                 "/unet_encoders.2/primary/primary.3/Conv_output_0",
-                "/unet_downsamplers.1/MaxPool_output_0"
+                "/unet_encoders.2/shortcut/Conv_output_0"
             ],
             "outputs": [
                 "/unet_encoders.2/Add_output_0"
@@ -565,10 +1565,53 @@
             "params": {}
         },
         {
+            "type": "ConcatChannels",
+            "name": "/Concat_2",
+            "inputs": [
+                "/unet_downsamplers.2/MaxPool_output_0",
+                "/micro_filter/final_relu_3/Relu_output_0"
+            ],
+            "outputs": [
+                "/Concat_2_output_0"
+            ],
+            "params": {}
+        },
+        {
+            "type": "BasicConv",
+            "name": "/unet_encoders.3/shortcut/Conv",
+            "inputs": [
+                "/Concat_2_output_0"
+            ],
+            "outputs": [
+                "/unet_encoders.3/shortcut/Conv_output_0"
+            ],
+            "params": {
+                "weights": {
+                    "offset": 374144,
+                    "size": 6144,
+                    "shape": [
+                        32,
+                        48,
+                        1,
+                        1
+                    ],
+                    "dtype": "float32"
+                },
+                "bias": {
+                    "offset": 380288,
+                    "size": 128,
+                    "shape": [
+                        32
+                    ],
+                    "dtype": "float32"
+                }
+            }
+        },
+        {
             "type": "ClampPad",
             "name": "/unet_encoders.3/primary/primary.0/Pad",
             "inputs": [
-                "/unet_downsamplers.2/MaxPool_output_0"
+                "/Concat_2_output_0"
             ],
             "outputs": [
                 "/unet_encoders.3/primary/primary.0/Pad_output_0"
@@ -586,18 +1629,18 @@
             ],
             "params": {
                 "weights": {
-                    "offset": 305280,
-                    "size": 36864,
+                    "offset": 380416,
+                    "size": 55296,
                     "shape": [
                         32,
-                        32,
+                        48,
                         3,
                         3
                     ],
                     "dtype": "float32"
                 },
                 "bias": {
-                    "offset": 342144,
+                    "offset": 435712,
                     "size": 128,
                     "shape": [
                         32
@@ -639,7 +1682,7 @@
             ],
             "params": {
                 "weights": {
-                    "offset": 342272,
+                    "offset": 435840,
                     "size": 36864,
                     "shape": [
                         32,
@@ -650,7 +1693,7 @@
                     "dtype": "float32"
                 },
                 "bias": {
-                    "offset": 379136,
+                    "offset": 472704,
                     "size": 128,
                     "shape": [
                         32
@@ -664,7 +1707,7 @@
             "name": "/unet_encoders.3/Add",
             "inputs": [
                 "/unet_encoders.3/primary/primary.3/Conv_output_0",
-                "/unet_downsamplers.2/MaxPool_output_0"
+                "/unet_encoders.3/shortcut/Conv_output_0"
             ],
             "outputs": [
                 "/unet_encoders.3/Add_output_0"
@@ -694,39 +1737,40 @@
             "params": {}
         },
         {
-            "type": "ClampPad",
-            "name": "/unet_encoders.4/primary/primary.0/Pad",
+            "type": "ConcatChannels",
+            "name": "/Concat_3",
             "inputs": [
-                "/unet_downsamplers.3/MaxPool_output_0"
+                "/unet_downsamplers.3/MaxPool_output_0",
+                "/micro_filter/final_relu_4/Relu_output_0"
             ],
             "outputs": [
-                "/unet_encoders.4/primary/primary.0/Pad_output_0"
+                "/Concat_3_output_0"
             ],
             "params": {}
         },
         {
             "type": "BasicConv",
-            "name": "/unet_encoders.4/primary/primary.0/Conv",
+            "name": "/bottleneck/shortcut/Conv",
             "inputs": [
-                "/unet_encoders.4/primary/primary.0/Pad_output_0"
+                "/Concat_3_output_0"
             ],
             "outputs": [
-                "/unet_encoders.4/primary/primary.0/Conv_output_0"
+                "/bottleneck/shortcut/Conv_output_0"
             ],
             "params": {
                 "weights": {
-                    "offset": 379264,
-                    "size": 36864,
+                    "offset": 472832,
+                    "size": 6144,
                     "shape": [
                         32,
-                        32,
-                        3,
-                        3
+                        48,
+                        1,
+                        1
                     ],
                     "dtype": "float32"
                 },
                 "bias": {
-                    "offset": 416128,
+                    "offset": 478976,
                     "size": 128,
                     "shape": [
                         32
@@ -734,99 +1778,12 @@
                     "dtype": "float32"
                 }
             }
-        },
-        {
-            "type": "Relu",
-            "name": "/unet_encoders.4/primary/primary.2/Relu",
-            "inputs": [
-                "/unet_encoders.4/primary/primary.0/Conv_output_0"
-            ],
-            "outputs": [
-                "/unet_encoders.4/primary/primary.2/Relu_output_0"
-            ],
-            "params": {}
-        },
-        {
-            "type": "ClampPad",
-            "name": "/unet_encoders.4/primary/primary.3/Pad",
-            "inputs": [
-                "/unet_encoders.4/primary/primary.2/Relu_output_0"
-            ],
-            "outputs": [
-                "/unet_encoders.4/primary/primary.3/Pad_output_0"
-            ],
-            "params": {}
-        },
-        {
-            "type": "BasicConv",
-            "name": "/unet_encoders.4/primary/primary.3/Conv",
-            "inputs": [
-                "/unet_encoders.4/primary/primary.3/Pad_output_0"
-            ],
-            "outputs": [
-                "/unet_encoders.4/primary/primary.3/Conv_output_0"
-            ],
-            "params": {
-                "weights": {
-                    "offset": 416256,
-                    "size": 36864,
-                    "shape": [
-                        32,
-                        32,
-                        3,
-                        3
-                    ],
-                    "dtype": "float32"
-                },
-                "bias": {
-                    "offset": 453120,
-                    "size": 128,
-                    "shape": [
-                        32
-                    ],
-                    "dtype": "float32"
-                }
-            }
-        },
-        {
-            "type": "Add",
-            "name": "/unet_encoders.4/Add",
-            "inputs": [
-                "/unet_encoders.4/primary/primary.3/Conv_output_0",
-                "/unet_downsamplers.3/MaxPool_output_0"
-            ],
-            "outputs": [
-                "/unet_encoders.4/Add_output_0"
-            ],
-            "params": {}
-        },
-        {
-            "type": "Relu",
-            "name": "/unet_encoders.4/final/Relu",
-            "inputs": [
-                "/unet_encoders.4/Add_output_0"
-            ],
-            "outputs": [
-                "/unet_encoders.4/final/Relu_output_0"
-            ],
-            "params": {}
-        },
-        {
-            "type": "BasicMaxPool",
-            "name": "/unet_downsamplers.4/MaxPool",
-            "inputs": [
-                "/unet_encoders.4/final/Relu_output_0"
-            ],
-            "outputs": [
-                "/unet_downsamplers.4/MaxPool_output_0"
-            ],
-            "params": {}
         },
         {
             "type": "ClampPad",
             "name": "/bottleneck/primary/primary.0/Pad",
             "inputs": [
-                "/unet_downsamplers.4/MaxPool_output_0"
+                "/Concat_3_output_0"
             ],
             "outputs": [
                 "/bottleneck/primary/primary.0/Pad_output_0"
@@ -844,18 +1801,18 @@
             ],
             "params": {
                 "weights": {
-                    "offset": 453248,
-                    "size": 36864,
+                    "offset": 479104,
+                    "size": 55296,
                     "shape": [
                         32,
-                        32,
+                        48,
                         3,
                         3
                     ],
                     "dtype": "float32"
                 },
                 "bias": {
-                    "offset": 490112,
+                    "offset": 534400,
                     "size": 128,
                     "shape": [
                         32
@@ -897,7 +1854,7 @@
             ],
             "params": {
                 "weights": {
-                    "offset": 490240,
+                    "offset": 534528,
                     "size": 36864,
                     "shape": [
                         32,
@@ -908,7 +1865,7 @@
                     "dtype": "float32"
                 },
                 "bias": {
-                    "offset": 527104,
+                    "offset": 571392,
                     "size": 128,
                     "shape": [
                         32
@@ -922,7 +1879,7 @@
             "name": "/bottleneck/Add",
             "inputs": [
                 "/bottleneck/primary/primary.3/Conv_output_0",
-                "/unet_downsamplers.4/MaxPool_output_0"
+                "/bottleneck/shortcut/Conv_output_0"
             ],
             "outputs": [
                 "/bottleneck/Add_output_0"
@@ -962,7 +1919,7 @@
             ],
             "params": {
                 "weights": {
-                    "offset": 527232,
+                    "offset": 571520,
                     "size": 147456,
                     "shape": [
                         128,
@@ -973,7 +1930,7 @@
                     "dtype": "float32"
                 },
                 "bias": {
-                    "offset": 674688,
+                    "offset": 718976,
                     "size": 512,
                     "shape": [
                         128
@@ -995,13 +1952,13 @@
         },
         {
             "type": "ConcatChannels",
-            "name": "/Concat",
+            "name": "/Concat_4",
             "inputs": [
                 "/unet_decoders.0/unet_decoders.0.1/DepthToSpace_output_0",
-                "/unet_encoders.4/final/Relu_output_0"
+                "/unet_encoders.3/final/Relu_output_0"
             ],
             "outputs": [
-                "/Concat_output_0"
+                "/Concat_4_output_0"
             ],
             "params": {}
         },
@@ -1009,14 +1966,14 @@
             "type": "BasicConv",
             "name": "/unet_skipconns.0/shortcut/Conv",
             "inputs": [
-                "/Concat_output_0"
+                "/Concat_4_output_0"
             ],
             "outputs": [
                 "/unet_skipconns.0/shortcut/Conv_output_0"
             ],
             "params": {
                 "weights": {
-                    "offset": 675200,
+                    "offset": 719488,
                     "size": 8192,
                     "shape": [
                         32,
@@ -1027,7 +1984,7 @@
                     "dtype": "float32"
                 },
                 "bias": {
-                    "offset": 683392,
+                    "offset": 727680,
                     "size": 128,
                     "shape": [
                         32
@@ -1040,7 +1997,7 @@
             "type": "ClampPad",
             "name": "/unet_skipconns.0/primary/primary.0/Pad",
             "inputs": [
-                "/Concat_output_0"
+                "/Concat_4_output_0"
             ],
             "outputs": [
                 "/unet_skipconns.0/primary/primary.0/Pad_output_0"
@@ -1058,7 +2015,7 @@
             ],
             "params": {
                 "weights": {
-                    "offset": 683520,
+                    "offset": 727808,
                     "size": 73728,
                     "shape": [
                         32,
@@ -1069,7 +2026,7 @@
                     "dtype": "float32"
                 },
                 "bias": {
-                    "offset": 757248,
+                    "offset": 801536,
                     "size": 128,
                     "shape": [
                         32
@@ -1111,7 +2068,7 @@
             ],
             "params": {
                 "weights": {
-                    "offset": 757376,
+                    "offset": 801664,
                     "size": 36864,
                     "shape": [
                         32,
@@ -1122,7 +2079,7 @@
                     "dtype": "float32"
                 },
                 "bias": {
-                    "offset": 794240,
+                    "offset": 838528,
                     "size": 128,
                     "shape": [
                         32
@@ -1176,7 +2133,7 @@
             ],
             "params": {
                 "weights": {
-                    "offset": 794368,
+                    "offset": 838656,
                     "size": 147456,
                     "shape": [
                         128,
@@ -1187,7 +2144,7 @@
                     "dtype": "float32"
                 },
                 "bias": {
-                    "offset": 941824,
+                    "offset": 986112,
                     "size": 512,
                     "shape": [
                         128
@@ -1209,13 +2166,13 @@
         },
         {
             "type": "ConcatChannels",
-            "name": "/Concat_1",
+            "name": "/Concat_5",
             "inputs": [
                 "/unet_decoders.1/unet_decoders.1.1/DepthToSpace_output_0",
-                "/unet_encoders.3/final/Relu_output_0"
+                "/unet_encoders.2/final/Relu_output_0"
             ],
             "outputs": [
-                "/Concat_1_output_0"
+                "/Concat_5_output_0"
             ],
             "params": {}
         },
@@ -1223,14 +2180,14 @@
             "type": "BasicConv",
             "name": "/unet_skipconns.1/shortcut/Conv",
             "inputs": [
-                "/Concat_1_output_0"
+                "/Concat_5_output_0"
             ],
             "outputs": [
                 "/unet_skipconns.1/shortcut/Conv_output_0"
             ],
             "params": {
                 "weights": {
-                    "offset": 942336,
+                    "offset": 986624,
                     "size": 8192,
                     "shape": [
                         32,
@@ -1241,7 +2198,7 @@
                     "dtype": "float32"
                 },
                 "bias": {
-                    "offset": 950528,
+                    "offset": 994816,
                     "size": 128,
                     "shape": [
                         32
@@ -1254,7 +2211,7 @@
             "type": "ClampPad",
             "name": "/unet_skipconns.1/primary/primary.0/Pad",
             "inputs": [
-                "/Concat_1_output_0"
+                "/Concat_5_output_0"
             ],
             "outputs": [
                 "/unet_skipconns.1/primary/primary.0/Pad_output_0"
@@ -1272,7 +2229,7 @@
             ],
             "params": {
                 "weights": {
-                    "offset": 950656,
+                    "offset": 994944,
                     "size": 73728,
                     "shape": [
                         32,
@@ -1283,7 +2240,7 @@
                     "dtype": "float32"
                 },
                 "bias": {
-                    "offset": 1024384,
+                    "offset": 1068672,
                     "size": 128,
                     "shape": [
                         32
@@ -1325,7 +2282,7 @@
             ],
             "params": {
                 "weights": {
-                    "offset": 1024512,
+                    "offset": 1068800,
                     "size": 36864,
                     "shape": [
                         32,
@@ -1336,7 +2293,7 @@
                     "dtype": "float32"
                 },
                 "bias": {
-                    "offset": 1061376,
+                    "offset": 1105664,
                     "size": 128,
                     "shape": [
                         32
@@ -1390,7 +2347,7 @@
             ],
             "params": {
                 "weights": {
-                    "offset": 1061504,
+                    "offset": 1105792,
                     "size": 147456,
                     "shape": [
                         128,
@@ -1401,7 +2358,7 @@
                     "dtype": "float32"
                 },
                 "bias": {
-                    "offset": 1208960,
+                    "offset": 1253248,
                     "size": 512,
                     "shape": [
                         128
@@ -1423,13 +2380,13 @@
         },
         {
             "type": "ConcatChannels",
-            "name": "/Concat_2",
+            "name": "/Concat_6",
             "inputs": [
                 "/unet_decoders.2/unet_decoders.2.1/DepthToSpace_output_0",
-                "/unet_encoders.2/final/Relu_output_0"
+                "/unet_encoders.1/final/Relu_output_0"
             ],
             "outputs": [
-                "/Concat_2_output_0"
+                "/Concat_6_output_0"
             ],
             "params": {}
         },
@@ -1437,14 +2394,14 @@
             "type": "BasicConv",
             "name": "/unet_skipconns.2/shortcut/Conv",
             "inputs": [
-                "/Concat_2_output_0"
+                "/Concat_6_output_0"
             ],
             "outputs": [
                 "/unet_skipconns.2/shortcut/Conv_output_0"
             ],
             "params": {
                 "weights": {
-                    "offset": 1209472,
+                    "offset": 1253760,
                     "size": 8192,
                     "shape": [
                         32,
@@ -1455,7 +2412,7 @@
                     "dtype": "float32"
                 },
                 "bias": {
-                    "offset": 1217664,
+                    "offset": 1261952,
                     "size": 128,
                     "shape": [
                         32
@@ -1468,7 +2425,7 @@
             "type": "ClampPad",
             "name": "/unet_skipconns.2/primary/primary.0/Pad",
             "inputs": [
-                "/Concat_2_output_0"
+                "/Concat_6_output_0"
             ],
             "outputs": [
                 "/unet_skipconns.2/primary/primary.0/Pad_output_0"
@@ -1486,7 +2443,7 @@
             ],
             "params": {
                 "weights": {
-                    "offset": 1217792,
+                    "offset": 1262080,
                     "size": 73728,
                     "shape": [
                         32,
@@ -1497,7 +2454,7 @@
                     "dtype": "float32"
                 },
                 "bias": {
-                    "offset": 1291520,
+                    "offset": 1335808,
                     "size": 128,
                     "shape": [
                         32
@@ -1539,7 +2496,7 @@
             ],
             "params": {
                 "weights": {
-                    "offset": 1291648,
+                    "offset": 1335936,
                     "size": 36864,
                     "shape": [
                         32,
@@ -1550,7 +2507,7 @@
                     "dtype": "float32"
                 },
                 "bias": {
-                    "offset": 1328512,
+                    "offset": 1372800,
                     "size": 128,
                     "shape": [
                         32
@@ -1604,7 +2561,7 @@
             ],
             "params": {
                 "weights": {
-                    "offset": 1328640,
+                    "offset": 1372928,
                     "size": 147456,
                     "shape": [
                         128,
@@ -1615,7 +2572,7 @@
                     "dtype": "float32"
                 },
                 "bias": {
-                    "offset": 1476096,
+                    "offset": 1520384,
                     "size": 512,
                     "shape": [
                         128
@@ -1637,13 +2594,13 @@
         },
         {
             "type": "ConcatChannels",
-            "name": "/Concat_3",
+            "name": "/Concat_7",
             "inputs": [
                 "/unet_decoders.3/unet_decoders.3.1/DepthToSpace_output_0",
-                "/unet_encoders.1/final/Relu_output_0"
+                "/unet_encoders.0/final/Relu_output_0"
             ],
             "outputs": [
-                "/Concat_3_output_0"
+                "/Concat_7_output_0"
             ],
             "params": {}
         },
@@ -1651,14 +2608,14 @@
             "type": "BasicConv",
             "name": "/unet_skipconns.3/shortcut/Conv",
             "inputs": [
-                "/Concat_3_output_0"
+                "/Concat_7_output_0"
             ],
             "outputs": [
                 "/unet_skipconns.3/shortcut/Conv_output_0"
             ],
             "params": {
                 "weights": {
-                    "offset": 1476608,
+                    "offset": 1520896,
                     "size": 8192,
                     "shape": [
                         32,
@@ -1669,7 +2626,7 @@
                     "dtype": "float32"
                 },
                 "bias": {
-                    "offset": 1484800,
+                    "offset": 1529088,
                     "size": 128,
                     "shape": [
                         32
@@ -1682,7 +2639,7 @@
             "type": "ClampPad",
             "name": "/unet_skipconns.3/primary/primary.0/Pad",
             "inputs": [
-                "/Concat_3_output_0"
+                "/Concat_7_output_0"
             ],
             "outputs": [
                 "/unet_skipconns.3/primary/primary.0/Pad_output_0"
@@ -1700,7 +2657,7 @@
             ],
             "params": {
                 "weights": {
-                    "offset": 1484928,
+                    "offset": 1529216,
                     "size": 73728,
                     "shape": [
                         32,
@@ -1711,7 +2668,7 @@
                     "dtype": "float32"
                 },
                 "bias": {
-                    "offset": 1558656,
+                    "offset": 1602944,
                     "size": 128,
                     "shape": [
                         32
@@ -1753,7 +2710,7 @@
             ],
             "params": {
                 "weights": {
-                    "offset": 1558784,
+                    "offset": 1603072,
                     "size": 36864,
                     "shape": [
                         32,
@@ -1764,7 +2721,7 @@
                     "dtype": "float32"
                 },
                 "bias": {
-                    "offset": 1595648,
+                    "offset": 1639936,
                     "size": 128,
                     "shape": [
                         32
@@ -1798,223 +2755,9 @@
         },
         {
             "type": "ClampPad",
-            "name": "/unet_decoders.4/unet_decoders.4.0/Conv_pre_clamp_pad",
-            "inputs": [
-                "/unet_skipconns.3/final/Relu_output_0"
-            ],
-            "outputs": [
-                "/unet_decoders.4/unet_decoders.4.0/Conv_clamped"
-            ],
-            "params": {}
-        },
-        {
-            "type": "BasicConv",
-            "name": "/unet_decoders.4/unet_decoders.4.0/Conv",
-            "inputs": [
-                "/unet_decoders.4/unet_decoders.4.0/Conv_clamped"
-            ],
-            "outputs": [
-                "/unet_decoders.4/unet_decoders.4.0/Conv_output_0"
-            ],
-            "params": {
-                "weights": {
-                    "offset": 1595776,
-                    "size": 147456,
-                    "shape": [
-                        128,
-                        32,
-                        3,
-                        3
-                    ],
-                    "dtype": "float32"
-                },
-                "bias": {
-                    "offset": 1743232,
-                    "size": 512,
-                    "shape": [
-                        128
-                    ],
-                    "dtype": "float32"
-                }
-            }
-        },
-        {
-            "type": "BasicPixelShuffle",
-            "name": "/unet_decoders.4/unet_decoders.4.1/DepthToSpace",
-            "inputs": [
-                "/unet_decoders.4/unet_decoders.4.0/Conv_output_0"
-            ],
-            "outputs": [
-                "/unet_decoders.4/unet_decoders.4.1/DepthToSpace_output_0"
-            ],
-            "params": {}
-        },
-        {
-            "type": "ConcatChannels",
-            "name": "/Concat_4",
-            "inputs": [
-                "/unet_decoders.4/unet_decoders.4.1/DepthToSpace_output_0",
-                "/unet_encoders.0/final/Relu_output_0"
-            ],
-            "outputs": [
-                "/Concat_4_output_0"
-            ],
-            "params": {}
-        },
-        {
-            "type": "BasicConv",
-            "name": "/unet_skipconns.4/shortcut/Conv",
-            "inputs": [
-                "/Concat_4_output_0"
-            ],
-            "outputs": [
-                "/unet_skipconns.4/shortcut/Conv_output_0"
-            ],
-            "params": {
-                "weights": {
-                    "offset": 1743744,
-                    "size": 8192,
-                    "shape": [
-                        32,
-                        64,
-                        1,
-                        1
-                    ],
-                    "dtype": "float32"
-                },
-                "bias": {
-                    "offset": 1751936,
-                    "size": 128,
-                    "shape": [
-                        32
-                    ],
-                    "dtype": "float32"
-                }
-            }
-        },
-        {
-            "type": "ClampPad",
-            "name": "/unet_skipconns.4/primary/primary.0/Pad",
-            "inputs": [
-                "/Concat_4_output_0"
-            ],
-            "outputs": [
-                "/unet_skipconns.4/primary/primary.0/Pad_output_0"
-            ],
-            "params": {}
-        },
-        {
-            "type": "BasicConv",
-            "name": "/unet_skipconns.4/primary/primary.0/Conv",
-            "inputs": [
-                "/unet_skipconns.4/primary/primary.0/Pad_output_0"
-            ],
-            "outputs": [
-                "/unet_skipconns.4/primary/primary.0/Conv_output_0"
-            ],
-            "params": {
-                "weights": {
-                    "offset": 1752064,
-                    "size": 73728,
-                    "shape": [
-                        32,
-                        64,
-                        3,
-                        3
-                    ],
-                    "dtype": "float32"
-                },
-                "bias": {
-                    "offset": 1825792,
-                    "size": 128,
-                    "shape": [
-                        32
-                    ],
-                    "dtype": "float32"
-                }
-            }
-        },
-        {
-            "type": "Relu",
-            "name": "/unet_skipconns.4/primary/primary.2/Relu",
-            "inputs": [
-                "/unet_skipconns.4/primary/primary.0/Conv_output_0"
-            ],
-            "outputs": [
-                "/unet_skipconns.4/primary/primary.2/Relu_output_0"
-            ],
-            "params": {}
-        },
-        {
-            "type": "ClampPad",
-            "name": "/unet_skipconns.4/primary/primary.3/Pad",
-            "inputs": [
-                "/unet_skipconns.4/primary/primary.2/Relu_output_0"
-            ],
-            "outputs": [
-                "/unet_skipconns.4/primary/primary.3/Pad_output_0"
-            ],
-            "params": {}
-        },
-        {
-            "type": "BasicConv",
-            "name": "/unet_skipconns.4/primary/primary.3/Conv",
-            "inputs": [
-                "/unet_skipconns.4/primary/primary.3/Pad_output_0"
-            ],
-            "outputs": [
-                "/unet_skipconns.4/primary/primary.3/Conv_output_0"
-            ],
-            "params": {
-                "weights": {
-                    "offset": 1825920,
-                    "size": 36864,
-                    "shape": [
-                        32,
-                        32,
-                        3,
-                        3
-                    ],
-                    "dtype": "float32"
-                },
-                "bias": {
-                    "offset": 1862784,
-                    "size": 128,
-                    "shape": [
-                        32
-                    ],
-                    "dtype": "float32"
-                }
-            }
-        },
-        {
-            "type": "Add",
-            "name": "/unet_skipconns.4/Add",
-            "inputs": [
-                "/unet_skipconns.4/primary/primary.3/Conv_output_0",
-                "/unet_skipconns.4/shortcut/Conv_output_0"
-            ],
-            "outputs": [
-                "/unet_skipconns.4/Add_output_0"
-            ],
-            "params": {}
-        },
-        {
-            "type": "Relu",
-            "name": "/unet_skipconns.4/final/Relu",
-            "inputs": [
-                "/unet_skipconns.4/Add_output_0"
-            ],
-            "outputs": [
-                "/unet_skipconns.4/final/Relu_output_0"
-            ],
-            "params": {}
-        },
-        {
-            "type": "ClampPad",
             "name": "/conv_out/Conv_pre_clamp_pad",
             "inputs": [
-                "/unet_skipconns.4/final/Relu_output_0"
+                "/unet_skipconns.3/final/Relu_output_0"
             ],
             "outputs": [
                 "/conv_out/Conv_clamped"
@@ -2032,10 +2775,10 @@
             ],
             "params": {
                 "weights": {
-                    "offset": 1862912,
-                    "size": 3456,
+                    "offset": 1640064,
+                    "size": 5760,
                     "shape": [
-                        3,
+                        5,
                         32,
                         3,
                         3
@@ -2043,10 +2786,10 @@
                     "dtype": "float32"
                 },
                 "bias": {
-                    "offset": 1866368,
-                    "size": 12,
+                    "offset": 1645824,
+                    "size": 20,
                     "shape": [
-                        3
+                        5
                     ],
                     "dtype": "float32"
                 }
