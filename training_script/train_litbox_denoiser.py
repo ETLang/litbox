@@ -20,7 +20,8 @@ import Imath
 from litbox_display import LitboxDenoiserDisplay
 from litbox_loss import RelativeCharbonnierLoss
 from litbox_dataset import LitboxDenoiserDataset
-from litbox_model import LitboxDenoiserNet
+from litbox_mip_model import LitboxMipDenoiserNet
+import torch.nn.functional as F
 import data_processing
 from preprocess_data import build_cache, load_cached_stats
 from preprocess_data import create_litbox_cached_datasets
@@ -224,22 +225,26 @@ def train(args, stats):
     curriculum_manager = CurriculumManager(patience=3, min_delta=0.01)
 
     # Initialize model
-    model = LitboxDenoiserNet(
-        upsample_factor=args.upsample, 
-        use_sigmoid=g_use_sigmoid, 
-        use_log_space=False, #train_dataset.exr_source and args.log_space,
-        normalize_input=g_normalize_input, 
-        initial_features=g_initial_features,
-        unet_size=g_unet_size,
-        epsilon=g_epsilon, 
+    model = LitboxMipDenoiserNet(
+        num_mips=g_unet_size,
+        input_channels=8,
+        unet_features=g_initial_features,
         padding_mode=g_padding_mode).to(device)
-
+    # model = LitboxDenoiserNet(
+    #     upsample_factor=args.upsample, 
+    #     use_sigmoid=g_use_sigmoid, 
+    #     use_log_space=False, #train_dataset.exr_source and args.log_space,
+    #     normalize_input=g_normalize_input, 
+    #     initial_features=g_initial_features,
+    #     unet_size=g_unet_size,
+    #     epsilon=g_epsilon, 
+    #     padding_mode=g_padding_mode).to(device)
     # Optimizer
     if g_use_adam_w:
         weight_decay = g_weight_decay
     else:
         weight_decay = 0
-    optimizer = optim.Adam(model.parameters(), lr=args.learn_rate_max, weight_decay=weight_decay)
+    optimizer = optim.AdamW(model.parameters(), lr=args.learn_rate_max, weight_decay=weight_decay)
 
     start_epoch = 0
     if getattr(args, 'resume', None):
@@ -318,7 +323,18 @@ def train(args, stats):
             if ~torch.isfinite(input_tensor).all():
                 print("oops input_tensor")
 
-            output = model(input_tensor)
+            mip_inputs = [input_tensor]
+            for i in range(1, model.num_mips):
+                mip_inputs.append(F.interpolate(input_tensor, scale_factor=1.0/(2**i), mode='bilinear', align_corners=False))
+
+            weights = model(*mip_inputs)
+
+            output = torch.zeros_like(radiance)
+            for i in range(model.num_mips):
+                mip_rad = mip_inputs[i][:, :3]
+                if i > 0:
+                    mip_rad = F.interpolate(mip_rad, size=(radiance.shape[2], radiance.shape[3]), mode='bilinear', align_corners=False)
+                output += weights[:, i:i+1] * mip_rad
 
             # Calculate losses 
             loss = loss_fn(output, reference)
@@ -384,7 +400,18 @@ def train(args, stats):
                     v_reference = val_features['reference']
                     
                     v_input = torch.cat([v_radiance, v_variance, v_albedo, v_density], dim=1)
-                    v_output = model(v_input)
+                    
+                    v_mip_inputs = [v_input]
+                    for i in range(1, model.num_mips):
+                        v_mip_inputs.append(F.interpolate(v_input, scale_factor=1.0/(2**i), mode='bilinear', align_corners=False))
+                    
+                    v_weights = model(*v_mip_inputs)
+                    v_output = torch.zeros_like(v_radiance)
+                    for i in range(model.num_mips):
+                        mip_rad = v_mip_inputs[i][:, :3]
+                        if i > 0:
+                            mip_rad = F.interpolate(mip_rad, size=(v_radiance.shape[2], v_radiance.shape[3]), mode='bilinear', align_corners=False)
+                        v_output += v_weights[:, i:i+1] * mip_rad
                     
                     v_loss = loss_fn(v_output, v_reference)
                     val_loss_total += v_loss.item()
@@ -413,11 +440,11 @@ def train(args, stats):
     # The model expects 8 input channels (radiance, variance, albedo, density)
     model.export_onnx(os.path.join(args.output_folder, "final.onnx"), input_channels=8, resolution=args.crop_size)
         
-def infer_large(model, img, tile=256, overlap=8):
-    _, C, H, W = img.shape
+def infer_large_mips(model, mip_inputs, tile=256, overlap=8):
+    _, C, H, W = mip_inputs[0].shape
     stride = tile - overlap
-    out = torch.zeros_like(img)
-    counts = torch.zeros_like(img)
+    out_weights = torch.zeros(1, model.num_mips, H, W, device=mip_inputs[0].device)
+    counts = torch.zeros(1, 1, H, W, device=mip_inputs[0].device)
 
     for y in range(0, H - overlap, stride):
         for x in range(0, W - overlap, stride):
@@ -425,27 +452,23 @@ def infer_large(model, img, tile=256, overlap=8):
             x1, x2 = x, x + tile
             if y2 > H or x2 > W:
                 continue
-            tile_in = img[:, :, y1:y2, x1:x2]
-
-            # Process each color channel independently
-            channels_out = []
-            for c in range(tile_in.shape[1]):
-                channel_in = tile_in[:, c:c+1]  # Select single channel
-                channel_in = model.pre_transform(channel_in)
-                channel_out = model.post_transform(model(channel_in))
-                channels_out.append(channel_out)
             
-            # Recombine channels
-            tile_out = torch.cat(channels_out, dim=1)
-            tile_out = transforms.Resize((tile,tile))(tile_out)
+            tile_mips = []
+            for i in range(model.num_mips):
+                scale = 1 << i
+                ty1, ty2 = y1 // scale, y2 // scale
+                tx1, tx2 = x1 // scale, x2 // scale
+                tile_mips.append(mip_inputs[i][:, :, ty1:ty2, tx1:tx2])
+
+            weights_tile = model(*tile_mips)
 
             # crop inner region to avoid boundary artefacts
             inner = overlap // 2
-            out[:, :, y1+inner:y2-inner, x1+inner:x2-inner] += \
-                tile_out[:, :, inner:-inner, inner:-inner]
+            out_weights[:, :, y1+inner:y2-inner, x1+inner:x2-inner] += \
+                weights_tile[:, :, inner:-inner, inner:-inner]
             counts[:, :, y1+inner:y2-inner, x1+inner:x2-inner] += 1
 
-    return out / counts.clamp(min=1)
+    return out_weights / counts.clamp(min=1)
 
 def evaluate(model, input_pattern, output_folder, args, stats):
     model.eval()
@@ -455,16 +478,26 @@ def evaluate(model, input_pattern, output_folder, args, stats):
         for input_path in input_files:
             dataset = LitboxDenoiserDataset([input_path], None, args.crop_size, 
                                     args.upsample)
-            input_img = dataset[0][0].unsqueeze(0).to(device)
             
-            # 
-            # Process each color channel
-            output_channels = []
-            for c in range(3):
-                output = infer_large(model, input_img[:, c:c+1], 256, 1 << g_unet_size)
-                output_channels.append(output)
+            features = dataset[0]
+            radiance = features['radiance'].unsqueeze(0).to(device)
+            variance = features['variance'].unsqueeze(0).to(device)
+            albedo = features['albedo'].unsqueeze(0).to(device)
+            density = features['density'].unsqueeze(0).to(device)
+            
+            input_tensor = torch.cat([radiance, variance, albedo, density], dim=1)
+            mip_inputs = [input_tensor]
+            for i in range(1, model.num_mips):
+                mip_inputs.append(F.interpolate(input_tensor, scale_factor=1.0/(2**i), mode='bilinear', align_corners=False))
+            
+            weights = infer_large_mips(model, mip_inputs, 256, 1 << g_unet_size)
                 
-            output_img = torch.cat(output_channels, dim=1)
+            output_img = torch.zeros_like(radiance)
+            for i in range(model.num_mips):
+                mip_rad = mip_inputs[i][:, :3]
+                if i > 0:
+                    mip_rad = F.interpolate(mip_rad, size=(radiance.shape[2], radiance.shape[3]), mode='bilinear', align_corners=False)
+                output_img += weights[:, i:i+1] * mip_rad
                 
             # Save output
             output_name = os.path.basename(input_path).rsplit('.', 1)[0] + '_eval.' + input_path.rsplit('.', 1)[1]
@@ -527,10 +560,10 @@ def main():
         model_state = checkpoint_data.get('model_state_dict', checkpoint_data)
         torch.save(checkpoint_data, final_pth)
 
-        model = LitboxDenoiserNet(
-            upsample_factor=args.upsample, use_sigmoid=g_use_sigmoid, use_log_space=False,
-            normalize_input=g_normalize_input, initial_features=g_initial_features,
-            unet_size=g_unet_size, epsilon=g_epsilon, padding_mode=g_padding_mode).to(device)
+        model = LitboxMipDenoiserNet(
+            num_mips=g_unet_size,
+            unet_features=g_initial_features,
+            padding_mode=g_padding_mode).to(device)
         model.load_state_dict(model_state)
         model.export_onnx(os.path.join(args.output_folder, "final.onnx"), input_channels=8, resolution=args.crop_size)
         return
@@ -541,16 +574,19 @@ def main():
 
     if args.eval:
         input_files = sorted(glob.glob(args.input_location))
-        use_sigmoid = g_use_sigmoid
-        model = LitboxDenoiserNet(
-            upsample_factor=args.upsample, 
-            use_sigmoid=use_sigmoid, 
-            use_log_space=args.log_space, 
-            normalize_input=g_normalize_input, 
-            initial_features=g_initial_features,
-            unet_size=g_unet_size, 
-            epsilon=g_epsilon, 
+        model = LitboxMipDenoiserNet(
+            num_mips=g_unet_size,
+            unet_features=g_initial_features,
             padding_mode=g_padding_mode).to(device)
+        # model = LitboxDenoiserNet(
+        #     upsample_factor=args.upsample, 
+        #     use_sigmoid=use_sigmoid, 
+        #     use_log_space=args.log_space, 
+        #     normalize_input=g_normalize_input, 
+        #     initial_features=g_initial_features,
+        #     unet_size=g_unet_size, 
+        #     epsilon=g_epsilon, 
+        #     padding_mode=g_padding_mode).to(device)
         checkpoint_data = torch.load(args.model_path, map_location=device)
         model_state = checkpoint_data.get('model_state_dict', checkpoint_data)
         model.load_state_dict(model_state)

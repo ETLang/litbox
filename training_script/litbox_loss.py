@@ -6,16 +6,24 @@ import torchvision.models as models
 from torchvision import transforms
 
 class RelativeCharbonnierLoss(nn.Module):
-    def __init__(self, mean=0.0, stddev=1.0, eps=1e-6, eta=1e-3):
+    def __init__(self, mean=0.0, stddev=1.0, eps=1e-6, eta=1e-3, dark_bias=1e-5):
         super(RelativeCharbonnierLoss, self).__init__()
         self.mean_view = mean.view(1,3,1,1)
         self.stddev_view = stddev.view(1,3,1,1)
         self.eps = eps   # Stability for the denominator
         self.eta = eta   # Smoothness constant for Charbonnier
+        self.dark_bias = dark_bias # Dark point where fine details cease mattering
 
     def forward(self, pred, target):
         pred = (pred * self.stddev_view) + self.mean_view
         target = (target * self.stddev_view) + self.mean_view
+
+        # Add a bias using logsumexp to avoid over-prioritizing extremely dark areas.
+        # logsumexp acts as a soft-maximum function, effectively bounding the values 
+        # to our eps bias without needing explicit base conversions.
+        # bias = torch.full_like(pred, math.log10(self.dark_bias))
+        # pred = torch.logsumexp(torch.stack([pred, bias]), dim=0)
+        # target = torch.logsumexp(torch.stack([target, bias]), dim=0)
 
         # Calculate the absolute difference
         diff = pred - target
@@ -26,7 +34,7 @@ class RelativeCharbonnierLoss(nn.Module):
         
         # Relative component: Normalize by the target magnitude
         # We add eps to avoid division by zero on black pixels
-        relative_loss = loss_val / torch.clamp(target, min=self.eps)
+        relative_loss = loss_val # / torch.clamp(target, min=self.eps)
         
         return torch.mean(relative_loss)
 

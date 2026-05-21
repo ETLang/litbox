@@ -78,7 +78,7 @@ public class Denoiser : LitboxComponent
     private ComputeShader _inputCompilerShader;
 
     private int _inputCompilerKernel;
-    private int _unnormalizeKernel = -1;
+    private int _assembleKernel = -1;
     private int _residualConvKernel;
     private int _maxPoolKernel;
 
@@ -275,9 +275,9 @@ public class Denoiser : LitboxComponent
     private void FindKernels()
     {
         _inputCompilerKernel = _inputCompilerShader.FindKernel("CSMain");
-        if (_inputCompilerShader.HasKernel("UnnormalizeOutput"))
+        if (_inputCompilerShader.HasKernel("AssembleOutput"))
         {
-            _unnormalizeKernel = _inputCompilerShader.FindKernel("UnnormalizeOutput");
+            _assembleKernel = _inputCompilerShader.FindKernel("AssembleOutput");
         }
         
         // These kernels need to be implemented in your denoiserShader
@@ -293,9 +293,10 @@ public class Denoiser : LitboxComponent
     {
         ReleaseTensors();
         
-        // The input tensor shape is known: 8 channels at simulation resolution.
-        var inputShape = (c: 8, h: simulation.height, w: simulation.width);
-        _tensorShapes[_model.graph_inputs[0]] = inputShape;
+        for (int i = 0; i < _model.graph_inputs.Length; i++)
+        {
+            _tensorShapes[_model.graph_inputs[i]] = (c: 8, h: Math.Max(1, simulation.height >> i), w: Math.Max(1, simulation.width >> i));
+        }
 
         foreach (var op in _model.operations)
         {
@@ -413,16 +414,6 @@ public class Denoiser : LitboxComponent
             AnalyzeGraph();
         }
 
-        // 1. Compile inputs into the first 8-channel tensor
-        var inputTensor = GetOrCreateTensor(_model.graph_inputs[0]);
-
-        // NOTE: This uses the "CompileInputTensor" shader from the older AIAccelerator.
-        // That shader was designed to write to a ComputeBuffer (Tensor<float>).
-        // This pipeline uses RenderTextures. This call assumes the shader has been adapted
-        // to write to a RWTexture2D<float4> named "output". If not, this will fail at runtime.
-        _inputCompilerShader.SetInts("size", new int[] { simulation.width, simulation.height });
-        _inputCompilerShader.SetInt("stride", simulation.width * simulation.height);
-
         if (_stats != null)
         {
             _inputCompilerShader.SetVector("final_mean", new Vector4(_stats.final_mean[0], _stats.final_mean[1], _stats.final_mean[2], 0));
@@ -435,9 +426,18 @@ public class Denoiser : LitboxComponent
         _inputCompilerShader.SetTexture(_inputCompilerKernel, "variance", simulation.VarianceMap);
         _inputCompilerShader.SetTexture(_inputCompilerKernel, "albedo", simulation.GBuffer.AlbedoAlpha);
         _inputCompilerShader.SetTexture(_inputCompilerKernel, "transmissibility", simulation.GBuffer.Transmissibility);
-        _inputCompilerShader.SetTexture(_inputCompilerKernel, "output", inputTensor);
-        // The input tensor has 8 channels, so it's a Texture2DArray with 2 slices.
-        _inputCompilerShader.Dispatch(_inputCompilerKernel, (simulation.width + 7) / 8, (simulation.height + 7) / 8, 2);
+
+        for (int i = 0; i < _model.graph_inputs.Length; i++)
+        {
+            var inputTensor = GetOrCreateTensor(_model.graph_inputs[i]);
+            int mipWidth = Math.Max(1, simulation.width >> i);
+            int mipHeight = Math.Max(1, simulation.height >> i);
+            
+            _inputCompilerShader.SetInts("size", new int[] { mipWidth, mipHeight });
+            _inputCompilerShader.SetInt("mip_level", i);
+            _inputCompilerShader.SetTexture(_inputCompilerKernel, "output", inputTensor);
+            _inputCompilerShader.Dispatch(_inputCompilerKernel, (mipWidth + 7) / 8, (mipHeight + 7) / 8, 2);
+        }
 
         // 2. Execute all operations in the graph
         foreach (var op in _model.operations)
@@ -495,11 +495,13 @@ public class Denoiser : LitboxComponent
         }
 
         // 3. Output and optionally un-normalize
-        if (_unnormalizeKernel != -1)
+        if (_assembleKernel != -1)
         {
-            _inputCompilerShader.SetTexture(_unnormalizeKernel, "tensor_output", DenoisedOutputArray);
-            _inputCompilerShader.SetTexture(_unnormalizeKernel, "final_output", DenoisedOutput);
-            _inputCompilerShader.Dispatch(_unnormalizeKernel, (DenoisedOutput.width + 7) / 8, (DenoisedOutput.height + 7) / 8, 1);
+            _inputCompilerShader.SetInt("num_mips", _model.graph_inputs.Length);
+            _inputCompilerShader.SetTexture(_assembleKernel, "tensor_output", DenoisedOutputArray);
+            _inputCompilerShader.SetTexture(_assembleKernel, "radiance", source);
+            _inputCompilerShader.SetTexture(_assembleKernel, "final_output", DenoisedOutput);
+            _inputCompilerShader.Dispatch(_assembleKernel, (DenoisedOutput.width + 7) / 8, (DenoisedOutput.height + 7) / 8, 1);
         }
         else
         {

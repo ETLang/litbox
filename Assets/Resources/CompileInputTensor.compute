@@ -2,17 +2,19 @@
 #include "../Shaders/LitboxCommon.cginc"
 
 #pragma kernel CSMain
-#pragma kernel UnnormalizeOutput
+#pragma kernel AssembleOutput
 
-Texture2D<float3> radiance;
+Texture2D<float4> radiance;
 Texture2D<float> variance;
-Texture2D<float3> albedo;
-Texture2D<float> transmissibility;
+Texture2D<float4> albedo;
+Texture2D<float4> transmissibility;
+SamplerState sampler_radiance;
 
 RWTexture2DArray<float4> output;
 
 uint2 size;
-uint stride;
+uint mip_level;
+uint num_mips;
 
 float4 final_mean;
 float4 final_stddev;
@@ -24,21 +26,23 @@ void CSMain(uint3 id : SV_DispatchThreadID)
 {
     if (any(id.xy >= size)) return;
 
+    float2 uv = (float2(id.xy) + 0.5) / float2(size);
+
     if (id.z == 0)
     {
-        float3 rad = log10(max(radiance[id.xy], 0.0) + 1e-6);
+        float3 rad = log10(max(radiance.SampleLevel(sampler_radiance, uv, mip_level).rgb, 0.0) + 1e-6);
         rad = (rad - final_mean.rgb) / (final_stddev.rgb + 1e-6);
 
-        float var = log10(max(variance[id.xy], 0.0) + 1e-6);
+        float var = log10(max(variance.SampleLevel(sampler_radiance, uv, 0).r, 0.0) + 1e-6);
         var = (var - final_mean.r) / (final_stddev.r + 1e-6);
 
         output[id] = float4(rad, var);
     }
     else if (id.z == 1)
     {
-        float3 alb = albedo[id.xy];
+        float3 alb = albedo.SampleLevel(sampler_radiance, uv, mip_level).rgb;
 
-        float trans = transmissibility[id.xy];
+        float trans = transmissibility.SampleLevel(sampler_radiance, uv, mip_level).r;
         float density = -log10(1.0 - clamp(trans, 0.0, 1.0 - 1e-6));
         density = (density - density_mean) / (density_stddev + 1e-6);
 
@@ -50,15 +54,28 @@ Texture2DArray<float4> tensor_output;
 RWTexture2D<float4> final_output;
 
 [numthreads(8, 8, 1)]
-void UnnormalizeOutput(uint3 id : SV_DispatchThreadID)
+void AssembleOutput(uint3 id : SV_DispatchThreadID)
 {
     uint w, h, elements;
     tensor_output.GetDimensions(w, h, elements);
     if (id.x >= w || id.y >= h) return;
 
-    float3 val = tensor_output[uint3(id.xy, 0)].rgb;
-    val = val * (final_stddev.rgb + 1e-6) + final_mean.rgb;
-    val = pow(10.0, val);
+    float2 uv = (float2(id.xy) + 0.5) / float2(w, h);
+    
+    float3 assembled = float3(0, 0, 0);
+    uint limit = min(num_mips, 8u);
 
-    final_output[id.xy] = float4(val, 1.0);
+    float weights[8];
+    float4 w0 = tensor_output[uint3(id.xy, 0)];
+    weights[0] = w0.r; weights[1] = w0.g; weights[2] = w0.b; weights[3] = w0.a;
+    float4 w1 = elements > 1 ? tensor_output[uint3(id.xy, 1)] : float4(0, 0, 0, 0);
+    weights[4] = w1.r; weights[5] = w1.g; weights[6] = w1.b; weights[7] = w1.a;
+
+    for (uint i = 0; i < limit; i++)
+    {
+        float3 rad = radiance.SampleLevel(sampler_radiance, uv, i).rgb;
+        assembled += weights[i] * rad;
+    }
+
+    final_output[id.xy] = float4(assembled, 1.0);
 }
