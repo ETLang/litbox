@@ -18,7 +18,6 @@ import matplotlib.pyplot as plt
 import OpenEXR
 import Imath
 from litbox_display import LitboxDenoiserDisplay
-from litbox_loss import HdrLoss
 from litbox_loss import RelativeCharbonnierLoss
 from litbox_dataset import LitboxDenoiserDataset
 from litbox_model import LitboxDenoiserNet
@@ -56,10 +55,6 @@ g_loss_l1_weight = 0.2
 
 # Cosine Annealing with Warmup settings
 g_warmup_epochs = 2
-
-# TODO
-g_gaussian_initialization = True
-
 
 # Check for CUDA availability
 device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
@@ -324,13 +319,6 @@ def train(args, stats):
                 print("oops input_tensor")
 
             output = model(input_tensor)
-            # output = model.post_transform(output)
-
-            if ~torch.isfinite(output).all():
-                print("oops output has bad numbers")
-
-            if ~torch.isfinite(reference).all():
-                print("oops reference has bad numbers")
 
             # Calculate losses 
             loss = loss_fn(output, reference)
@@ -349,7 +337,6 @@ def train(args, stats):
                 wandb.log({
                     "loss": loss.item(),
                     "lr": optimizer.param_groups[0]['lr'],
-                    "momentum": optimizer.param_groups[0]['betas'][0],
                     "epoch": epoch,
                     "curriculum": curriculum.name
                 })
@@ -474,7 +461,6 @@ def evaluate(model, input_pattern, output_folder, args, stats):
             # Process each color channel
             output_channels = []
             for c in range(3):
-                # output = model(input_img[:, c:c+1])
                 output = infer_large(model, input_img[:, c:c+1], 256, 1 << g_unet_size)
                 output_channels.append(output)
                 
@@ -502,7 +488,6 @@ def evaluate(model, input_pattern, output_folder, args, stats):
                 output_img = (output_img * 255).byte()
                 output_img = output_img.squeeze(0).cpu().numpy().transpose(1, 2, 0)
                 Image.fromarray(output_img).save(output_path)
-            # return # only process one for now
 
 def main():
     args = parse_args()

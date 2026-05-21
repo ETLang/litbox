@@ -90,23 +90,6 @@ class LitboxDenoiserNet(nn.Module):
             self.unet_skipconns.append(self.make_skip_connector(pipeline_channels))
 
         # Final Convolution
-        # Adjust final upsampling if factor is 4x and you only have 2x layers
-        # if upsample_factor == 4:
-        #     pipeline_channels_next = pipeline_channels / 2
-        #     self.final_upsample = nn.Sequential(
-        #         nn.Conv2d(pipeline_channels, pipeline_channels_next * (2**2), kernel_size=3, padding=1),
-        #         nn.PixelShuffle(2),
-        #         ResidualBlock(2 * pipeline_channels_next, pipeline_channels_next) # Concatenate with initial conv_in output (64 channels)
-        #     )
-        #     pipeline_channels = pipeline_channels_next
-            
-        #     self.dec3 = nn.Sequential(
-        #         ResidualBlock(64 + 64, 64),
-        #         # ResidualBlock(64, 64)
-        #     )        
-        #     self.conv_out = nn.Conv2d(64, 1, kernel_size=3, padding=1)
-        # else: # upsample_factor == 2
-        #     self.conv_out = nn.Conv2d(128, 1, kernel_size=3, padding=1) # No extra upsample needed if input 2x already
         self.conv_out = nn.Conv2d(pipeline_channels, 3, kernel_size=3, padding=1)
         
         if use_sigmoid:
@@ -162,107 +145,7 @@ class LitboxDenoiserNet(nn.Module):
             pipeline_state = torch.cat([pipeline_state, unet_skip_sources[self.unet_size - 1 - i]], dim=1)
             pipeline_state = self.unet_skipconns[i](pipeline_state)
 
-        # up1 = self.upsample1(f_bottle) # [B, 256, H/2, W/2] (output of pixelshuffle, before residual)
-        # # Skip connection: f_enc2 is [B, 256, H/2, W/2]
-        # up1 = torch.cat([up1, f_enc2], dim=1) # Concatenate features from encoder
-        # up1 = self.skipconn1(up1)
-
-        # # Upsample 2 (from H/2 to H)
-        # up2 = self.upsample2(up1) # [B, 128, H, W] (output of pixelshuffle, before residual)
-        # # Skip connection: f_enc1 is [B, 128, H, W]
-        # up2 = torch.cat([up2, f_enc1], dim=1) # Concatenate features from encoder
-        # up2 = self.skipconn2(up2)
-        
         output = self.conv_out(pipeline_state)
-        # output = self.short_circuit(short_circuit_output)
-
-        # Handle 4x upsampling
-        if self.upsample_factor == 4:
-            # The previous upsamples brought it from H/4 to H. Now need H to 4H.
-            # This logic needs adjustment. If upsample_factor=4, you'd need a direct 4x pixelshuffle or
-            # more cascading 2x upsamples. Let's simplify for a direct 4x upsample at the end
-            # or ensure the intermediate stages align correctly.
-
-            # More robust way for 4x:
-            # If input is HxW, first pixelshuffle takes it to 2Hx2W
-            # Second pixelshuffle takes it to 4Hx4W
-            # The current setup is for total 4x upsampling if input is H/4 x W/4 at bottleneck.
-            # If input to model is HR (no upsampling for gap-filling, then final upsample 1x)
-            # Or if input is LR for SR, then each stage upsamples.
-
-            # Let's adjust for a common SR pipeline:
-            # Input LR (H, W) -> Features -> Upsample H'xW' -> Output HR
-            
-            # For 2x or 4x upsampling, the input `x_lr` would be the *low-resolution* image.
-            # The architecture above currently aims to bring it back to the *original resolution* of f_in.
-            # We need to explicitly upsample for 2x or 4x.
-
-            # Re-thinking upsampling:
-            # If upsample_factor is 2x:
-            # x_lr (H, W) -> enc1 (H, W) -> pool1 (H/2, W/2) -> enc2 (H/2, W/2) -> pool2 (H/4, W/4)
-            # bottleneck (H/4, W/4)
-            # upsample1 (H/4 to H/2) -> upsample2 (H/2 to H)
-            # This structure means output is same resolution as input.
-            
-            # For upsampling:
-            # The pools should be removed or designed to produce output *at target HR*.
-            # For 2x or 4x, you don't typically downsample the input if it's already LR.
-            # Instead, the network extracts features at LR, then upsamples.
-            pass
-
-        if self.upsample_factor == 2:
-            # Assuming `x_lr` is the LR input, and we want 2x output.
-            # The current `upsample2` gives 1x original resolution.
-            # We need one more 2x upsample stage.
-            # Let's assume the previous `upsample2` brought features to the *target 2x resolution*.
-            # This requires careful channel adjustments.
-
-            # Simplified example for 2x/4x using one PixelShuffle at the end:
-            
-            # Input (LR): [B, 3, H, W]
-            # conv_in: [B, 64, H, W]
-            # encoder_stages: process at (H,W)
-            # Then, before final conv_out:
-            
-            # self.upconv = nn.Sequential(
-            #     nn.Conv2d(128, 3 * (upsample_factor**2), kernel_size=3, padding=1),
-            #     nn.PixelShuffle(upsample_factor)
-            # )
-            # output = self.upconv(last_feature_map)
-
-            # Let's correct the conceptual model for upsampling:
-            # It's better to build the network based on the desired output resolution.
-            # If `x_lr` is the input (say, original resolution for gap-filling, or LR for SR)
-            # And we want 2x/4x upsampled output.
-
-            pass # Placeholder for corrected logic
-
-        # Corrected structure for upsampling:
-        # Instead of MaxPool and then upsampling to original,
-        # often SR models have a feature extractor, then an upsampling module.
-        # For joint SR+Inpainting, the encoder handles both degradation features and context.
-
-        # Let's re-define the forward pass conceptually for a single pass:
-        # 1. Feature extraction at input resolution (with gaps).
-        # 2. Downsample (if needed) for context, process with residual blocks.
-        # 3. Upsample back to desired output resolution (2x/4x) using PixelShuffle.
-        # 4. Final reconstruction layer.
-
-        # Simplified LitboxDenoiserNet for 2x/4x SR and Inpainting:
-        # (This is a common pattern for fast SR models like FSRCNN or ESPCN-like)
-
-        # Remove explicit pooling in the encoder if we want direct upsampling from LR.
-        # Instead, use strides=1 in conv layers for feature extraction
-        # And then a dedicated upsampling block.
-
-        # If upsample_factor is 2 or 4, this means `x_lr` is the input.
-        # The goal is to output `x_hr` which is `x_lr` upsampled by `upsample_factor`.
-
-        # Redo the forward based on common SR architectures + inpainting aspects:
-        # 1. Feature extraction from LR input (with gaps)
-        # 2. Many residual blocks to learn mapping and fill in context
-        # 3. Upsampling layer (PixelShuffle)
-        # 4. Final convolution
 
         if self.use_sigmoid:
             return self.clamp_output(output) # Apply sigmoid to ensure [0,1] output if needed
