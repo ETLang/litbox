@@ -41,9 +41,10 @@ g_momentum_min = 0.85
 g_momentum_max = 0.95
 
 # Settings (internal)
-g_unet_size = 5
+g_unet_size = 6
 g_padding_mode = 'replicate'
-g_initial_features = 32
+g_micro_features = 8
+g_unet_features = 32
 g_normalize_input = False
 g_use_adam_w = True
 g_use_sigmoid = False
@@ -208,7 +209,8 @@ def train(args, stats):
     "momentum_min": args.momentum_min,
     "momentum_max": args.momentum_max,
     "unet_size": g_unet_size,
-    "initial_features": g_initial_features,
+    "unet_features": g_unet_features,
+    "micro_features": g_micro_features,
     "input_a_location": args.input_a_location,
     "input_b_location": args.input_b_location,
     "input_albedo_location": args.input_albedo_location,
@@ -228,14 +230,15 @@ def train(args, stats):
     model = LitboxMipDenoiserNet(
         num_mips=g_unet_size,
         input_channels=8,
-        unet_features=g_initial_features,
+        unet_features=g_unet_features,
+        micro_features=g_micro_features,
         padding_mode=g_padding_mode).to(device)
     # model = LitboxDenoiserNet(
     #     upsample_factor=args.upsample, 
     #     use_sigmoid=g_use_sigmoid, 
     #     use_log_space=False, #train_dataset.exr_source and args.log_space,
     #     normalize_input=g_normalize_input, 
-    #     initial_features=g_initial_features,
+    #     initial_features=g_unet_features,
     #     unet_size=g_unet_size,
     #     epsilon=g_epsilon, 
     #     padding_mode=g_padding_mode).to(device)
@@ -365,6 +368,9 @@ def train(args, stats):
                 last_print = current_time
 
                 display.show(radiance, output, reference)
+            else:
+                # Pump window events to maintain responsiveness between draws
+                display.fig.canvas.flush_events()
 
             if stop_training:
                 print("Stop key 'q' detected. Finishing training...")
@@ -545,9 +551,9 @@ def main():
             # Override relevant model architecture params from saved config
             args.upsample = saved_args.get('upsample', args.upsample)
             args.crop_size = saved_args.get('crop_size', args.crop_size)
-            global g_unet_size, g_initial_features
+            global g_unet_size, g_unet_features
             g_unet_size = saved_args.get('unet_size', g_unet_size)
-            g_initial_features = saved_args.get('initial_features', g_initial_features)
+            g_unet_features = saved_args.get('initial_features', g_unet_features)
 
         checkpoint_path = args.finalize_checkpoint
         if not os.path.exists(checkpoint_path):
@@ -562,7 +568,7 @@ def main():
 
         model = LitboxMipDenoiserNet(
             num_mips=g_unet_size,
-            unet_features=g_initial_features,
+            unet_features=g_unet_features,
             padding_mode=g_padding_mode).to(device)
         model.load_state_dict(model_state)
         model.export_onnx(os.path.join(args.output_folder, "final.onnx"), input_channels=8, resolution=args.crop_size)
@@ -576,14 +582,14 @@ def main():
         input_files = sorted(glob.glob(args.input_location))
         model = LitboxMipDenoiserNet(
             num_mips=g_unet_size,
-            unet_features=g_initial_features,
+            unet_features=g_unet_features,
             padding_mode=g_padding_mode).to(device)
         # model = LitboxDenoiserNet(
         #     upsample_factor=args.upsample, 
         #     use_sigmoid=use_sigmoid, 
         #     use_log_space=args.log_space, 
         #     normalize_input=g_normalize_input, 
-        #     initial_features=g_initial_features,
+        #     initial_features=g_unet_features,
         #     unet_size=g_unet_size, 
         #     epsilon=g_epsilon, 
         #     padding_mode=g_padding_mode).to(device)

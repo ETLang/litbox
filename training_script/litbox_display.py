@@ -1,4 +1,3 @@
-import time
 from matplotlib import pyplot as plt
 import numpy as np
 import torch
@@ -70,7 +69,7 @@ class LitboxDenoiserDisplay:
         # Re-draw the figure
         self.fig.canvas.draw()
         self.fig.canvas.flush_events()
-        time.sleep(0.1)  # Allow the plot to update
+        plt.pause(0.001)  # Allow the plot to update and be manipulated
 
     def shutdown(self):
         plt.ioff()

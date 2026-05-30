@@ -66,7 +66,7 @@ class ResidualBlock(nn.Module):
         return self.final(out)
 
 class LitboxMipDenoiserNet(nn.Module):
-    def __init__(self, num_mips=5, input_channels=8, micro_features=16, unet_features=32, padding_mode='reflect'):
+    def __init__(self, num_mips=5, input_channels=8, micro_features=16, unet_features=16, padding_mode='reflect'):
         super(LitboxMipDenoiserNet, self).__init__()
         self.num_mips = num_mips
         
