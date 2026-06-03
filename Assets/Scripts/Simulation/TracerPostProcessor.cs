@@ -14,7 +14,7 @@ public class TracerPostProcessor : Disposable
 
     private static int _SourceAId = Shader.PropertyToID("_sourceA");
     private static int _SourceBId = Shader.PropertyToID("_sourceB");
-    private static int _OutCVId = Shader.PropertyToID("_out_cv");
+    private static int _OutVarianceId = Shader.PropertyToID("_out_variance");
     private static int[] _OutMipId = new int[]
     {
         Shader.PropertyToID("_out_mip0"),
@@ -30,11 +30,11 @@ public class TracerPostProcessor : Disposable
 
         _computeCVAndMipsKernel = new int[]
         {
-            _postProcessingShader.FindKernel("ComputeCVAndOneMipFromSamplePair"),
-            _postProcessingShader.FindKernel("ComputeCVAndTwoMipsFromSamplePair"),
-            _postProcessingShader.FindKernel("ComputeCVAndThreeMipsFromSamplePair"),
-            _postProcessingShader.FindKernel("ComputeCVAndFourMipsFromSamplePair"),
-            _postProcessingShader.FindKernel("ComputeCVAndFiveMipsFromSamplePair"),
+            _postProcessingShader.FindKernel("ComputeVarianceAndOneMipFromSamplePair"),
+            _postProcessingShader.FindKernel("ComputeVarianceAndTwoMipsFromSamplePair"),
+            _postProcessingShader.FindKernel("ComputeVarianceAndThreeMipsFromSamplePair"),
+            _postProcessingShader.FindKernel("ComputeVarianceAndFourMipsFromSamplePair"),
+            _postProcessingShader.FindKernel("ComputeVarianceAndFiveMipsFromSamplePair"),
         };
 
         _generateMipsKernel = new int[]
@@ -52,7 +52,7 @@ public class TracerPostProcessor : Disposable
         base.OnDispose();
     }
 
-    public void ComputeCVAndMips(RenderTexture sourceA, RenderTexture sourceB, RenderTexture destMean, RenderTexture destCV)
+    public void ComputeVarianceAndMips(RenderTexture sourceA, RenderTexture sourceB, RenderTexture destMean, RenderTexture destVariance)
     {
         int totalMips = destMean.mipmapCount;
 
@@ -61,7 +61,7 @@ public class TracerPostProcessor : Disposable
         
         _postProcessingShader.SetTexture(firstDispatchKernel, _SourceAId, sourceA);
         _postProcessingShader.SetTexture(firstDispatchKernel, _SourceBId, sourceB);
-        _postProcessingShader.SetTexture(firstDispatchKernel, _OutCVId, destCV);
+        _postProcessingShader.SetTexture(firstDispatchKernel, _OutVarianceId, destVariance);
 
         for(int i = 0;i < firstDispatchMipCount;i++) {
             _postProcessingShader.SetTexture(firstDispatchKernel, _OutMipId[i], destMean, i);

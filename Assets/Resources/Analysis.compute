@@ -78,7 +78,7 @@ void AnalysisB(uint3 id : SV_DispatchThreadID) {
             float sample_weight = spatial_weight * albedo_weight * luminance_weight;
             
             total_weight += sample_weight;
-            output += _in_previous_analysis[neighbor_id] * sample_weight;
+            output += _in_variance[neighbor_id] * sample_weight;
         }
     }
 

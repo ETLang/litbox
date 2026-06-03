@@ -21,7 +21,6 @@ public class SimulationTexturePicker : LitboxComponent {
     }
 
     [SerializeField] public Simulation simulation;
-    //[SerializeField] private AIAccelerator aiAccelerator;
     [SerializeField] public TextureType type = TextureType.HDR;
 
     int _analysisAKernelId;
@@ -129,8 +128,8 @@ public class SimulationTexturePicker : LitboxComponent {
     void ConfigureAnalysisB()
     {
         if(_analysisTargetB != null) { return; }
-        _analysisTargetA = this.CreateRWTexture(simulation.width, simulation.height, RenderTextureFormat.RFloat);
-        _analysisTargetB = this.CreateRWTexture(simulation.width, simulation.height, RenderTextureFormat.RFloat);
+        _analysisTargetA = this.CreateRWTexture(simulation.VarianceMap.width, simulation.VarianceMap.height, RenderTextureFormat.RFloat);
+        _analysisTargetB = this.CreateRWTexture(simulation.VarianceMap.width, simulation.VarianceMap.height, RenderTextureFormat.RFloat);
     }
 
     void ConfigureAnalysisC()

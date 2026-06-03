@@ -1,18 +1,18 @@
 #include "../Shaders/LitboxCommon.cginc"
 
 //#pragma kernel GenerateOutputMips
-#pragma kernel ComputeCVAndOneMipFromSamplePair
-#pragma kernel ComputeCVAndTwoMipsFromSamplePair
-#pragma kernel ComputeCVAndThreeMipsFromSamplePair
-#pragma kernel ComputeCVAndFourMipsFromSamplePair
-#pragma kernel ComputeCVAndFiveMipsFromSamplePair
+#pragma kernel ComputeVarianceAndOneMipFromSamplePair
+#pragma kernel ComputeVarianceAndTwoMipsFromSamplePair
+#pragma kernel ComputeVarianceAndThreeMipsFromSamplePair
+#pragma kernel ComputeVarianceAndFourMipsFromSamplePair
+#pragma kernel ComputeVarianceAndFiveMipsFromSamplePair
 #pragma kernel GenerateOneMip
 #pragma kernel GenerateTwoMips
 #pragma kernel GenerateThreeMips
 #pragma kernel GenerateFourMips
 #line 14
 
-void ComputeCVAndNMipsFromSamplePair(uint3 id, uint2 localID, int mipCount);
+void ComputeVarianceAndNMipsFromSamplePair(uint3 id, uint2 localID, int mipCount);
 void GenerateNMips(uint3 id, uint2 localID, int mipCount);
 
 // RWTexture2D<float4> g_sourceMipLevelHDR;
@@ -22,7 +22,7 @@ RWTexture2D<float4> _sourceA;//      : register(t0);
 RWTexture2D<float4> _sourceB;//      : register(t1);
 
 // Coefficient of variance is 1/4 the resolution of the full image
-RWTexture2D<float>  _out_cv     : register(u0);
+RWTexture2D<float>  _out_variance     : register(u0);
 RWTexture2D<float4> _out_mip0   : register(u1);
 RWTexture2D<float4> _out_mip1   : register(u2);
 RWTexture2D<float4> _out_mip2   : register(u3);
@@ -33,28 +33,28 @@ groupshared float4 shared_source_mean[16][16];
 groupshared float shared_pixel_variance[16][16];
 
 [numthreads(16, 16, 1)]
-void ComputeCVAndOneMipFromSamplePair(uint3 id : SV_DispatchThreadID, uint2 localID : SV_GroupThreadID) {
-    ComputeCVAndNMipsFromSamplePair(id, localID, 1);
+void ComputeVarianceAndOneMipFromSamplePair(uint3 id : SV_DispatchThreadID, uint2 localID : SV_GroupThreadID) {
+    ComputeVarianceAndNMipsFromSamplePair(id, localID, 1);
 }
 
 [numthreads(16, 16, 1)]
-void ComputeCVAndTwoMipsFromSamplePair(uint3 id : SV_DispatchThreadID, uint2 localID : SV_GroupThreadID) {
-    ComputeCVAndNMipsFromSamplePair(id, localID, 2);
+void ComputeVarianceAndTwoMipsFromSamplePair(uint3 id : SV_DispatchThreadID, uint2 localID : SV_GroupThreadID) {
+    ComputeVarianceAndNMipsFromSamplePair(id, localID, 2);
 }
 
 [numthreads(16, 16, 1)]
-void ComputeCVAndThreeMipsFromSamplePair(uint3 id : SV_DispatchThreadID, uint2 localID : SV_GroupThreadID) {
-    ComputeCVAndNMipsFromSamplePair(id, localID, 3);
+void ComputeVarianceAndThreeMipsFromSamplePair(uint3 id : SV_DispatchThreadID, uint2 localID : SV_GroupThreadID) {
+    ComputeVarianceAndNMipsFromSamplePair(id, localID, 3);
 }
 
 [numthreads(16, 16, 1)]
-void ComputeCVAndFourMipsFromSamplePair(uint3 id : SV_DispatchThreadID, uint2 localID : SV_GroupThreadID) {
-    ComputeCVAndNMipsFromSamplePair(id, localID, 4);
+void ComputeVarianceAndFourMipsFromSamplePair(uint3 id : SV_DispatchThreadID, uint2 localID : SV_GroupThreadID) {
+    ComputeVarianceAndNMipsFromSamplePair(id, localID, 4);
 }
 
 [numthreads(16, 16, 1)]
-void ComputeCVAndFiveMipsFromSamplePair(uint3 id : SV_DispatchThreadID, uint2 localID : SV_GroupThreadID) {
-    ComputeCVAndNMipsFromSamplePair(id, localID, 5);
+void ComputeVarianceAndFiveMipsFromSamplePair(uint3 id : SV_DispatchThreadID, uint2 localID : SV_GroupThreadID) {
+    ComputeVarianceAndNMipsFromSamplePair(id, localID, 5);
 }
 
 [numthreads(16, 16, 1)]
@@ -77,7 +77,7 @@ void GenerateFourMips(uint3 id : SV_DispatchThreadID, uint2 localID : SV_GroupTh
     GenerateNMips(id, localID, 4);
 }
 
-void ComputeCVAndNMipsFromSamplePair(uint3 id, uint2 localID, int mipCount) {
+void ComputeVarianceAndNMipsFromSamplePair(uint3 id, uint2 localID, int mipCount) {
     float4 a = _sourceA[id.xy];
     float4 b = _sourceB[id.xy];
     float4 mean = (a + b) / 2;
@@ -119,7 +119,7 @@ void ComputeCVAndNMipsFromSamplePair(uint3 id, uint2 localID, int mipCount) {
         }
         float mean_variance = variance_accum / 16.0f;
         // float std_dev = sqrt(mean_variance);
-        _out_cv[id.xy / 4] = mean_variance;
+        _out_variance[id.xy / 4] = mean_variance;
         
         if(mipCount >= 3) {
             _out_mip2[id.xy / 4] = mean;

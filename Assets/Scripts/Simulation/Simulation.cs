@@ -424,7 +424,7 @@ public class Simulation : LitboxComponent
 
         TracerTask(t => t.EndTrace(_importanceMap.Map));
 
-        TracerPostProcessor.Instance.ComputeCVAndMips(_activeTracer[0].TracerOutput, _activeTracer[1].TracerOutput, SimulationOutputRaw, VarianceMap);
+        TracerPostProcessor.Instance.ComputeVarianceAndMips(_activeTracer[0].TracerOutput, _activeTracer[1].TracerOutput, SimulationOutputRaw, VarianceMap);
 
         var processed = SimulationOutputRaw;
         for(int i = 0;i < _postProcessors.Count;i++)
