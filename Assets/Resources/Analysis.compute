@@ -16,6 +16,7 @@ Texture2D<float4> _in_hdr_b;
 Texture2D<float4> _in_hdr_final;
 Texture2D<float4> _in_importance;
 Texture2D<float4> _in_variance;
+Texture2D<float4> _in_unfiltered_variance;
 Texture2D<float4> _in_previous_analysis;
 
 RWTexture2D<float4> _out_analysis;
@@ -63,7 +64,7 @@ void AnalysisB(uint3 id : SV_DispatchThreadID) {
     // 5x5 kernel
     // Weights: Spatial(σ=1.2), Albedo(σ=0.05), Normal (TBD), Adaptive Luminance (σ_tight=0.05, σ_loose=2.5, k=2) (high variance => high sigma, low variance => low sigma)
 
-    float sig_adaptive = lerp(0.05, 2.5, smoothstep(0, 1.0/_k_luminance, _in_variance[id.xy].r));
+    float sig_adaptive = lerp(0.05, 2.5, smoothstep(0, 1.0/_k_luminance, _in_unfiltered_variance[id.xy].r));
     float total_weight = 0; 
     float4 output = 0;
 
@@ -78,7 +79,7 @@ void AnalysisB(uint3 id : SV_DispatchThreadID) {
             float sample_weight = spatial_weight * albedo_weight * luminance_weight;
             
             total_weight += sample_weight;
-            output += _in_variance[neighbor_id] * sample_weight;
+            output += _in_unfiltered_variance[neighbor_id] * sample_weight;
         }
     }
 

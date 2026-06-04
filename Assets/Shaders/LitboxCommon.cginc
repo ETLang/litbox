@@ -139,5 +139,6 @@ float2 lut_slice_window_##name;
 
 SamplerState sampler_point_clamp;
 SamplerState sampler_linear_clamp;
+SamplerState sampler_trilinear_clamp;
 
 #endif // _LITBOX_COMMON_

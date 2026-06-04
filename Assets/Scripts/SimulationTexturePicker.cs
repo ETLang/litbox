@@ -7,6 +7,7 @@ public class SimulationTexturePicker : LitboxComponent {
     public enum TextureType {
         HDR,
         Variance,
+        UnfilteredVariance,
         Importance,
         ForwardAccumulation,
         AI_ToneMapped,
@@ -89,6 +90,9 @@ public class SimulationTexturePicker : LitboxComponent {
             break;
         case TextureType.Variance:
             value = simulation?.VarianceMap;
+            break;
+        case TextureType.UnfilteredVariance:
+            value = simulation?.UnfilteredVarianceMap;
             break;
         case TextureType.Importance:
             value = simulation?.ImportanceMap;
@@ -200,6 +204,7 @@ public class SimulationTexturePicker : LitboxComponent {
             ("_in_hdr_final", simulation.SimulationOutput),
             ("_in_importance", simulation.ImportanceMap),
             ("_in_variance", simulation.VarianceMap),
+            ("_in_unfiltered_variance", simulation.UnfilteredVarianceMap),
             ("_in_previous_analysis", previous)
         );
     }

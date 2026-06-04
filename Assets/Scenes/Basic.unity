@@ -1364,6 +1364,8 @@ GameObject:
   - component: {fileID: 2885319533301894557}
   - component: {fileID: 2408986526842077597}
   - component: {fileID: 6567741710732077500}
+  - component: {fileID: 6567741710732077501}
+  - component: {fileID: 6567741710732077502}
   m_Layer: 0
   m_Name: Simulation
   m_TagString: Untagged
@@ -1394,6 +1396,11 @@ MonoBehaviour:
   photonBounces: -1
   integrationInterval: 0.04
   transmissibilityVariationEpsilon: 0.001
+  SigmaSpatial: 5
+  SigmaAlbedo: 0.05
+  SigmaLuminanceTight: 0.05
+  SigmaLuminanceLoose: 2.5
+  KLuminance: 2
   _measurementInterval: 20
   frameLimit: -1
   _convergenceThreshold: 0.00001
@@ -1437,7 +1444,7 @@ MonoBehaviour:
   m_Name: 
   m_EditorClassIdentifier: 
   simulation: {fileID: 2408986526842077597}
-  type: 11
+  type: 2
 --- !u!4 &4185717351858822417
 Transform:
   m_ObjectHideFlags: 0
@@ -1775,6 +1782,41 @@ MonoBehaviour:
   modelJson: {fileID: 4900000, guid: 0933d973b49bd81439d34a1e04fa64b7, type: 3}
   modelWeights: {fileID: 4900000, guid: fe6b5867624df33449e44fe7233fe333, type: 3}
   statsJson: {fileID: 4900000, guid: 36ad922130cabdf4ea006bcded84f394, type: 3}
+--- !u!114 &6567741710732077501
+MonoBehaviour:
+  m_ObjectHideFlags: 0
+  m_CorrespondingSourceObject: {fileID: 0}
+  m_PrefabInstance: {fileID: 0}
+  m_PrefabAsset: {fileID: 0}
+  m_GameObject: {fileID: 2218171819048626328}
+  m_Enabled: 0
+  m_EditorHideFlags: 0
+  m_Script: {fileID: 11500000, guid: fa946bee7c00d574db8de396509d64fc, type: 3}
+  m_Name: 
+  m_EditorClassIdentifier: Assembly-CSharp::Denoiser2
+  varianceThresholdMin: 0.002
+  varianceThresholdMax: 0.5
+  luminanceThresholdMin: 0
+  luminanceThresholdMax: 0.0003
+  maxLOD: 4
+--- !u!114 &6567741710732077502
+MonoBehaviour:
+  m_ObjectHideFlags: 0
+  m_CorrespondingSourceObject: {fileID: 0}
+  m_PrefabInstance: {fileID: 0}
+  m_PrefabAsset: {fileID: 0}
+  m_GameObject: {fileID: 2218171819048626328}
+  m_Enabled: 1
+  m_EditorHideFlags: 0
+  m_Script: {fileID: 11500000, guid: bf9fd95a0736fd94e9e715e07d158acc, type: 3}
+  m_Name: 
+  m_EditorClassIdentifier: Assembly-CSharp::Denoiser3
+  normalSensitivity: 8
+  albedoSensitivity: 4
+  varianceScale: 4
+  darknessNoiseFloor: 0.002
+  splitThreshold: 0.3
+  maxLOD: 4
 --- !u!4 &7046779350545214439
 Transform:
   m_ObjectHideFlags: 0

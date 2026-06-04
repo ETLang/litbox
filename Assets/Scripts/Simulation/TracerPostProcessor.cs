@@ -7,6 +7,7 @@ public class TracerPostProcessor : Disposable
     private ComputeShader _postProcessingShader;
     private int[] _computeCVAndMipsKernel;
     private int[] _generateMipsKernel;
+    private int _filterVarianceKernel;
 
     private static TracerPostProcessor _Instance;
     public static TracerPostProcessor Instance =>
@@ -23,6 +24,23 @@ public class TracerPostProcessor : Disposable
         Shader.PropertyToID("_out_mip3"),
         Shader.PropertyToID("_out_mip4")
     };
+
+    private static int _UnfilteredVarianceId = Shader.PropertyToID("_in_unfiltered_variance");
+    private static int _AlbedoId = Shader.PropertyToID("_in_albedo");
+   // private static int _NormalRoughnessId = Shader.PropertyToID("_in_normal_roughness");
+    private static int _HdrFinalId = Shader.PropertyToID("_in_hdr_final");
+
+    private static int _SigmaSpatialId = Shader.PropertyToID("_sigma_spatial");
+    private static int _SigmaAlbedoId = Shader.PropertyToID("_sigma_albedo");
+    private static int _SigmaLuminanceTightId = Shader.PropertyToID("_sigma_luminance_tight");
+    private static int _SigmaLuminanceLooseId = Shader.PropertyToID("_sigma_luminance_loose");
+    private static int _KLuminanceId = Shader.PropertyToID("_k_luminance");
+
+    public float SigmaSpatial { get; set; } = 1.2f;
+    public float SigmaAlbedo { get; set; } = 0.05f;
+    public float SigmaLuminanceTight { get; set; } = 0.05f;
+    public float SigmaLuminanceLoose { get; set; } = 2.5f;
+    public float KLuminance { get; set; } = 2.0f;
 
     private TracerPostProcessor()
     {
@@ -44,6 +62,8 @@ public class TracerPostProcessor : Disposable
             _postProcessingShader.FindKernel("GenerateThreeMips"),
             _postProcessingShader.FindKernel("GenerateFourMips"),
         };
+
+        _filterVarianceKernel = _postProcessingShader.FindKernel("FilterVariance");
     }
 
     protected override void OnDispose()
@@ -93,5 +113,22 @@ public class TracerPostProcessor : Disposable
 
             detailLevel += nextDispatchMipCount;
         }
+    }
+
+    public void FilterVariance(RenderTexture source, RenderTexture dest, RenderTexture albedo, RenderTexture hdrFinal)
+    {
+        const int mipLevel = 2; // Variance is computed on 4x4 blocks
+
+        _postProcessingShader.SetTexture(_filterVarianceKernel, _UnfilteredVarianceId, source);
+        _postProcessingShader.SetTexture(_filterVarianceKernel, _AlbedoId, albedo, mipLevel);
+        _postProcessingShader.SetTexture(_filterVarianceKernel, _HdrFinalId, hdrFinal, mipLevel);
+        _postProcessingShader.SetTexture(_filterVarianceKernel, _OutVarianceId, dest);
+        _postProcessingShader.SetFloat(_SigmaSpatialId, SigmaSpatial);
+        _postProcessingShader.SetFloat(_SigmaAlbedoId, SigmaAlbedo);
+        _postProcessingShader.SetFloat(_SigmaLuminanceTightId, SigmaLuminanceTight);
+        _postProcessingShader.SetFloat(_SigmaLuminanceLooseId, SigmaLuminanceLoose);
+        _postProcessingShader.SetFloat(_KLuminanceId, KLuminance);
+
+        _postProcessingShader.Dispatch(_filterVarianceKernel, (source.width - 1) / 16 + 1, (source.height - 1) / 16 + 1, 1);
     }
 }

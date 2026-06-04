@@ -117,6 +117,7 @@ public static class BufferManager
             _textureLibrary.Add(key, list);
         }
         list.Add(tex);
+        tex.name = "BufferManager_Unused";
         tex = null;
     }
 

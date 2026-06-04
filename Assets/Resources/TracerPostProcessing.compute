@@ -10,7 +10,8 @@
 #pragma kernel GenerateTwoMips
 #pragma kernel GenerateThreeMips
 #pragma kernel GenerateFourMips
-#line 14
+#pragma kernel FilterVariance
+#line 15
 
 void ComputeVarianceAndNMipsFromSamplePair(uint3 id, uint2 localID, int mipCount);
 void GenerateNMips(uint3 id, uint2 localID, int mipCount);
@@ -18,8 +19,8 @@ void GenerateNMips(uint3 id, uint2 localID, int mipCount);
 // RWTexture2D<float4> g_sourceMipLevelHDR;
 // RWTexture2D<float4> g_destMipLevelHDR;
 
-RWTexture2D<float4> _sourceA;//      : register(t0);
-RWTexture2D<float4> _sourceB;//      : register(t1);
+Texture2D<float4> _sourceA;
+Texture2D<float4> _sourceB;
 
 // Coefficient of variance is 1/4 the resolution of the full image
 RWTexture2D<float>  _out_variance     : register(u0);
@@ -207,4 +208,43 @@ void GenerateNMips(uint3 id, uint2 localID, int mipCount) {
             shared_source_mean[localID.x][localID.y] = mean;
         }
     }
+}
+
+float _sigma_spatial = 1.2;
+float _sigma_albedo = 0.05;
+float _sigma_luminance_tight = 0.05;
+float _sigma_luminance_loose = 2.5;
+float _k_luminance = 2.0;
+
+float Gweight(float delta, float sigma) {
+    return exp(-0.5 * (delta * delta) / (sigma * sigma));
+}
+
+Texture2D<float> _in_unfiltered_variance;
+Texture2D<float4> _in_albedo;
+// Texture2D<float> _in_normal_roughness;
+Texture2D<float4> _in_hdr_final;
+
+[numthreads(16, 16, 1)]
+void FilterVariance(uint3 id : SV_DispatchThreadID) {
+    float sig_adaptive = lerp(0.05, 2.5, smoothstep(0, 1.0/_k_luminance, _in_unfiltered_variance[id.xy].r));
+    float total_weight = 0; 
+    float4 output = 0;
+
+    for(int j = -2; j <= 2; j++) {
+        for(int i = -2; i <= 2; i++) {
+            uint2 neighbor_id = id.xy + uint2(i, j);
+            float spatial_weight = Gweight(length(float2(i, j)), _sigma_spatial); // Cachable
+            float albedo_weight = Gweight(length(_in_albedo[neighbor_id].rgb - _in_albedo[id.xy].rgb), _sigma_albedo);
+            // float normal_weight = Gweight(length(_in_normal_roughness[neighbor_id].rgb - _in_normal_roughness[id.xy].rgb), _sigma_normal);
+            float luminance_weight = Gweight(abs(Luminance(_in_hdr_final[neighbor_id].rgb) - Luminance(_in_hdr_final[id.xy].rgb)), sig_adaptive);
+
+            float sample_weight = spatial_weight * albedo_weight * luminance_weight;
+            
+            total_weight += sample_weight;
+            output += _in_unfiltered_variance[neighbor_id] * sample_weight;
+        }
+    }
+
+    _out_variance[id.xy] = output / total_weight;
 }

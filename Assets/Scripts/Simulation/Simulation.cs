@@ -46,6 +46,13 @@ public class Simulation : LitboxComponent
     [SerializeField, Min(0.01f)] private float integrationInterval = 0.1f;
     [SerializeField] private float transmissibilityVariationEpsilon = 1e-3f;
 
+    [Header("Variance Weights")]
+    [SerializeField, Range(0.01f, 5f)] public float SigmaSpatial = 1.2f;
+    [SerializeField, Range(0.01f, 0.2f)] public float SigmaAlbedo = 0.05f;
+    [SerializeField, Range(0.01f, 1f)] public float SigmaLuminanceTight = 0.05f;
+    [SerializeField, Range(1f, 5f)] public float SigmaLuminanceLoose = 2.5f;
+    [SerializeField, Range(0.1f, 10f)] public float KLuminance = 2.0f;
+
     [Header("Convergence Info")]
     [SerializeField, Min(1)] int _measurementInterval = 100;
     [SerializeField] private int frameLimit = -1;
@@ -84,6 +91,7 @@ public class Simulation : LitboxComponent
     public LitboxGBuffer GBuffer { get; private set; }
     public RenderTexture SimulationOutputRaw { get; private set; }
     public RenderTexture SimulationOutput { get; private set; }
+    public RenderTexture UnfilteredVarianceMap { get; private set; }
     public RenderTexture VarianceMap { get; private set; }
     public RenderTexture ImportanceMap => _importanceMap?.Map;
 
@@ -306,6 +314,7 @@ public class Simulation : LitboxComponent
 
         SimulationOutputRaw = this.CreateRWTextureWithMips(GBuffer.AlbedoAlpha.width, GBuffer.AlbedoAlpha.height, RenderTextureFormat.ARGBFloat);
         SimulationOutput = SimulationOutputRaw;
+        UnfilteredVarianceMap = this.CreateRWTexture(GBuffer.AlbedoAlpha.width / 4, GBuffer.AlbedoAlpha.height / 4, RenderTextureFormat.RFloat);
         VarianceMap = this.CreateRWTexture(GBuffer.AlbedoAlpha.width / 4, GBuffer.AlbedoAlpha.height / 4, RenderTextureFormat.RFloat);
 
         _presentationToTargetSpace = Matrix4x4.Scale(new Vector3(width, height, 1)) * Matrix4x4.Translate(new Vector3(0.5f, 0.5f, 0));
@@ -424,7 +433,16 @@ public class Simulation : LitboxComponent
 
         TracerTask(t => t.EndTrace(_importanceMap.Map));
 
-        TracerPostProcessor.Instance.ComputeVarianceAndMips(_activeTracer[0].TracerOutput, _activeTracer[1].TracerOutput, SimulationOutputRaw, VarianceMap);
+        //TracerPostProcessor.Instance.ComputeVarianceAndMips(_activeTracer[0].TracerOutput, _activeTracer[1].TracerOutput, SimulationOutputRaw, VarianceMap);\
+
+        TracerPostProcessor.Instance.SigmaAlbedo = SigmaAlbedo;
+        TracerPostProcessor.Instance.SigmaLuminanceTight = SigmaLuminanceTight;
+        TracerPostProcessor.Instance.SigmaLuminanceLoose = SigmaLuminanceLoose;
+        TracerPostProcessor.Instance.SigmaSpatial = SigmaSpatial;
+        TracerPostProcessor.Instance.KLuminance = KLuminance;
+
+        TracerPostProcessor.Instance.ComputeVarianceAndMips(_activeTracer[0].TracerOutput, _activeTracer[1].TracerOutput, SimulationOutputRaw, UnfilteredVarianceMap);
+        TracerPostProcessor.Instance.FilterVariance(UnfilteredVarianceMap, VarianceMap, GBuffer.AlbedoAlpha, SimulationOutputRaw);
 
         var processed = SimulationOutputRaw;
         for(int i = 0;i < _postProcessors.Count;i++)
@@ -493,7 +511,7 @@ public class Simulation : LitboxComponent
         if (hasConverged) return;
 
         int recentSceneId = _sceneId;
-        var variance = await _convergenceMeasurement.GetVarianceAsync(VarianceMap);
+        var variance = await _convergenceMeasurement.GetVarianceAsync(UnfilteredVarianceMap);
 
         if (recentSceneId != _sceneId) return;
 

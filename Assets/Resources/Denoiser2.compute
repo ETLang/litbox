@@ -1,0 +1,56 @@
+#include "../Shaders/LitboxCommon.cginc"
+
+#pragma kernel ProceduralDenoise
+
+// Read-only inputs
+Texture2D<float4> _Input;
+Texture2D<float>  _Variance; // Note: VarianceMap is currently 1/4 the resolution of the main input
+Texture2D<float4> _Albedo;
+Texture2D<float4> _NormalRoughness;
+Texture2D<float4> _Transmissibility;
+
+// Read-write output
+RWTexture2D<float4> _Output;
+
+float _VarianceThresholdMin;
+float _VarianceThresholdMax;
+float _LuminanceThresholdMin;
+float _LuminanceThresholdMax;
+float _MaxLOD;
+
+[numthreads(8, 8, 1)]
+void ProceduralDenoise(uint3 id : SV_DispatchThreadID)
+{
+    float2 size = TextureSize(_Output);
+    if (any(id.xy >= size)) return;
+
+    float2 uv = (float2(id.x, id.y) + 0.5) / size;
+
+    float variance = _Variance.SampleLevel(sampler_linear_clamp, uv, 0).r;
+
+    // Remap variance to LOD, clamped smoothly between 0 and MaxLOD
+    float lod_from_variance = smoothstep(_VarianceThresholdMin, _VarianceThresholdMax, variance);
+    
+    // Get a sense of the local brightness of the area by sampling a blurred version of the input.
+    // We use a 5-tap diamond pattern filter that approximates a 3x3 gaussian.
+
+    float2 halfLod3TexelSize = 4.0 / size;
+
+    float4 center = _Input.SampleLevel(sampler_linear_clamp, uv, 3);
+    float4 a  = _Input.SampleLevel(sampler_linear_clamp, uv + float2(halfLod3TexelSize.x, halfLod3TexelSize.y), 3);
+    float4 b  = _Input.SampleLevel(sampler_linear_clamp, uv + float2(-halfLod3TexelSize.x, halfLod3TexelSize.y), 3);
+    float4 c  = _Input.SampleLevel(sampler_linear_clamp, uv + float2(halfLod3TexelSize.x, -halfLod3TexelSize.y), 3);
+    float4 d  = _Input.SampleLevel(sampler_linear_clamp, uv + float2(-halfLod3TexelSize.x, -halfLod3TexelSize.y), 3);
+
+    // Weights from 3x3 gaussian kernel (diamond part): 2 for center, 1 for neighbors.
+    float4 blurredColor = (a + b + c + d) / 4.0;
+    float localLuminance = Luminance(blurredColor.rgb);
+
+    float lod_from_luminance = 1-smoothstep(_LuminanceThresholdMin, _LuminanceThresholdMax, localLuminance);
+
+    float lod_final = 1 - (1 - lod_from_luminance) * (1 - lod_from_variance);
+
+    //_Output[id.xy] = float4(lod_final.xxx, 1);
+    _Output[id.xy] = _Input.SampleLevel(sampler_trilinear_clamp, uv, lod_final * _MaxLOD);
+}
+
