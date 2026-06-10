@@ -1,0 +1,51 @@
+%YAML 1.1
+%TAG !u! tag:unity3d.com,2011:
+--- !u!114 &11400000
+MonoBehaviour:
+  m_ObjectHideFlags: 0
+  m_CorrespondingSourceObject: {fileID: 0}
+  m_PrefabInstance: {fileID: 0}
+  m_PrefabAsset: {fileID: 0}
+  m_GameObject: {fileID: 0}
+  m_Enabled: 1
+  m_EditorHideFlags: 0
+  m_Script: {fileID: 11500000, guid: 667160627d6f0cf4d97cb0832b0c08d6, type: 3}
+  m_Name: GpuOps
+  m_EditorClassIdentifier: Assembly-CSharp::GpuOps
+  _serializableList:
+  - Name: ComputeDenoiserQuadtree
+    Shader: {fileID: 7200000, guid: ad7dfa377e0da6548a1ca3892c76e5ae, type: 3}
+  - Name: ComputeDenoiserQuadtreeLevel0
+    Shader: {fileID: 7200000, guid: a3bafec4146ecf649b5f53d3203b1b66, type: 3}
+  - Name: ComputeVolatilityLevel0
+    Shader: {fileID: 7200000, guid: 38e331577d029de41802c37ea4782eb4, type: 3}
+  - Name: Analysis
+    Shader: {fileID: 7200000, guid: 18249705625b3794a892af2600123ead, type: 3}
+  - Name: BackwardMonteCarlo
+    Shader: {fileID: 7200000, guid: f2b104ea2205bed418196a586ca29d69, type: 3}
+  - Name: CloudGaussianBlur
+    Shader: {fileID: 7200000, guid: 68110a91d379ebf45a18102f4f27c1e0, type: 3}
+  - Name: CompileInputTensor
+    Shader: {fileID: 7200000, guid: 05bd64f56a9c2ab45af9c8f76883153d, type: 3}
+  - Name: Convergence
+    Shader: {fileID: 7200000, guid: 1924be2737b9aca4e8b49dd3c434e89e, type: 3}
+  - Name: Denoiser2
+    Shader: {fileID: 7200000, guid: 122508f72cc20474c8d6732088bdb962, type: 3}
+  - Name: Denoiser3
+    Shader: {fileID: 7200000, guid: 1d1bbca9541b80749bf6a15d561e3df1, type: 3}
+  - Name: DenoiserOps
+    Shader: {fileID: 7200000, guid: 98d94a8f1736b4a4b8bba24209d3c9cd, type: 3}
+  - Name: ForwardMonteCarlo
+    Shader: {fileID: 7200000, guid: a78bab950c805c844a0aca488cc48032, type: 3}
+  - Name: GBuffer
+    Shader: {fileID: 7200000, guid: ad12cab95bc79a244b378f04585d7eff, type: 3}
+  - Name: ImportanceMap
+    Shader: {fileID: 7200000, guid: fc481eced0522fc4fb48e01aab3fe212, type: 3}
+  - Name: TracerPostProcessing
+    Shader: {fileID: 7200000, guid: 313ccf54c94f0575b8adedd3c80b6071, type: 3}
+  - Name: TrainingSceneOutputPrep
+    Shader: {fileID: 7200000, guid: 1b1a24d0dcef1574aa5bc303c3aafb72, type: 3}
+  - Name: TrainingSubstrateGenerators
+    Shader: {fileID: 7200000, guid: 6b46c3a8e919052afae86eb420a2e466, type: 3}
+  - Name: Variance
+    Shader: {fileID: 7200000, guid: f9292251a3285964b8f05777da67d8d1, type: 3}

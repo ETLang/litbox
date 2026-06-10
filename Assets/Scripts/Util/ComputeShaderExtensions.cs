@@ -63,6 +63,13 @@ public static class ComputeShaderExtensions
             case MipSpec mipSpec:
                 shader.SetTexture(kernelID, tuple.Item1, mipSpec.texture, mipSpec.mipLevel);
                 break;
+            case TextureView textureView:
+                if(textureView.mipLevel == -1) {
+                    shader.SetTexture(kernelID, tuple.Item1, textureView.texture);
+                } else {
+                    shader.SetTexture(kernelID, tuple.Item1, textureView.texture, textureView.mipLevel);
+                }
+                break;
             case int ix:
                 shader.SetInt(tuple.Item1, ix);
                 break;

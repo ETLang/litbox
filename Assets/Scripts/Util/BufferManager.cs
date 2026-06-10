@@ -35,6 +35,16 @@ public static class BufferManager
     }
 #endif
 
+    public static RenderTexture AcquireTexture(RenderTexture match)
+    {
+        return AcquireTexture3D(match.width, match.height, match.depth, match.format, match.useMipMap);
+    }
+
+    public static RenderTexture AcquireTexture(RenderTexture similar, RenderTextureFormat format)
+    {
+        return AcquireTexture3D(similar.width, similar.height, similar.depth, format, similar.useMipMap);
+    }
+    
     public static RenderTexture AcquireTexture(int width, int height, RenderTextureFormat format, bool withMips = false)
     {
         return AcquireTexture3D(width, height, 0, format, withMips);

@@ -18,20 +18,5 @@ public class AssetReloadDetector : AssetPostprocessor
         Reloaded?.Invoke();
 
         LitboxComponent.CheckForGlobalChanges();
-
-        //// Log all imported assets to the console.
-        //foreach (string assetPath in importedAssets) {
-        //    Debug.Log($"Imported Asset: {assetPath}");
-        //}
-
-        //// Log all deleted assets.
-        //foreach (string assetPath in deletedAssets) {
-        //    Debug.Log($"Deleted Asset: {assetPath}");
-        //}
-
-        //// Log all moved assets, showing their old and new paths.
-        //for (int i = 0; i < movedAssets.Length; i++) {
-        //    Debug.Log($"Moved Asset: from '{movedFromAssetPaths[i]}' to '{movedAssets[i]}'");
-        //}
     }
 }
