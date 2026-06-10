@@ -24,6 +24,7 @@ public class Denoiser3 : LitboxComponent
     public float normalSensitivity = 8.0f;
     public float albedoSensitivity = 4.0f;
     public float transmissibilitySensitivity = 1.0f;
+    public float varianceSensitivity = 10.0f;
     public float varianceScale = 4;
     public float darknessNoiseFloor = 0.002f;
     [Range(0,1)] public float splitThreshold = 0.3f;
@@ -83,24 +84,32 @@ public class Denoiser3 : LitboxComponent
             DenoisedOutput.name = "Denoiser2_ProceduralOutput";
         }
 
+        var quadtree = BufferManager.AcquireTexture(_currentWidth / 2, _currentHeight / 2, RenderTextureFormat.RFloat, true);
+
+        TracerPostProcessor.Instance.GenerateDenoisingFilterQuadtree(_simulation.GBuffer.AlbedoAlpha, _simulation.GBuffer.NormalRoughness, _simulation.GBuffer.Transmissibility, source, quadtree);
+
         _denoiserShader.SetTexture(_denoiseKernel, "_Input", source);
         _denoiserShader.SetTexture(_denoiseKernel, "_Variance", _simulation.VarianceMap);
         _denoiserShader.SetTexture(_denoiseKernel, "_Albedo", _simulation.GBuffer.AlbedoAlpha);
         _denoiserShader.SetTexture(_denoiseKernel, "_NormalRoughness", _simulation.GBuffer.NormalRoughness);
         _denoiserShader.SetTexture(_denoiseKernel, "_Transmissibility", _simulation.GBuffer.Transmissibility);
         _denoiserShader.SetTexture(_denoiseKernel, "_Output", DenoisedOutput);
+        _denoiserShader.SetTexture(_denoiseKernel, "_Quadtree", quadtree);
 
         _denoiserShader.SetVector("_InputSize", new Vector4(_currentWidth, _currentHeight, 1.0f / _currentWidth, 1.0f / _currentHeight));
 
         _denoiserShader.SetFloat("_NormalSensitivity", normalSensitivity);
         _denoiserShader.SetFloat("_AlbedoSensitivity", albedoSensitivity);
         _denoiserShader.SetFloat("_TransmissibilitySensitivity", transmissibilitySensitivity);
+        _denoiserShader.SetFloat("_VarianceSensitivity", varianceSensitivity);
         _denoiserShader.SetFloat("_VarianceScale", varianceScale);
         _denoiserShader.SetFloat("_DarknessNoiseFloor", darknessNoiseFloor);
         _denoiserShader.SetFloat("_SplitThreshold", splitThreshold);
         _denoiserShader.SetFloat("_MaxLOD", maxLOD);
 
         _denoiserShader.Dispatch(_denoiseKernel, (_currentWidth + 7) / 8, (_currentHeight + 7) / 8, 1);
+
+        BufferManager.Release(ref quadtree);
 
         return DenoisedOutput;
     }

@@ -1444,7 +1444,7 @@ MonoBehaviour:
   m_Name: 
   m_EditorClassIdentifier: 
   simulation: {fileID: 2408986526842077597}
-  type: 2
+  type: 15
 --- !u!4 &4185717351858822417
 Transform:
   m_ObjectHideFlags: 0
@@ -1812,9 +1812,11 @@ MonoBehaviour:
   m_Name: 
   m_EditorClassIdentifier: Assembly-CSharp::Denoiser3
   normalSensitivity: 8
-  albedoSensitivity: 4
-  varianceScale: 4
-  darknessNoiseFloor: 0.002
+  albedoSensitivity: 0.1
+  transmissibilitySensitivity: 0.01
+  varianceSensitivity: 0.1
+  varianceScale: 10
+  darknessNoiseFloor: 1
   splitThreshold: 0.3
   maxLOD: 4
 --- !u!4 &7046779350545214439

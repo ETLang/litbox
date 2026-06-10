@@ -1,0 +1,33 @@
+#include "../Shaders/LitboxCommon.cginc"
+#pragma kernel CSMain
+
+// Inputs
+Texture2D<float4> _in_normal;
+
+// Parameters
+
+// Outputs
+RWTexture2D<float> _out_volatility;
+
+[numthreads(NUMTHREADS_2D)]
+void CSMain(uint3 id : SV_DispatchThreadID) {
+    const int2 offsets[4] = { int2(0, 1), int2(0, -1), int2(-1, 0), int2(1, 0) };
+
+    float3 normal_c = _in_normal[id.xy].xyz;
+    
+    if(dot(normal_c, normal_c) < 0.1) {
+        _out_volatility[id.xy] = 0;
+        return;
+    }
+    
+    float volatility = 0;
+    for(int i = 0;i < 4;i++) {
+        float3 normal_n = _in_normal[id.xy + offsets[i]].xyz;
+        
+        if(dot(normal_n, normal_n) < 0.1) { continue; }
+
+        float deviation = 1.0f - saturate(dot(normal_c, normal_n));
+        volatility = max(volatility, deviation);
+    }
+    _out_volatility[id.xy] = volatility;
+}

@@ -87,7 +87,7 @@ void ComputeVarianceAndNMipsFromSamplePair(uint3 id, uint2 localID, int mipCount
     _out_mip0[id.xy] = mean;
     
     shared_source_mean[localID.x][localID.y] = mean;
-    shared_pixel_variance[localID.x][localID.y] = dot(((a - b) * (a - b) / (mean * mean + 1e-5)).rgb, 1/3.0);
+    shared_pixel_variance[localID.x][localID.y] = dot(((a - b) * (a - b) / (mean * mean + 1e-7)).rgb, 1/3.0);
     
     GroupMemoryBarrierWithGroupSync();
 

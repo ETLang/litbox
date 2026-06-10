@@ -19,6 +19,11 @@ public class SimulationTexturePicker : LitboxComponent {
         AnalysisA,
         AnalysisB,
         AnalysisC,
+        V0,
+        LogDensityVolatility,
+        AlbedoMin,
+        AlbedoMax,
+        Quadtree,
     }
 
     [SerializeField] public Simulation simulation;
@@ -111,6 +116,21 @@ public class SimulationTexturePicker : LitboxComponent {
         case TextureType.AnalysisC:
             ConfigureAnalysisC();
             value = _analysisTargetC;
+            break;
+        case TextureType.V0:
+            value = TracerPostProcessor.Instance.V0;
+            break;
+        case TextureType.LogDensityVolatility:
+            value = TracerPostProcessor.Instance.LogDensityVolatility;
+            break;
+        case TextureType.AlbedoMin:
+            value = TracerPostProcessor.Instance.AlbedoMin;
+            break;
+        case TextureType.AlbedoMax:
+            value = TracerPostProcessor.Instance.AlbedoMax;
+            break;
+        case TextureType.Quadtree:
+            value = TracerPostProcessor.Instance.Quadtree;
             break;
         }
 
