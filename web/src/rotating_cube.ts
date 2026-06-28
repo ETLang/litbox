@@ -3,23 +3,22 @@ import { mat4, vec3 } from 'gl-matrix';
 
 export class RotatingCube {
     private canvas: HTMLCanvasElement;
-    private adapter: GPUAdapter;
-    private device: GPUDevice;
-    private context: GPUCanvasContext;
-    private presentationFormat: GPUTextureFormat;
-    private presentationSize: [number, number];
+    private adapter!: GPUAdapter;
+    private device!: GPUDevice;
+    private context!: GPUCanvasContext;
+    private presentationFormat!: GPUTextureFormat;
+    private presentationSize!: [number, number];
 
-    private renderPipeline: GPURenderPipeline;
-    private vertexBuffer: GPUBuffer;
-    private indexBuffer: GPUBuffer;
-    private uniformBuffer: GPUBuffer;
-    private uniformBindGroup: GPUBindGroup;
-    private depthTexture: GPUTexture;
+    private renderPipeline!: GPURenderPipeline;
+    private vertexBuffer!: GPUBuffer;
+    private indexBuffer!: GPUBuffer;
+    private uniformBuffer!: GPUBuffer;
+    private uniformBindGroup!: GPUBindGroup;
+    private depthTexture!: GPUTexture;
 
-    private readonly cubeVertexSize = 4 * 8; // 4 bytes * (3 pos + 3 norm + 2 uv)
+    private readonly cubeVertexSize = 4 * 8; // 4 bytes * (4 pos + 4 color)
     private readonly cubePositionOffset = 0;
-    private readonly cubeColorOffset = 4 * 3; // 4 bytes * 3 pos
-    private readonly cubeUVOffset = 4 * 6; // 4 bytes * (3 pos + 3 norm)
+    private readonly cubeColorOffset = 4 * 4; // 4 bytes * 4 pos
     private readonly cubeIndexCount = 36;
 
     constructor(canvas?: HTMLCanvasElement) {
@@ -49,11 +48,12 @@ export class RotatingCube {
                 return false;
             }
 
-            this.adapter = await navigator.gpu.requestAdapter();
-            if (!this.adapter) {
+            const adapter = await navigator.gpu.requestAdapter();
+            if (!adapter) {
                 console.error("No appropriate GPUAdapter found.");
                 return false;
             }
+            this.adapter = adapter;
             this.device = await this.adapter.requestDevice();
         } catch (error) {
             console.error("Error initializing WebGPU:", error);
@@ -63,7 +63,11 @@ export class RotatingCube {
     }
 
     private configureCanvas(): void {
-        this.context = this.canvas.getContext('webgpu');
+        const context = this.canvas.getContext('webgpu');
+        if (!context) {
+            throw new Error("Could not get WebGPU context from canvas.");
+        }
+        this.context = context;
         this.presentationFormat = navigator.gpu.getPreferredCanvasFormat();
         this.presentationSize = [this.canvas.width, this.canvas.height];
         this.context.configure({
