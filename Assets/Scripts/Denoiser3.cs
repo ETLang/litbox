@@ -71,8 +71,42 @@ public class Denoiser3 : LitboxComponent
         }
     }
 
+    public void Denoise(Simulation simulation, RenderTexture source, RenderTexture output, bool applyRadiance)
+    {
+        var quadtree = BufferManager.AcquireTexture(simulation.width / 2, simulation.height / 2, RenderTextureFormat.RFloat, true);
+
+        TracerPostProcessor.Instance.GenerateDenoisingFilterQuadtree(simulation.GBuffer.AlbedoAlpha, simulation.GBuffer.NormalRoughness, simulation.GBuffer.Transmissibility, source, quadtree);
+
+        _denoiserShader.SetTexture(_denoiseKernel, "_Input", source);
+        _denoiserShader.SetTexture(_denoiseKernel, "_Variance", simulation.VarianceMap);
+        _denoiserShader.SetTexture(_denoiseKernel, "_Albedo", simulation.GBuffer.AlbedoAlpha);
+        _denoiserShader.SetTexture(_denoiseKernel, "_NormalRoughness", simulation.GBuffer.NormalRoughness);
+        _denoiserShader.SetTexture(_denoiseKernel, "_Transmissibility", simulation.GBuffer.Transmissibility);
+        _denoiserShader.SetTexture(_denoiseKernel, "_Output", output);
+        _denoiserShader.SetTexture(_denoiseKernel, "_Quadtree", quadtree);
+
+        _denoiserShader.SetVector("_InputSize", new Vector4(simulation.width, simulation.height, 1.0f / simulation.width, 1.0f / simulation.height));
+
+        _denoiserShader.SetFloat("_NormalSensitivity", normalSensitivity);
+        _denoiserShader.SetFloat("_AlbedoSensitivity", albedoSensitivity);
+        _denoiserShader.SetFloat("_TransmissibilitySensitivity", transmissibilitySensitivity);
+        _denoiserShader.SetFloat("_VarianceSensitivity", varianceSensitivity);
+        _denoiserShader.SetFloat("_VarianceScale", varianceScale);
+        _denoiserShader.SetFloat("_DarknessNoiseFloor", darknessNoiseFloor);
+        _denoiserShader.SetFloat("_SplitThreshold", splitThreshold);
+        _denoiserShader.SetFloat("_MaxLOD", maxLOD);
+
+        _denoiserShader.SetShaderFlag("APPLY_RADIANCE", applyRadiance);
+
+        _denoiserShader.Dispatch(_denoiseKernel, (simulation.width + 7) / 8, (simulation.height + 7) / 8, 1);
+
+        BufferManager.Release(ref quadtree);
+    }
+
     private RenderTexture OnSimulationPostProcess(RenderTexture source)
     {
+        if (_simulation.denoiser == this) return source;
+
         if (_simulation.width != _currentWidth || _simulation.height != _currentHeight)
         {
             ReleaseOutput();
@@ -84,32 +118,7 @@ public class Denoiser3 : LitboxComponent
             DenoisedOutput.name = "Denoiser2_ProceduralOutput";
         }
 
-        var quadtree = BufferManager.AcquireTexture(_currentWidth / 2, _currentHeight / 2, RenderTextureFormat.RFloat, true);
-
-        TracerPostProcessor.Instance.GenerateDenoisingFilterQuadtree(_simulation.GBuffer.AlbedoAlpha, _simulation.GBuffer.NormalRoughness, _simulation.GBuffer.Transmissibility, source, quadtree);
-
-        _denoiserShader.SetTexture(_denoiseKernel, "_Input", source);
-        _denoiserShader.SetTexture(_denoiseKernel, "_Variance", _simulation.VarianceMap);
-        _denoiserShader.SetTexture(_denoiseKernel, "_Albedo", _simulation.GBuffer.AlbedoAlpha);
-        _denoiserShader.SetTexture(_denoiseKernel, "_NormalRoughness", _simulation.GBuffer.NormalRoughness);
-        _denoiserShader.SetTexture(_denoiseKernel, "_Transmissibility", _simulation.GBuffer.Transmissibility);
-        _denoiserShader.SetTexture(_denoiseKernel, "_Output", DenoisedOutput);
-        _denoiserShader.SetTexture(_denoiseKernel, "_Quadtree", quadtree);
-
-        _denoiserShader.SetVector("_InputSize", new Vector4(_currentWidth, _currentHeight, 1.0f / _currentWidth, 1.0f / _currentHeight));
-
-        _denoiserShader.SetFloat("_NormalSensitivity", normalSensitivity);
-        _denoiserShader.SetFloat("_AlbedoSensitivity", albedoSensitivity);
-        _denoiserShader.SetFloat("_TransmissibilitySensitivity", transmissibilitySensitivity);
-        _denoiserShader.SetFloat("_VarianceSensitivity", varianceSensitivity);
-        _denoiserShader.SetFloat("_VarianceScale", varianceScale);
-        _denoiserShader.SetFloat("_DarknessNoiseFloor", darknessNoiseFloor);
-        _denoiserShader.SetFloat("_SplitThreshold", splitThreshold);
-        _denoiserShader.SetFloat("_MaxLOD", maxLOD);
-
-        _denoiserShader.Dispatch(_denoiseKernel, (_currentWidth + 7) / 8, (_currentHeight + 7) / 8, 1);
-
-        BufferManager.Release(ref quadtree);
+        Denoise(_simulation, source, DenoisedOutput, false);
 
         return DenoisedOutput;
     }

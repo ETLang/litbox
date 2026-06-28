@@ -1396,6 +1396,7 @@ MonoBehaviour:
   photonBounces: -1
   integrationInterval: 0.04
   transmissibilityVariationEpsilon: 0.001
+  denoiser: {fileID: 6567741710732077502}
   SigmaSpatial: 5
   SigmaAlbedo: 0.05
   SigmaLuminanceTight: 0.05

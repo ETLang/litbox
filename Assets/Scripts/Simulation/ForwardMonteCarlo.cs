@@ -100,6 +100,19 @@ public class ForwardMonteCarlo : Disposable
     private bool _skipAccumulation = false;
     #endregion
 
+    #region ApplyRadiance
+    public bool ApplyRadiance
+    {
+        get => _applyRadiance;
+        set
+        {
+            _applyRadiance = value;
+            _forwardIntegrationShader.SetShaderFlag("APPLY_RADIANCE", _applyRadiance);
+        }
+    }
+    private bool _applyRadiance = true;
+    #endregion
+
     #region IntegrationInterval
     public float IntegrationInterval
     {
@@ -146,6 +159,7 @@ public class ForwardMonteCarlo : Disposable
         _forwardIntegrationShader.SetShaderFlag("BILINEAR_PHOTON_DISTRIBUTION", !_disableBilinearWrites);
         _forwardIntegrationShader.SetShaderFlag("FINALIZE_OUTSCATTER_DENSITY", _finalizeOutscatterDensity);
         _forwardIntegrationShader.SetShaderFlag("SKIP_ACCUMULATION", _skipAccumulation);
+        _forwardIntegrationShader.SetShaderFlag("APPLY_RADIANCE", _applyRadiance);
     }
 
     public void Clear()

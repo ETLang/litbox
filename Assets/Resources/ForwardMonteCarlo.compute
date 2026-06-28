@@ -5,6 +5,7 @@
 #pragma multi_compile __ BILINEAR_PHOTON_DISTRIBUTION
 #pragma multi_compile __ FINALIZE_OUTSCATTER_DENSITY
 #pragma multi_compile __ SKIP_ACCUMULATION
+#pragma multi_compile __ APPLY_RADIANCE
 
 #pragma kernel Simulate_DefaultLight
 #pragma kernel Simulate_PointLight
@@ -361,10 +362,13 @@ SIMULATION_IMPLEMENTATION(DirectionalLight)
 [numthreads(NUMTHREADS_2D)]
 void ConvertToHDR (uint3 id : SV_DispatchThreadID, uint2 localID : SV_GroupThreadID) {
     float outScatterDensity = 1;
-    float3 albedo = g_albedo[id.xy].rgb;
+    float3 albedo = 1;
 
+#if APPLY_RADIANCE
+    albedo = g_albedo[id.xy].rgb;
 #if FINALIZE_OUTSCATTER_DENSITY
     outScatterDensity *= (1 - g_transmissibility[id.xy].x);
+#endif
 #endif
 
     float3 cumulative = ReadPhoton_Indexed(id.xy) * g_hdr_scale;

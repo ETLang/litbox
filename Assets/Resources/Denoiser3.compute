@@ -1,5 +1,7 @@
 #include "../Shaders/LitboxCommon.cginc"
 
+#pragma multi_compile __ APPLY_RADIANCE
+
 #pragma kernel CSMain
 
 #define STACK_SIZE 64
@@ -46,7 +48,7 @@ void CSMain(uint3 id : SV_DispatchThreadID)
 
     float2 uv = (float2(id.xy) + 0.5f) * _InputSize.zw;
 
-    // 1. Gather Anchor (Full-Resolution Center) Structural Context
+    // Gather target characteristics
     float4 centerG1 = _Albedo.SampleLevel(sampler_point_clamp, uv, 0);
     float3 centerAlbedo = centerG1.rgb;
     float4 centerG2 = _NormalRoughness.SampleLevel(sampler_point_clamp, uv, 0);
@@ -54,45 +56,49 @@ void CSMain(uint3 id : SV_DispatchThreadID)
     float centerTrans = _Transmissibility.SampleLevel(sampler_point_clamp, uv, 0).x;
     float logCenterTrans = log(centerTrans + 1e-6f);
     float centerVariance = _Variance.SampleLevel(sampler_linear_clamp, uv, 0).x;
+    float3 centerRadiance = _Input.SampleLevel(sampler_linear_clamp, uv, 0).rgb; // TODO: probably sampler_linear_clamp?
+    float centerLuminance = Luminance(centerRadiance);
 
-    // 2. Fetch and Fix Noise Profiles to establish baseline depth
-    float3 centerRawColor = _Input.SampleLevel(sampler_point_clamp, uv, 0).rgb; // TODO: probably sampler_linear_clamp?
+    float localLuminance;
+    {
+        float2 halfLod3TexelSize = 4.0 * _InputSize.zw;
+        float4 center = _Input.SampleLevel(sampler_linear_clamp, uv, 3);
+        float4 a  = _Input.SampleLevel(sampler_linear_clamp, uv + float2(halfLod3TexelSize.x, halfLod3TexelSize.y), 3);
+        float4 b  = _Input.SampleLevel(sampler_linear_clamp, uv + float2(-halfLod3TexelSize.x, halfLod3TexelSize.y), 3);
+        float4 c  = _Input.SampleLevel(sampler_linear_clamp, uv + float2(halfLod3TexelSize.x, -halfLod3TexelSize.y), 3);
+        float4 d  = _Input.SampleLevel(sampler_linear_clamp, uv + float2(-halfLod3TexelSize.x, -halfLod3TexelSize.y), 3);
 
-    float2 halfLod3TexelSize = 4.0 * _InputSize.zw;
+        // Weights from 3x3 gaussian kernel (diamond part): 2 for center, 1 for neighbors.
+        float4 blurredColor = (a + b + c + d) / 4.0;
+        localLuminance = Luminance(blurredColor.rgb);
+    }
 
-    float4 center = _Input.SampleLevel(sampler_linear_clamp, uv, 3);
-    float4 a  = _Input.SampleLevel(sampler_linear_clamp, uv + float2(halfLod3TexelSize.x, halfLod3TexelSize.y), 3);
-    float4 b  = _Input.SampleLevel(sampler_linear_clamp, uv + float2(-halfLod3TexelSize.x, halfLod3TexelSize.y), 3);
-    float4 c  = _Input.SampleLevel(sampler_linear_clamp, uv + float2(halfLod3TexelSize.x, -halfLod3TexelSize.y), 3);
-    float4 d  = _Input.SampleLevel(sampler_linear_clamp, uv + float2(-halfLod3TexelSize.x, -halfLod3TexelSize.y), 3);
+    // Consideration Factors
+    // Each factor needs a weight, and a quadtree threshold (defined with the quadtree stuff)
+    // A) Luminance Range - Accumulated samples should lie within a similar luminance range
+    // B) Darkness - Dark areas should be max blurred spatially and temporally
+    // C) Firefly Mask - Fireflies should count torwards dark area computation, but structured bright spots should not.
+    // D) Distance from target - Distant samples statistically count for less
 
-    // Weights from 3x3 gaussian kernel (diamond part): 2 for center, 1 for neighbors.
-    float4 blurredColor = (a + b + c + d) / 4.0;
-    float localLuminance = Luminance(blurredColor.rgb);
-
-    float centerLuminance = Luminance(centerRawColor);
     float darknessShortfall = saturate((_DarknessNoiseFloor - localLuminance) / (_DarknessNoiseFloor + 1e-3f));
-
-
     float adjustedVariance = _MaxLOD * max(centerVariance * _VarianceScale, darknessShortfall);
-
-    //_Output[id.xy] = float4(darknessShortfall.xxx, 1.0f);
-    //return;
-
 
     // 3. Determine Initial Starting Mip level based on noise
     // High variance/darkness starts deep (e.g., Mip 4 or 5), low variance starts sharp
-    int startMip = _MaxLOD;// (int)clamp(adjustedVariance, 0.0f, _MaxLOD);
+    int startMip = (int)clamp(adjustedVariance, 0.0f, _MaxLOD);
+    //int startMip = _MaxLOD;
 
     // Short-circuit: if completely clean, skip tree tracking entirely
     if (startMip == 0)
     {
-        _Output[id.xy] = float4(centerRawColor, 1.0f);
+#if APPLY_RADIANCE
+        _Output[id.xy] = float4(centerRadiance * centerAlbedo * (1-centerTrans), 1);
+#else
+        _Output[id.xy] = float4(centerRadiance, 1.0f);
+#endif
         return;
     }
 
-    // 4. Initialize Local Traversal Stack
-    // Allocate a fixed-size stack arrays to avoid runtime dynamic allocation
     TreeSampleNode stack[STACK_SIZE]; 
     int stackCount = 0;
 
@@ -107,10 +113,6 @@ void CSMain(uint3 id : SV_DispatchThreadID)
         for (int dx = -1; dx <= 1; ++dx)
         {
             float2 sampleUV = uv + float2(dx, dy) * texelSizeAtMip;
-            
-            // Clamp sample to frame boundaries
-            //sampleUV = clamp(sampleUV, _InputSize.zw, 1.0f - _InputSize.zw);
-
             TreeSampleNode node = { sampleUV, startMip, 1.0f };
             
             stack[stackCount] = node;
@@ -119,7 +121,7 @@ void CSMain(uint3 id : SV_DispatchThreadID)
     }
 
     // 5. Quadtree Execution Loop
-    float4 accumulatedColor = float4((1-darknessShortfall) *centerRawColor, 0);
+    float4 accumulatedColor = float4(0,0,0,0);// float4((1-darknessShortfall) *centerRadiance, 0);
     float totalWeight = 1e-5f;
 
     // Process stack elements until exhausted or buffer bounds are met
@@ -137,6 +139,7 @@ void CSMain(uint3 id : SV_DispatchThreadID)
         float sampleTrans = _Transmissibility.SampleLevel(sampler_point_clamp, current.uv, current.mip).x;
         float logSampleTrans = log(sampleTrans + 1e-6f);
         float sampleVariance = _Variance.SampleLevel(sampler_linear_clamp, current.uv, current.mip).x;
+
 
         // Calculate Structural Affinity Metric (How well does this sample match our center pixel?)
         // float normalDiff = saturate(dot(centerNormal, sampleNormal));
@@ -161,7 +164,14 @@ void CSMain(uint3 id : SV_DispatchThreadID)
         float wVariance = 1 - saturate(-varDiff / _VarianceSensitivity);
         wVariance *= wVariance;
 
-        float structuralWeight = wNormal * wAlbedo * wTrans * wVariance;
+        float structuralWeight = 1;//wNormal * wAlbedo * wTrans * wVariance;
+
+        float maxDist = _InputSize.zw * (float)(1 << startMip);
+        float distanceU = 2 * distance(current.uv, uv) / maxDist;
+       // float spatialWeight = saturate(1 - distance(current.uv, uv) / maxDist);
+       float spatialWeight = exp(-distanceU * distanceU);
+
+        structuralWeight *= spatialWeight;
 
         // Check if this node strikes an edge and requires a Quadtree split
         // Condition: structural match is low AND we haven't hit the sharpest M0 layer yet
@@ -188,15 +198,20 @@ void CSMain(uint3 id : SV_DispatchThreadID)
         // Leaf Node Resolution: If the node is structurally sound OR reached M0, accumulate its value
         float4 sampledColor = _Input.SampleLevel(sampler_linear_clamp, current.uv, current.mip);
         
-        //if(current.mip == 0) {
+        if(current.mip == 0) {
             // Scale weight by the node size to guarantee energy conservation across varying mip resolutions
             float absoluteWeight = structuralWeight * current.size;
 
             accumulatedColor += sampledColor * absoluteWeight;
             totalWeight += absoluteWeight;
-        //}
+        }
     }
 
-    // 6. Output Final Anisotropic Composition
+#if APPLY_RADIANCE
+    _Output[id.xy] = accumulatedColor / totalWeight * float4(centerAlbedo * (1-centerTrans), 1);
+#else
     _Output[id.xy] = accumulatedColor / totalWeight;
+#endif
+
+   // _Output[id.xy] = float4(localLuminance.xxx, 1);
 }

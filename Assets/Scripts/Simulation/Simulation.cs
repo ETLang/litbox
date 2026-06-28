@@ -45,6 +45,7 @@ public class Simulation : LitboxComponent
     [SerializeField] private int photonBounces = -1;
     [SerializeField, Min(0.01f)] private float integrationInterval = 0.1f;
     [SerializeField] private float transmissibilityVariationEpsilon = 1e-3f;
+    [SerializeField] public Denoiser3 denoiser = null; 
 
     [Header("Variance Weights")]
     [SerializeField, Range(0.01f, 5f)] public float SigmaSpatial = 1.2f;
@@ -195,6 +196,7 @@ public class Simulation : LitboxComponent
                     lightTracers[i].IntegrationInterval = integrationInterval;
                     lightTracers[i].OverrideBounceCount = photonBounces == -1 ? null : (uint)photonBounces;
                     lightTracers[i].RaysToEmit = raysPerFrame;
+                    lightTracers[i].ApplyRadiance = false;
                 }
             };
         } else if(strategy == Strategy.Hybrid && !(_activeTracer[0] is HybridTracer))
@@ -433,16 +435,27 @@ public class Simulation : LitboxComponent
 
         TracerTask(t => t.EndTrace(_importanceMap.Map));
 
-        //TracerPostProcessor.Instance.ComputeVarianceAndMips(_activeTracer[0].TracerOutput, _activeTracer[1].TracerOutput, SimulationOutputRaw, VarianceMap);\
-
         TracerPostProcessor.Instance.SigmaAlbedo = SigmaAlbedo;
         TracerPostProcessor.Instance.SigmaLuminanceTight = SigmaLuminanceTight;
         TracerPostProcessor.Instance.SigmaLuminanceLoose = SigmaLuminanceLoose;
         TracerPostProcessor.Instance.SigmaSpatial = SigmaSpatial;
         TracerPostProcessor.Instance.KLuminance = KLuminance;
 
-        TracerPostProcessor.Instance.ComputeVarianceAndMips(_activeTracer[0].TracerOutput, _activeTracer[1].TracerOutput, SimulationOutputRaw, UnfilteredVarianceMap);
-        TracerPostProcessor.Instance.FilterVariance(UnfilteredVarianceMap, VarianceMap, GBuffer.AlbedoAlpha, SimulationOutputRaw);
+        if(_activeTracer[0].ApplyRadiance || denoiser == null)
+        {
+            TracerPostProcessor.Instance.ComputeVarianceAndMips(_activeTracer[0].TracerOutput, _activeTracer[1].TracerOutput, SimulationOutputRaw, UnfilteredVarianceMap);
+            TracerPostProcessor.Instance.FilterVariance(UnfilteredVarianceMap, VarianceMap, GBuffer.AlbedoAlpha, SimulationOutputRaw);
+        } else {
+            var intermediateOutput = BufferManager.AcquireTexture(SimulationOutputRaw);
+
+            TracerPostProcessor.Instance.ComputeVarianceAndMips(_activeTracer[0].TracerOutput, _activeTracer[1].TracerOutput, intermediateOutput, UnfilteredVarianceMap);
+            TracerPostProcessor.Instance.FilterVariance(UnfilteredVarianceMap, VarianceMap, GBuffer.AlbedoAlpha, intermediateOutput);
+
+            //denoiser.Denoise(this, intermediateOutput, SimulationOutputRaw, false);
+            denoiser.Denoise(this, intermediateOutput, SimulationOutputRaw, true);
+
+            BufferManager.Release(ref intermediateOutput);
+        }
 
         var processed = SimulationOutputRaw;
         for(int i = 0;i < _postProcessors.Count;i++)

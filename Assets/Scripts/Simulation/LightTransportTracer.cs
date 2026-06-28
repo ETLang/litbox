@@ -51,6 +51,12 @@ public class LightTransportTracer : Disposable, ITracer, ITracerDebug
         set => _forwardIntegrator.SkipAccumulation = value;
     }
 
+    public bool ApplyRadiance
+    {
+        get => _forwardIntegrator.ApplyRadiance;
+        set => _forwardIntegrator.ApplyRadiance = value;
+    }
+
     public long ForwardWritesPerSecond { get; private set; }
     public long BackwardReadsPerSecond => 0;
 

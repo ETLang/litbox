@@ -1,3 +1,4 @@
+using System;
 using UnityEngine;
 
 public class HybridTracer : Disposable, ITracer, ITracerDebug
@@ -63,11 +64,17 @@ public class HybridTracer : Disposable, ITracer, ITracerDebug
         set => _forwardIntegrator.SkipAccumulation = value;
     }
 
+    public bool ApplyRadiance
+    {
+        get => true;
+        set { if(!value) throw new NotImplementedException(); }
+    }
+
     public long ForwardWritesPerSecond { get; private set; }
     public long BackwardReadsPerSecond => 0;
 
     RenderTexture ITracerDebug.ForwardRawPhotons => _forwardIntegrator.RawPhotonBuffer;
-RenderTexture ITracerDebug.ForwardAccumulation => _forwardIntegrator.AccumulationImage;
+    RenderTexture ITracerDebug.ForwardAccumulation => _forwardIntegrator.AccumulationImage;
 
     public HybridTracer()
     {

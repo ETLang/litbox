@@ -250,6 +250,7 @@ MonoBehaviour:
   photonBounces: -1
   integrationInterval: 0.1
   transmissibilityVariationEpsilon: 0.001
+  denoiser: {fileID: 443151172}
   SigmaSpatial: 1.2
   SigmaAlbedo: 0.05
   SigmaLuminanceTight: 0.05
@@ -334,6 +335,7 @@ MonoBehaviour:
   normalSensitivity: 8
   albedoSensitivity: 4
   transmissibilitySensitivity: 1
+  varianceSensitivity: 10
   varianceScale: 4
   darknessNoiseFloor: 0.002
   splitThreshold: 0.3

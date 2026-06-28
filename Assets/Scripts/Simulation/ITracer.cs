@@ -8,6 +8,7 @@ public interface ITracer : IDisposable
     RenderTexture TracerOutput { get; }
     Matrix4x4 WorldToTargetTransform { get; set; }
     bool SkipAccumulation { get; set; }
+    bool ApplyRadiance { get; set; }
 
     long ForwardWritesPerSecond { get; }
     long BackwardReadsPerSecond { get; }
