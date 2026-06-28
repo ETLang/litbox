@@ -282,6 +282,8 @@ public static class TextureExtensions {
 
     public static void SaveTextureEXR(this RenderTexture target, string path)
     {
+        bool destroyTarget = false;
+
         if(target.format != RenderTextureFormat.ARGBFloat) {
             var descriptor = target.descriptor;
             descriptor.colorFormat = RenderTextureFormat.ARGBFloat;
@@ -295,21 +297,32 @@ public static class TextureExtensions {
             Graphics.Blit(target, floatTarget);
             RenderTexture.active = current;
             target = floatTarget;
+            destroyTarget = true;
         }
 
         Texture2D image = new Texture2D(target.width, target.height, TextureFormat.RGBAFloat, false, true);
 
+        var currentColor = Graphics.activeColorBuffer;
+        var currentDepth = Graphics.activeDepthBuffer;
         Graphics.SetRenderTarget(target);
         image.ReadPixels(new Rect(0, 0, image.width, image.height), 0, 0);
         image.Apply();
+        Graphics.SetRenderTarget(currentColor, currentDepth);
 
         byte[] bytes = image.EncodeToEXR(Texture2D.EXRFlags.CompressZIP | Texture2D.EXRFlags.OutputAsFloat);
         System.IO.File.WriteAllBytes(path, bytes);
+
+        GameObject.DestroyImmediate(image);
+        if(destroyTarget)
+        {
+            GameObject.DestroyImmediate(target);
+        }
     }
 
     static Material _ToneMapper = null;
     public static void SaveTexturePNG(this RenderTexture target, string path, float exposure = float.NaN)
     {
+        bool destroyTarget = false;
         if(!target.sRGB) {
             var descriptor = target.descriptor;
             descriptor.colorFormat = RenderTextureFormat.ARGB32;
@@ -335,18 +348,26 @@ public static class TextureExtensions {
             RenderTexture.active = current;
 
             target = srgbTarget;
+            destroyTarget = true;
         }
 
         Texture2D image = new Texture2D(target.width, target.height, TextureFormat.RGBA32, false, true);
 
+        var currentColor = Graphics.activeColorBuffer;
+        var currentDepth = Graphics.activeDepthBuffer;
         Graphics.SetRenderTarget(target);
         image.ReadPixels(new Rect(0, 0, image.width, image.height), 0, 0);
         image.Apply();
+        Graphics.SetRenderTarget(currentColor, currentDepth);
 
         byte[] bytes = image.EncodeToPNG();
         System.IO.File.WriteAllBytes(path, bytes);
 
         GameObject.DestroyImmediate(image);
+        if(destroyTarget)
+        {
+            GameObject.DestroyImmediate(target);
+        }
     }
 
 }

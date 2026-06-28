@@ -1,0 +1,202 @@
+#include "../Shaders/LitboxCommon.cginc"
+
+#pragma kernel CSMain
+
+#define STACK_SIZE 64
+
+// Read-only inputs
+Texture2D<float4> _Input;
+Texture2D<float>  _Variance; // Note: VarianceMap is currently 1/4 the resolution of the main input
+Texture2D<float4> _Albedo;
+Texture2D<float4> _NormalRoughness;
+Texture2D<float4> _Transmissibility;
+Texture2D<float> _Quadtree;
+
+// Read-write output
+RWTexture2D<float4> _Output;
+
+float4 _InputSize; // x: Width, y: Height, z: 1/Width, w: 1/Height
+
+float _NormalSensitivity;    // Tolerance for normal differences (e.g., 8.0)
+float _AlbedoSensitivity;    // Tolerance for albedo differences (e.g., 4.0)
+float _TransmissibilitySensitivity; // Tolerance for transmissibility differences
+float _VarianceSensitivity;
+float _VarianceScale;        // Maps variance to initial starting MIP depth
+float _DarknessNoiseFloor;   // Low-light floor
+float _MaxLOD;          // Deepest allowed mip level (e.g., 5.0 or 6.0)
+float _SplitThreshold;       // Structural similarity weight below which we split a pixel (e.g., 0.3)
+
+// Node structure representing a virtual region in our mip pyramid execution stack
+struct TreeSampleNode {
+    float2 uv;    // UV coordinate of the sample
+    int mip;      // Current mip level of this sample
+    float size;   // Normalized spatial size/weight of this node's footprint
+};
+
+TreeSampleNode MakeNode(float2 uv, int mip, float size)
+{
+    TreeSampleNode node = {uv, mip, size};
+    return node;
+}
+
+[numthreads(8, 8, 1)]
+void CSMain(uint3 id : SV_DispatchThreadID)
+{
+    if (any(id.xy >= _InputSize.xy)) return;
+
+    float2 uv = (float2(id.xy) + 0.5f) * _InputSize.zw;
+
+    // 1. Gather Anchor (Full-Resolution Center) Structural Context
+    float4 centerG1 = _Albedo.SampleLevel(sampler_point_clamp, uv, 0);
+    float3 centerAlbedo = centerG1.rgb;
+    float4 centerG2 = _NormalRoughness.SampleLevel(sampler_point_clamp, uv, 0);
+    float3 centerNormal = centerG2.xyz;// * 2.0f - 1.0f;
+    float centerTrans = _Transmissibility.SampleLevel(sampler_point_clamp, uv, 0).x;
+    float logCenterTrans = log(centerTrans + 1e-6f);
+    float centerVariance = _Variance.SampleLevel(sampler_linear_clamp, uv, 0).x;
+
+    // 2. Fetch and Fix Noise Profiles to establish baseline depth
+    float3 centerRawColor = _Input.SampleLevel(sampler_point_clamp, uv, 0).rgb; // TODO: probably sampler_linear_clamp?
+
+    float2 halfLod3TexelSize = 4.0 * _InputSize.zw;
+
+    float4 center = _Input.SampleLevel(sampler_linear_clamp, uv, 3);
+    float4 a  = _Input.SampleLevel(sampler_linear_clamp, uv + float2(halfLod3TexelSize.x, halfLod3TexelSize.y), 3);
+    float4 b  = _Input.SampleLevel(sampler_linear_clamp, uv + float2(-halfLod3TexelSize.x, halfLod3TexelSize.y), 3);
+    float4 c  = _Input.SampleLevel(sampler_linear_clamp, uv + float2(halfLod3TexelSize.x, -halfLod3TexelSize.y), 3);
+    float4 d  = _Input.SampleLevel(sampler_linear_clamp, uv + float2(-halfLod3TexelSize.x, -halfLod3TexelSize.y), 3);
+
+    // Weights from 3x3 gaussian kernel (diamond part): 2 for center, 1 for neighbors.
+    float4 blurredColor = (a + b + c + d) / 4.0;
+    float localLuminance = Luminance(blurredColor.rgb);
+
+    float centerLuminance = Luminance(centerRawColor);
+    float darknessShortfall = saturate((_DarknessNoiseFloor - localLuminance) / (_DarknessNoiseFloor + 1e-3f));
+
+
+    float adjustedVariance = _MaxLOD * max(centerVariance * _VarianceScale, darknessShortfall);
+
+    //_Output[id.xy] = float4(darknessShortfall.xxx, 1.0f);
+    //return;
+
+
+    // 3. Determine Initial Starting Mip level based on noise
+    // High variance/darkness starts deep (e.g., Mip 4 or 5), low variance starts sharp
+    int startMip = _MaxLOD;// (int)clamp(adjustedVariance, 0.0f, _MaxLOD);
+
+    // Short-circuit: if completely clean, skip tree tracking entirely
+    if (startMip == 0)
+    {
+        _Output[id.xy] = float4(centerRawColor, 1.0f);
+        return;
+    }
+
+    // 4. Initialize Local Traversal Stack
+    // Allocate a fixed-size stack arrays to avoid runtime dynamic allocation
+    TreeSampleNode stack[STACK_SIZE]; 
+    int stackCount = 0;
+
+    // Seed the stack with a 3x3 neighborhood at the starting baseline mip level
+    // We compute the texel offsets matching the current starting mip scale
+    float2 texelSizeAtMip = _InputSize.zw * (float)(1 << startMip);
+
+    [unroll]
+    for (int dy = -1; dy <= 1; ++dy)
+    {
+        [unroll]
+        for (int dx = -1; dx <= 1; ++dx)
+        {
+            float2 sampleUV = uv + float2(dx, dy) * texelSizeAtMip;
+            
+            // Clamp sample to frame boundaries
+            //sampleUV = clamp(sampleUV, _InputSize.zw, 1.0f - _InputSize.zw);
+
+            TreeSampleNode node = { sampleUV, startMip, 1.0f };
+            
+            stack[stackCount] = node;
+            stackCount++;
+        }
+    }
+
+    // 5. Quadtree Execution Loop
+    float4 accumulatedColor = float4((1-darknessShortfall) *centerRawColor, 0);
+    float totalWeight = 1e-5f;
+
+    // Process stack elements until exhausted or buffer bounds are met
+    while (stackCount > 0 && stackCount < STACK_SIZE)
+    {
+        // Pop top node from execution stack
+        stackCount--;
+        TreeSampleNode current = stack[stackCount];
+
+        // Fetch Structural Profile for the sample point (Sampled from the Full-Res Guide)
+        float4 sampleG1 = _Albedo.SampleLevel(sampler_point_clamp, current.uv, current.mip);
+        float3 sampleAlbedo = sampleG1.rgb;
+        float4 sampleG2 = _NormalRoughness.SampleLevel(sampler_point_clamp, current.uv, current.mip);
+        float3 sampleNormal = sampleG2.xyz;// * 2.0f - 1.0f;
+        float sampleTrans = _Transmissibility.SampleLevel(sampler_point_clamp, current.uv, current.mip).x;
+        float logSampleTrans = log(sampleTrans + 1e-6f);
+        float sampleVariance = _Variance.SampleLevel(sampler_linear_clamp, current.uv, current.mip).x;
+
+        // Calculate Structural Affinity Metric (How well does this sample match our center pixel?)
+        // float normalDiff = saturate(dot(centerNormal, sampleNormal));
+        // float wNormal = pow(normalDiff, _NormalSensitivity);
+        // float albedoDiff = distance(centerAlbedo, sampleAlbedo);
+        // float wAlbedo = exp(-albedoDiff * _AlbedoSensitivity);
+        // float transDiff = abs(logCenterTrans - logSampleTrans);
+        // float wTrans = saturate(1.1f * exp(-transDiff * _TransmissibilitySensitivity) - 0.1f);
+        // float varDiff = max(0, centerVariance - sampleVariance);
+        // float wVariance = exp(-varDiff * _VarianceSensitivity);
+
+        // float normalDiff = saturate(dot(centerNormal, sampleNormal));
+        // float wNormal = pow(normalDiff, _NormalSensitivity);
+        float wNormal = 1;
+        float albedoDiff = distance(centerAlbedo, sampleAlbedo);
+        float wAlbedo = 1 - saturate(albedoDiff / _AlbedoSensitivity);
+        wAlbedo *= wAlbedo;
+        float transDiff = abs(logCenterTrans - logSampleTrans);
+        float wTrans = 1 - saturate(transDiff / _TransmissibilitySensitivity);
+        wTrans *= wTrans;
+        float varDiff = min(0, centerVariance - sampleVariance);
+        float wVariance = 1 - saturate(-varDiff / _VarianceSensitivity);
+        wVariance *= wVariance;
+
+        float structuralWeight = wNormal * wAlbedo * wTrans * wVariance;
+
+        // Check if this node strikes an edge and requires a Quadtree split
+        // Condition: structural match is low AND we haven't hit the sharpest M0 layer yet
+        if (current.mip > 0) //structuralWeight < _SplitThreshold && current.mip > 0)
+        {
+            // Shatter this node into 4 child samples at the next higher detail level (current.mip - 1)
+            int childMip = current.mip - 1;
+            float2 childTexelSize = _InputSize.zw * (float)(1 << childMip);
+            float childSize = current.size * 0.25f; // Energy conservation: area scales down by 4
+
+            // Check stack space bounds before pushing children
+            if (stackCount <= STACK_SIZE - 4)
+            {
+                // Push 4 subpixel offsets surrounding the parent node location
+                stack[stackCount]     = MakeNode(current.uv + float2(-0.5f, -0.5f) * childTexelSize, childMip, childSize);
+                stack[stackCount + 1] = MakeNode(current.uv + float2( 0.5f, -0.5f) * childTexelSize, childMip, childSize);
+                stack[stackCount + 2] = MakeNode(current.uv + float2(-0.5f,  0.5f) * childTexelSize, childMip, childSize);
+                stack[stackCount + 3] = MakeNode(current.uv + float2( 0.5f,  0.5f) * childTexelSize, childMip, childSize);
+                stackCount += 4;
+                continue; // Skip gathering color for the parent; its children will handle it
+            }
+        }
+
+        // Leaf Node Resolution: If the node is structurally sound OR reached M0, accumulate its value
+        float4 sampledColor = _Input.SampleLevel(sampler_linear_clamp, current.uv, current.mip);
+        
+        //if(current.mip == 0) {
+            // Scale weight by the node size to guarantee energy conservation across varying mip resolutions
+            float absoluteWeight = structuralWeight * current.size;
+
+            accumulatedColor += sampledColor * absoluteWeight;
+            totalWeight += absoluteWeight;
+        //}
+    }
+
+    // 6. Output Final Anisotropic Composition
+    _Output[id.xy] = accumulatedColor / totalWeight;
+}

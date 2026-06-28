@@ -276,11 +276,11 @@ public class TrainingManager : DisposalHelperComponent {
         }   
 
         if(_referencePathEXR != null) {
-            _simulation.SimulationOutputHDR.SaveTextureEXR(_referencePathEXR);
+            _simulation.SimulationOutput.SaveTextureEXR(_referencePathEXR);
         }
 
         if(_previewPathPNG != null) {
-            _simulation.SimulationOutputHDR.SaveTexturePNG(_previewPathPNG, _exposureController.exposure);
+            _simulation.SimulationOutput.SaveTexturePNG(_previewPathPNG, _exposureController.exposure);
         }
 
         if (_activeProfile == inputProfiles.Length)
@@ -289,9 +289,9 @@ public class TrainingManager : DisposalHelperComponent {
         }
         else
         {
-            var sample = new RenderTexture(_simulation.SimulationOutputHDR);
+            var sample = new RenderTexture(_simulation.SimulationOutput);
             var tmp = RenderTexture.active;
-            Graphics.Blit(_simulation.SimulationOutputHDR, sample);
+            Graphics.Blit(_simulation.SimulationOutput, sample);
             RenderTexture.active = tmp;
             profileSamples[_activeProfile] = sample;
         }
@@ -368,7 +368,7 @@ public class TrainingManager : DisposalHelperComponent {
                         baseAngle *= -1;
                     baseAngle += 270;
                     light.angle = baseAngle + _rand.NextRange(-80, 80);
-                    light.scale = new Vector2(_rand.NextRange(0.03f, 0.5f, 0.3f), light.scale.y);
+                    light.scale = new Vector2(_rand.NextRange(0.03f, 0.5f, -0.3f), 0.5f);
                     break;
                 case "Laser":
                     light.position = new Vector2(_rand.NextRange(-3, 3), _rand.NextRange(-3, 3));

@@ -116,11 +116,6 @@ v2f hill_vert(appdata v)
     return o;
 }
 
-float3 tone_map(float3 x)
-{
-    return smoothstep(-4, 2, log10(x));
-}
-
 struct gbuffer_output
 {
     float4 albedo : SV_Target0;

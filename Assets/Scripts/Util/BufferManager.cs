@@ -3,7 +3,6 @@ using System.Collections.Generic;
 using System.Linq;
 using System.Runtime.InteropServices;
 using Unity.Mathematics;
-using Unity.VisualScripting.Dependencies.Sqlite;
 using UnityEngine;
 
 /// <summary>
@@ -36,6 +35,16 @@ public static class BufferManager
     }
 #endif
 
+    public static RenderTexture AcquireTexture(RenderTexture match)
+    {
+        return AcquireTexture3D(match.width, match.height, match.depth, match.format, match.useMipMap);
+    }
+
+    public static RenderTexture AcquireTexture(RenderTexture similar, RenderTextureFormat format)
+    {
+        return AcquireTexture3D(similar.width, similar.height, similar.depth, format, similar.useMipMap);
+    }
+    
     public static RenderTexture AcquireTexture(int width, int height, RenderTextureFormat format, bool withMips = false)
     {
         return AcquireTexture3D(width, height, 0, format, withMips);
@@ -118,6 +127,7 @@ public static class BufferManager
             _textureLibrary.Add(key, list);
         }
         list.Add(tex);
+        tex.name = "BufferManager_Unused";
         tex = null;
     }
 
@@ -250,7 +260,7 @@ public static class BufferManager
             if(_purged) return null;
             if(_teardropScatteringLUT == null)
             {
-                float strength = 10;
+                float strength = 6;
                 _teardropScatteringLUT = LUT.CreateTeardropScatteringLUT(strength).AsTexture();
                 _teardropScatteringLUT.name = $"Teardrop Scattering LUT (Strength={strength})";
             }

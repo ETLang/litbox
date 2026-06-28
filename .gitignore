@@ -6,10 +6,13 @@ Temp/**
 build/**
 ProjectSettings/**
 __pycache__/**
+training_script/__pycache__/**
 training_data/**
 training_output/**
+training_cache/**
 UserSettings/**
 .vscode/**
+*.lscache
 *.csproj
 *.sln
 *.onnx
@@ -24,3 +27,4 @@ Assets/Resources/PerformanceTestRun**
 
 !Packages/manifest.json
 !Packages/packages-lock.json
+wandb/**

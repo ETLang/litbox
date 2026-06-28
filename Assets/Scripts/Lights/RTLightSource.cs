@@ -3,7 +3,7 @@ using System.Collections.Generic;
 using UnityEngine;
 
 [RequireComponent(typeof(SpriteRenderer))]
-public class RTLightSource : MonoBehaviour
+public class RTLightSource : LitboxComponent
 {
     [Range(0, 3)]
     public float intensity = 1;
@@ -20,22 +20,21 @@ public class RTLightSource : MonoBehaviour
     }
 
     public bool Changed {get; protected set;}
-    private Vector4 _previousEnergy;
-    private uint _previousBounces;
-    private Color _previousColor;
-    private Matrix4x4 _previousMatrix;
 
-    protected void Start() {
-        _previousEnergy = Energy;
-        _previousBounces = bounces;
-        _previousMatrix = WorldTransform;
+    protected virtual void Start() {
+        DetectChanges(() => Energy);
+        DetectChanges(() => bounces);
+        DetectChanges(() => WorldTransform);
     }
 
-    protected void Update()
+    protected override void OnInvalidated(string group)
     {
-        Changed = (_previousEnergy != Energy) || (_previousBounces != bounces) || (_previousMatrix != WorldTransform);
-        _previousEnergy = Energy;
-        _previousBounces = bounces;
-        _previousMatrix = WorldTransform;
+        base.OnInvalidated(group);
+        Changed = true;
+    }
+
+    protected override void Update()
+    {
+        base.Update();
     }
 }

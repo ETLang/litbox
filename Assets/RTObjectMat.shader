@@ -59,7 +59,7 @@ Shader "RT/Object"
             {
                 v2f o;
                 o.vertex = UnityObjectToClipPos(v.vertex);
-                o.normal = UnityObjectToWorldNormal(v.normal);
+                o.normal = UnityObjectToWorldNormal(v.normal) * _heightScale;
                 o.uv = TRANSFORM_TEX(v.uv, _MainTex);
                 return o;
             }

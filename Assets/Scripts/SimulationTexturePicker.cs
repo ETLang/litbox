@@ -1,4 +1,5 @@
 using System;
+using Unity.Mathematics;
 using UnityEngine;
 
 [RequireComponent(typeof(Renderer))]
@@ -6,10 +7,11 @@ public class SimulationTexturePicker : LitboxComponent {
     public enum TextureType {
         HDR,
         Variance,
+        UnfilteredVariance,
         Importance,
         ForwardAccumulation,
         AI_ToneMapped,
-        AI_HDR,
+        Denoised_HDR,
         Albedo,
         Transmissibility,
         NormalRoughness,
@@ -17,10 +19,14 @@ public class SimulationTexturePicker : LitboxComponent {
         AnalysisA,
         AnalysisB,
         AnalysisC,
+        V0,
+        LogDensityVolatility,
+        AlbedoMin,
+        AlbedoMax,
+        Quadtree,
     }
 
     [SerializeField] public Simulation simulation;
-    //[SerializeField] private AIAccelerator aiAccelerator;
     [SerializeField] public TextureType type = TextureType.HDR;
 
     int _analysisAKernelId;
@@ -67,14 +73,14 @@ public class SimulationTexturePicker : LitboxComponent {
 
         switch(type) {
         case TextureType.HDR:
-            value = simulation?.SimulationOutputHDR;
+            value = simulation?.SimulationOutput;
             break;
         // case TextureType.AI_ToneMapped:
         //     //value = aiAccelerator?.ToneMappedOutputTexture;
         //     break;
-        // case TextureType.AI_HDR:
-        //     //value = aiAccelerator?.HDROutputTexture;
-        //     break;
+        case TextureType.Denoised_HDR:
+            value = simulation?.GetComponent<Denoiser>()?.DenoisedOutput;
+            break;
         case TextureType.Albedo:
             value = simulation?.GBuffer.AlbedoAlpha;
             break;
@@ -89,6 +95,9 @@ public class SimulationTexturePicker : LitboxComponent {
             break;
         case TextureType.Variance:
             value = simulation?.VarianceMap;
+            break;
+        case TextureType.UnfilteredVariance:
+            value = simulation?.UnfilteredVarianceMap;
             break;
         case TextureType.Importance:
             value = simulation?.ImportanceMap;
@@ -107,6 +116,21 @@ public class SimulationTexturePicker : LitboxComponent {
         case TextureType.AnalysisC:
             ConfigureAnalysisC();
             value = _analysisTargetC;
+            break;
+        case TextureType.V0:
+            value = TracerPostProcessor.Instance.V0;
+            break;
+        case TextureType.LogDensityVolatility:
+            value = TracerPostProcessor.Instance.LogDensityVolatility;
+            break;
+        case TextureType.AlbedoMin:
+            value = TracerPostProcessor.Instance.AlbedoMin;
+            break;
+        case TextureType.AlbedoMax:
+            value = TracerPostProcessor.Instance.AlbedoMax;
+            break;
+        case TextureType.Quadtree:
+            value = TracerPostProcessor.Instance.Quadtree;
             break;
         }
 
@@ -128,8 +152,8 @@ public class SimulationTexturePicker : LitboxComponent {
     void ConfigureAnalysisB()
     {
         if(_analysisTargetB != null) { return; }
-        _analysisTargetA = this.CreateRWTexture(simulation.width, simulation.height, RenderTextureFormat.RFloat);
-        _analysisTargetB = this.CreateRWTexture(simulation.width, simulation.height, RenderTextureFormat.RFloat);
+        _analysisTargetA = this.CreateRWTexture(simulation.VarianceMap.width, simulation.VarianceMap.height, RenderTextureFormat.RFloat);
+        _analysisTargetB = this.CreateRWTexture(simulation.VarianceMap.width, simulation.VarianceMap.height, RenderTextureFormat.RFloat);
     }
 
     void ConfigureAnalysisC()
@@ -159,12 +183,17 @@ public class SimulationTexturePicker : LitboxComponent {
             // Perform 5x5 adaptive filter on AnalysisB to produce AnalysisC
             RunAnalysis(_analysisAKernelId, _analysisTargetA);
             RunAnalysis(_analysisBKernelId, _analysisTargetB, _analysisTargetA);
-            RunAnalysis(_analysisCKernelId, _analysisTargetC, _analysisTargetB);
+            RunAnalysis(_analysisCKernelId, new uint2(16, 16), _analysisTargetC, _analysisTargetB);
             break;
         }
     }
 
     private void RunAnalysis(int kernel, RenderTexture target, RenderTexture previous = null)
+    {
+        RunAnalysis(kernel, uint2.zero, target, previous);
+    }
+
+    private void RunAnalysis(int kernel, uint2 tileSize, RenderTexture target, RenderTexture previous = null)
     {
         if(kernel == -1) { return; }
         if(simulation == null) { return; }
@@ -183,7 +212,7 @@ public class SimulationTexturePicker : LitboxComponent {
         _analysisShader.SetFloat("_sigma_luminance_loose", args.SigmaLuminanceLoose);
         _analysisShader.SetFloat("_k_luminance", args.KLuminance);
 
-        _analysisShader.RunKernel(kernel, target.width, target.height,
+        _analysisShader.RunKernel(kernel, tileSize, target.width, target.height,
             ("_out_analysis", target),
             ("_in_albedo", simulation.GBuffer.AlbedoAlpha),
             ("_in_transmissibility", simulation.GBuffer.Transmissibility),
@@ -192,9 +221,10 @@ public class SimulationTexturePicker : LitboxComponent {
             ("_in_hdr_forward_b", simulation.TracerB.EarlyRadianceForImportanceSampling),
             ("_in_hdr_a", simulation.TracerA.TracerOutput),
             ("_in_hdr_b", simulation.TracerB.TracerOutput),
-            ("_in_hdr_final", simulation.SimulationOutputHDR),
+            ("_in_hdr_final", simulation.SimulationOutput),
             ("_in_importance", simulation.ImportanceMap),
             ("_in_variance", simulation.VarianceMap),
+            ("_in_unfiltered_variance", simulation.UnfilteredVarianceMap),
             ("_in_previous_analysis", previous)
         );
     }

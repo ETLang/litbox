@@ -1,0 +1,89 @@
+#include "../Shaders/LitboxCommon.cginc"
+#pragma kernel CSMain
+
+// Inputs
+RWTexture2D<half4> _in_albedo_min;
+RWTexture2D<half4> _in_albedo_max;
+// RWTexture2D<float4> _in_radiance_min;
+// RWTexture2D<float4> _in_radiance_max;
+RWTexture2D<float4> _in_density_min_max_volatility;
+RWTexture2D<float> _in_quadtree;
+
+// Parameters
+float _albedo_luminance_threshold;
+float _albedo_chroma_threshold;
+float _volatility_threshold;
+float _log_density_threshold;
+
+// Outputs
+RWTexture2D<half4> _out_albedo_min;
+RWTexture2D<half4> _out_albedo_max;
+RWTexture2D<float4> _out_density_min_max_volatility;
+// RWTexture2D<float4> _out_radiance_min;
+// RWTexture2D<float4> _out_radiance_max;
+
+RWTexture2D<float> _out_quadtree;
+
+[numthreads(NUMTHREADS_2D)]
+void CSMain(uint3 id : SV_DispatchThreadID) {
+    uint2 src_id = 2 * id.xy;
+
+    bool child_a = _in_quadtree[src_id].x != 0;
+    bool child_b = _in_quadtree[src_id + uint2(1, 0)].x != 0;
+    bool child_c = _in_quadtree[src_id + uint2(0, 1)].x != 0;
+    bool child_d = _in_quadtree[src_id + uint2(1, 1)].x != 0;
+
+    half3 albedo_min_a = _in_albedo_min[src_id].rgb;
+    half3 albedo_min_b = _in_albedo_min[src_id + uint2(1, 0)].rgb;
+    half3 albedo_min_c = _in_albedo_min[src_id + uint2(0, 1)].rgb;
+    half3 albedo_min_d = _in_albedo_min[src_id + uint2(1, 1)].rgb;
+    half3 albedo_min = min(min(albedo_min_a, albedo_min_b),
+                            min(albedo_min_c, albedo_min_d));
+
+    half3 albedo_max_a = _in_albedo_max[src_id].rgb;
+    half3 albedo_max_b = _in_albedo_max[src_id + uint2(1, 0)].rgb;
+    half3 albedo_max_c = _in_albedo_max[src_id + uint2(0, 1)].rgb;
+    half3 albedo_max_d = _in_albedo_max[src_id + uint2(1, 1)].rgb;
+    half3 albedo_max = max(max(albedo_max_a, albedo_max_b),
+                            max(albedo_max_c, albedo_max_d));
+
+    // float3 radiance_min_a = _in_radiance_min[src_id].rgb;
+    // float3 radiance_min_b = _in_radiance_min[src_id + uint2(1, 0)].rgb;
+    // float3 radiance_min_c = _in_radiance_min[src_id + uint2(0, 1)].rgb;
+    // float3 radiance_min_d = _in_radiance_min[src_id + uint2(1, 1)].rgb;
+    // float3 radiance_min = min(min(radiance_min_a, radiance_min_b),
+    //                         min(radiance_min_c, radiance_min_d));
+
+    // float3 radiance_max_a = _in_radiance_max[src_id].rgb;
+    // float3 radiance_max_b = _in_radiance_max[src_id + uint2(1, 0)].rgb;
+    // float3 radiance_max_c = _in_radiance_max[src_id + uint2(0, 1)].rgb;
+    // float3 radiance_max_d = _in_radiance_max[src_id + uint2(1, 1)].rgb;
+    // float3 radiance_max = max(max(radiance_max_a, radiance_max_b),
+    //                           max(radiance_max_c, radiance_max_d));
+
+    float4 density_vol_a = _in_density_min_max_volatility[src_id];
+    float4 density_vol_b = _in_density_min_max_volatility[src_id + uint2(1, 0)];
+    float4 density_vol_c = _in_density_min_max_volatility[src_id + uint2(0, 1)];
+    float4 density_vol_d = _in_density_min_max_volatility[src_id + uint2(1, 1)];
+    float density_min = min(min(density_vol_a.x, density_vol_b.x), min(density_vol_c.x, density_vol_d.x));
+    float density_max = max(max(density_vol_a.y, density_vol_b.y), max(density_vol_c.y, density_vol_d.y));
+    float volatility_max = max(max(density_vol_a.z, density_vol_b.z), max(density_vol_c.z, density_vol_d.z));
+
+    half albedo_lum_deviation = albedo_max.x - albedo_min.x;
+    half albedo_chroma_deviation = length(albedo_max.yz - albedo_min.yz);
+    float density_deviation = density_max - density_min;
+    
+    bool should_split = child_a || child_b || child_c || child_d ||
+                        albedo_lum_deviation > _albedo_luminance_threshold ||
+                        albedo_chroma_deviation > _albedo_chroma_threshold ||
+                        density_deviation > _log_density_threshold ||
+                        volatility_max > _volatility_threshold;
+
+    _out_albedo_min[id.xy] = half4(albedo_min, 1);
+    _out_albedo_max[id.xy] = half4(albedo_max, 1);
+    // _out_radiance_min[id.xy] = float4(radiance_min, 0);
+    // _out_radiance_max[id.xy] = float4(radiance_max, 0);
+    _out_density_min_max_volatility[id.xy] = float4(density_min, density_max, volatility_max, 0);
+
+    _out_quadtree[id.xy] = should_split ? 1 : 0;
+}

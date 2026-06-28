@@ -19,9 +19,10 @@ public class UfoController2 : MonoBehaviour
     [SerializeField] float maxSpeed = 5;
     [SerializeField] float horizontalAcceleration = 10;
     [SerializeField] float verticalAcceleration = 10;
-    [SerializeField] float maxAltitude = 20;
+   // [SerializeField] float maxAltitude = 20;
     [SerializeField] float maxTiltAngle = 15;
     [SerializeField] float returnForce = 1;
+    [SerializeField] Animator tractorBeam;
 
 
     float _xIntent = 0;
@@ -69,8 +70,16 @@ public class UfoController2 : MonoBehaviour
         float dySign = Mathf.Sign(deltaY);
         deltaY = Mathf.Abs(deltaY);
 
-        float accelX = Mathf.Clamp(horizontalAcceleration /* Time.fixedDeltaTime*/, 0, deltaX) * dxSign;
-        float accelY = Mathf.Clamp(verticalAcceleration /* Time.fixedDeltaTime*/, 0, deltaY) * dySign;
+        float accelX = 0;
+        float accelY = 0;
+
+        if(deltaX > 0.1f) {
+            accelX = Mathf.Clamp(horizontalAcceleration /* Time.fixedDeltaTime*/, 0, deltaX) * dxSign;
+        }
+
+        if(deltaY > 0.1f) {
+            accelY = Mathf.Clamp(verticalAcceleration /* Time.fixedDeltaTime*/, 0, deltaY) * dySign;
+        }
 
         body.AddForce(new Vector2(accelX, accelY) * body.mass, ForceMode2D.Force);
 
@@ -111,7 +120,11 @@ public class UfoController2 : MonoBehaviour
 
     void OnTractor(InputValue valueIn)
     {
-        Debug.Log("INPUT: Tractor - " + valueIn.isPressed.ToString());
+        if(tractorBeam)
+        {
+            tractorBeam.SetBool("BeamOn", valueIn.isPressed);
+        }
+        //Debug.Log("INPUT: Tractor - " + valueIn.isPressed.ToString());
     }
 
     void OnDeviceLost()

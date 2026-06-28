@@ -5,6 +5,8 @@ using UnityEngine;
 public abstract class DisposalHelperComponent : MonoBehaviour
 {
     private List<IDisposable> disposeOnDisable = new List<IDisposable>();
+    private List<IDisposable> disposeOnNextFrame = new List<IDisposable>();
+    private List<IDisposable> disposeOnThisFrame = new List<IDisposable>();
 
     private class DisposableWrapper : IDisposable {
         public DisposableWrapper(Action onDispose) {
@@ -23,6 +25,16 @@ public abstract class DisposalHelperComponent : MonoBehaviour
         disposeOnDisable.Add(new DisposableWrapper(disposal));
     }
 
+    public void DisposeOnNextFrame(IDisposable o)
+    {
+        disposeOnNextFrame.Add(o);
+    }
+
+    public void DisposeOnNextFrame(Action disposal)
+    {
+        disposeOnNextFrame.Add(new DisposableWrapper(disposal));
+    }
+
     protected virtual void OnDisable() {
         foreach(var o in disposeOnDisable) {
             o.Dispose();
@@ -30,4 +42,15 @@ public abstract class DisposalHelperComponent : MonoBehaviour
         disposeOnDisable.Clear();
     }
 
+    protected virtual void Update()
+    {
+        foreach(var o in disposeOnThisFrame) {
+            o.Dispose();
+        }
+        disposeOnThisFrame.Clear();
+
+        var swap = disposeOnThisFrame;
+        disposeOnThisFrame = disposeOnNextFrame;
+        disposeOnNextFrame = swap;
+    }
 }

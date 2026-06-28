@@ -1,4 +1,5 @@
 using System;
+using Unity.InferenceEngine;
 using Unity.Mathematics;
 using UnityEngine;
 
@@ -23,10 +24,19 @@ public static class ComputeShaderExtensions
 
     public static void RunKernel(this ComputeShader shader, string kernel, int w, int h, params (string,object)[] args)
     {
-        RunKernel(shader, shader.FindKernel(kernel), w, h, args);
+        RunKernel(shader, shader.FindKernel(kernel), uint2.zero, w, h, args);
     }
 
-    public static void RunKernel(this ComputeShader shader, int kernelID, int w, int h, params (string,object)[] args) {
+    public static void RunKernel(this ComputeShader shader, int kernelID, int w, int h, params (string,object)[] args)
+    {
+        RunKernel(shader, kernelID, uint2.zero, w, h, args);
+    }
+
+    public static void RunKernel(this ComputeShader shader, string kernel, uint2 tileSize, int w, int h, params (string,object)[] args) {
+        RunKernel(shader, shader.FindKernel(kernel), tileSize, w, h, args);
+    }
+
+    public static void RunKernel(this ComputeShader shader, int kernelID, uint2 tileSize, int w, int h, params (string,object)[] args) {
         foreach(var tuple in args) {
             switch(tuple.Item2) {
             case null:
@@ -45,8 +55,20 @@ public static class ComputeShaderExtensions
             case ComputeBuffer buffer:
                 shader.SetBuffer(kernelID, tuple.Item1, buffer);
                 break;
+            case Tensor<float> tensor:
+                using(var data = ComputeTensorData.Pin(tensor)) {
+                    shader.SetBuffer(kernelID, tuple.Item1, data.buffer);
+                }
+                break;
             case MipSpec mipSpec:
                 shader.SetTexture(kernelID, tuple.Item1, mipSpec.texture, mipSpec.mipLevel);
+                break;
+            case TextureView textureView:
+                if(textureView.mipLevel == -1) {
+                    shader.SetTexture(kernelID, tuple.Item1, textureView.texture);
+                } else {
+                    shader.SetTexture(kernelID, tuple.Item1, textureView.texture, textureView.mipLevel);
+                }
                 break;
             case int ix:
                 shader.SetInt(tuple.Item1, ix);
@@ -68,13 +90,24 @@ public static class ComputeShaderExtensions
             }
         }
 
-        shader.DispatchAutoGroup(kernelID, w, h, 1);
+        if(tileSize.Equals(uint2.zero)) {
+            shader.DispatchAutoGroup( kernelID, w, h, 1);
+        } else {
+            shader.DispatchAutoGroupTiled(kernelID, tileSize, w, h);
+        }
     }
 
     public static void DispatchAutoGroup(this ComputeShader shader, int kernelID, int threadsX, int threadsY, int threadsZ)
     {
         var groupCount = shader.GetThreadGroupCount(kernelID, threadsX, threadsY, threadsZ);
         shader.Dispatch(kernelID, groupCount.x, groupCount.y, groupCount.z); 
+    }
+
+    public static void DispatchAutoGroupTiled(this ComputeShader shader, int kernelId, uint2 tileSize, int w, int h)
+    {
+        int xGroups = (int)((w - 1) / tileSize.x + 1);
+        int yGroups = (int)((h - 1) / tileSize.y + 1);
+        shader.Dispatch(kernelId, xGroups, yGroups, 1);
     }
 
     public static void SetShaderFlag(this ComputeShader shader, string keyword, bool value) {
@@ -93,5 +126,25 @@ public static class ComputeShaderExtensions
             texture = texture,
             mipLevel = mip,
         };
+    }
+
+    public static void SetUnalignedFloatArray(this ComputeShader shader, int nameId, float[] arr)
+    {
+        float[] aligned = new float[arr.Length * 4];
+        for(int i = 0;i < arr.Length;i++)
+        {
+            aligned[4*i] = arr[i];
+        }
+        shader.SetFloats(nameId, aligned);
+    }
+
+    public static void SetUnalignedFloatArray(this ComputeShader shader, string name, float[] arr)
+    {
+        float[] aligned = new float[arr.Length * 4];
+        for(int i = 0;i < arr.Length;i++)
+        {
+            aligned[4*i] = arr[i];
+        }
+        shader.SetFloats(name, aligned);
     }
 }

@@ -1,4 +1,5 @@
 #include "../Shaders/LitboxCommon.cginc"
+#include "Variance.compute"
 
 #pragma kernel AnalysisA
 #pragma kernel AnalysisB
@@ -15,6 +16,7 @@ Texture2D<float4> _in_hdr_b;
 Texture2D<float4> _in_hdr_final;
 Texture2D<float4> _in_importance;
 Texture2D<float4> _in_variance;
+Texture2D<float4> _in_unfiltered_variance;
 Texture2D<float4> _in_previous_analysis;
 
 RWTexture2D<float4> _out_analysis;
@@ -42,9 +44,9 @@ void AnalysisA(uint3 id : SV_DispatchThreadID) {
     _out_analysis[id.xy] = float4(relative_variance, 0, 0, 1);
 }
 
-float Gweight(float delta, float sigma) {
-    return exp(-0.5 * (delta * delta) / (sigma * sigma));
-}
+// float Gweight(float delta, float sigma) {
+//     return exp(-0.5 * (delta * delta) / (sigma * sigma));
+// }
 
 [numthreads(NUMTHREADS_2D)]
 void AnalysisB(uint3 id : SV_DispatchThreadID) {
@@ -62,7 +64,7 @@ void AnalysisB(uint3 id : SV_DispatchThreadID) {
     // 5x5 kernel
     // Weights: Spatial(σ=1.2), Albedo(σ=0.05), Normal (TBD), Adaptive Luminance (σ_tight=0.05, σ_loose=2.5, k=2) (high variance => high sigma, low variance => low sigma)
 
-    float sig_adaptive = lerp(0.05, 2.5, smoothstep(0, 1.0/_k_luminance, _in_variance[id.xy].r));
+    float sig_adaptive = lerp(0.05, 2.5, smoothstep(0, 1.0/_k_luminance, _in_unfiltered_variance[id.xy].r));
     float total_weight = 0; 
     float4 output = 0;
 
@@ -77,14 +79,15 @@ void AnalysisB(uint3 id : SV_DispatchThreadID) {
             float sample_weight = spatial_weight * albedo_weight * luminance_weight;
             
             total_weight += sample_weight;
-            output += _in_previous_analysis[neighbor_id] * sample_weight;
+            output += _in_unfiltered_variance[neighbor_id] * sample_weight;
         }
     }
 
     _out_analysis[id.xy] = output / total_weight;
 }
 
-[numthreads(NUMTHREADS_2D)]
-void AnalysisC(uint3 id : SV_DispatchThreadID) {
-
+[numthreads(GROUP_SIZE,GROUP_SIZE,1)]
+void AnalysisC(uint3 Gid : SV_GroupID, uint2 localID : SV_GroupThreadID, uint2 id : SV_DispatchThreadID) {
+    float3 result = ComputeVariance(Gid, localID, id, _in_hdr_a, _in_hdr_b, _in_albedo);
+    _out_analysis[result.yz] = float4(result.x, 0, 0, 1);
 }

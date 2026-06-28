@@ -1,0 +1,170 @@
+#pragma kernel ResidualConv
+#pragma kernel BasicMaxPool
+
+// Fused operation flags
+#pragma multi_compile __ USE_RELU
+#pragma multi_compile __ USE_PIXEL_SHUFFLE
+#pragma multi_compile __ USE_CLAMP_PAD
+#pragma multi_compile __ USE_ADD
+#pragma multi_compile __ USE_VIRTUAL_CONCAT
+#pragma multi_compile __ USE_DILATION
+
+// --- UNIFORMS ---
+
+// All tensors are Texture2DArrays to support > 4 channels.
+// A single Texture2D is treated as an array with 1 slice.
+Texture2DArray<float4> _Input;
+RWTexture2DArray<float4> _Output;
+
+#if USE_VIRTUAL_CONCAT
+Texture2DArray<float4> _ConcatInput;
+#endif
+#if USE_ADD
+Texture2DArray<float4> _AddInput;
+#endif
+
+StructuredBuffer<float> _Weights;
+int4 _WeightsShape; // out_channels, in_channels, kernel_h, kernel_w
+int _WeightOffset;
+int _BiasOffset;
+
+int _InputSlices; // Number of slices for _Input, used for virtual concat logic
+
+int2 _Dilation;
+
+
+// --- HELPERS ---
+
+// Reads a single float value from the correct input tensor (main or concat) at a specific channel index.
+float GetInputValue(uint2 coord, uint channel_idx)
+{
+    uint slice = channel_idx / 4;
+    uint component = channel_idx % 4;
+    float4 val;
+
+#if USE_VIRTUAL_CONCAT
+    if (slice < _InputSlices)
+    {
+        val = _Input.Load(uint4(coord.x, coord.y, slice, 0));
+    }
+    else
+    {
+        val = _ConcatInput.Load(uint4(coord.x, coord.y, slice - _InputSlices, 0));
+    }
+#else
+    val = _Input.Load(uint4(coord.x, coord.y, slice, 0));
+#endif
+    return val[component];
+}
+
+// Reads a single weight from the weights buffer.
+float GetWeight(int out_c, int in_c, int ky, int kx)
+{
+    int in_channels = _WeightsShape.y;
+    int kernel_h = _WeightsShape.z;
+    int kernel_w = _WeightsShape.w;
+    int idx = out_c * (in_channels * kernel_h * kernel_w) +
+              in_c * (kernel_h * kernel_w) +
+              ky * kernel_w +
+              kx;
+    return _Weights[_WeightOffset + idx];
+}
+
+
+// --- KERNELS ---
+
+[numthreads(8, 8, 1)]
+void BasicMaxPool(uint3 id : SV_DispatchThreadID)
+{
+    uint width, height, slices;
+    _Output.GetDimensions(width, height, slices);
+    if (id.x >= width || id.y >= height || id.z >= slices) return;
+
+    int2 src_coord = id.xy * 2;
+    int slice = id.z;
+
+    float4 v0 = _Input.Load(int4(src_coord.x,     src_coord.y,     slice, 0));
+    float4 v1 = _Input.Load(int4(src_coord.x + 1, src_coord.y,     slice, 0));
+    float4 v2 = _Input.Load(int4(src_coord.x,     src_coord.y + 1, slice, 0));
+    float4 v3 = _Input.Load(int4(src_coord.x + 1, src_coord.y + 1, slice, 0));
+
+    _Output[id.xyz] = max(max(v0, v1), max(v2, v3));
+}
+
+[numthreads(8, 8, 1)]
+void ResidualConv(uint3 id : SV_DispatchThreadID)
+{
+    uint width, height, slices;
+    _Output.GetDimensions(width, height, slices);
+    if (id.x >= width || id.y >= height || id.z >= slices) return;
+
+    uint2 out_coord = id.xy;
+    uint out_slice = id.z;
+
+    uint in_channels_total = _WeightsShape.y;
+    uint kernel_h = _WeightsShape.z;
+    uint kernel_w = _WeightsShape.w;
+    uint2 kernel_size = int2(kernel_w, kernel_h);
+    uint2 kernel_half = kernel_size / 2;
+
+    uint2 src_coord_base = out_coord;
+    uint4 out_channels_to_compute = out_slice * 4 + int4(0, 1, 2, 3);
+
+#if USE_PIXEL_SHUFFLE
+    src_coord_base = out_coord / 2;
+    uint2 shuffle_offset = out_coord % 2;
+    uint shuffle_index = shuffle_offset.x + shuffle_offset.y * 2;
+    
+    // The convolution's output channels are 4x the final channel count.
+    // We need to gather the correct channels for this output pixel.
+    out_channels_to_compute = out_channels_to_compute * 4 + shuffle_index;
+#endif
+
+    // Load bias for the 4 channels we are computing
+    float4 sum = float4(
+        _Weights[_BiasOffset + out_channels_to_compute.x],
+        _Weights[_BiasOffset + out_channels_to_compute.y],
+        _Weights[_BiasOffset + out_channels_to_compute.z],
+        _Weights[_BiasOffset + out_channels_to_compute.w]
+    );
+
+    // Main convolution loop
+    for (uint ky = 0; ky < kernel_h; ++ky)
+    {
+        for (uint kx = 0; kx < kernel_w; ++kx)
+        {
+            int2 offset = int2(kx, ky) - int2(kernel_half);
+        #if USE_DILATION
+            offset *= _Dilation.yx;
+        #endif
+            int2 sample_coord = int2(src_coord_base) + offset;
+
+        #if USE_CLAMP_PAD
+            uint in_w, in_h, in_slices;
+            _Input.GetDimensions(in_w, in_h, in_slices);
+            sample_coord = clamp(sample_coord, 0, uint2(in_w - 1, in_h - 1));
+        #endif
+
+            for (uint in_c = 0; in_c < in_channels_total; ++in_c)
+            {
+                float input_val = GetInputValue(sample_coord, in_c);
+
+                // Accumulate for each of the 4 output channels this thread is responsible for
+                sum.x += input_val * GetWeight(out_channels_to_compute.x, in_c, ky, kx);
+                sum.y += input_val * GetWeight(out_channels_to_compute.y, in_c, ky, kx);
+                sum.z += input_val * GetWeight(out_channels_to_compute.z, in_c, ky, kx);
+                sum.w += input_val * GetWeight(out_channels_to_compute.w, in_c, ky, kx);
+            }
+        }
+    }
+
+#if USE_ADD
+    sum += _AddInput.Load(uint4(out_coord.x, out_coord.y, out_slice, 0));
+#endif
+
+#if USE_RELU
+    sum = max(0, sum);
+#endif
+
+    _Output[id.xyz] = sum;
+}

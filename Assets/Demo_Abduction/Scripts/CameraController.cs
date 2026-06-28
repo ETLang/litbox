@@ -69,7 +69,7 @@ public class CameraController : MonoBehaviour
 
             var groundBasedY = groundY + camera.orthographicSize;
 
-            if(transform.position.y < groundBasedY) {
+            if(idealY < groundBasedY) {
                 idealY = groundBasedY;
             }
 

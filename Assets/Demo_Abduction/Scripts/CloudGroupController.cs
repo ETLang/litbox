@@ -10,7 +10,7 @@ public class CloudGroupController : LitboxComponent
     [SerializeField] Material foregroundCloudMat;
     [SerializeField] int foregroundSimulationLOD = 5;
     [SerializeField, Range(0, 120)] int blurSize = 1; // kernelsize = 2 * blurSize + 1
-    [SerializeField, Range(0, 3)] float transmissionDepth = 1.5f;
+    [SerializeField, Range(0, 10)] float transmissionDepth = 1.5f;
     
     Simulation _simulation;
     BindSimulationToCamera _binder;
@@ -38,8 +38,8 @@ public class CloudGroupController : LitboxComponent
         DetectChanges(() => foregroundSimulationLOD, "foregroundSimulation");
         DetectChanges(() => blurSize);
         DetectChanges(() => _simulationUVTransform);
-        DetectChanges(() => _simulation?.SimulationOutputHDR.width, "foregroundSimulation");
-        DetectChanges(() => _simulation?.SimulationOutputHDR.height, "foregroundSimulation");
+        DetectChanges(() => _simulation?.SimulationOutput.width, "foregroundSimulation");
+        DetectChanges(() => _simulation?.SimulationOutput.height, "foregroundSimulation");
         DetectChanges(() => transmissionDepth);
     }
 
@@ -76,7 +76,7 @@ public class CloudGroupController : LitboxComponent
 
         if(blurSize != 0) {
             _gaussianBlurShader.RunKernel("CloudForegroundBlur", _foregroundSimulationTex.width, _foregroundSimulationTex.height,
-                ("blur_input", _simulation.SimulationOutputHDR),
+                ("blur_input", _simulation.SimulationOutput),
                 ("blur_output", _intermediateSimulationTex),
                 ("transmissibility", _simulation.GBuffer.Transmissibility),
                 ("transmission_depth", transmissionDepth),
@@ -109,6 +109,10 @@ public class CloudGroupController : LitboxComponent
         if(_binder != null) {
             _simulationUVTransform = _binder.ScreenToSimulationUVTransform;
         }
+
+        if(blurSize == 0) {
+            foregroundCloudMat.SetTexture(_foregroundSimulationTexId, _simulation.SimulationOutput);
+        }
     }
 
     protected override void OnInvalidated(string group)
@@ -127,14 +131,14 @@ public class CloudGroupController : LitboxComponent
             }
 
             _intermediateSimulationTex = this.CreateRWTexture(
-                _simulation.SimulationOutputHDR.MipWidth(foregroundSimulationLOD),
-                _simulation.SimulationOutputHDR.MipHeight(foregroundSimulationLOD),
-                _simulation.SimulationOutputHDR.format);
+                _simulation.SimulationOutput.MipWidth(foregroundSimulationLOD),
+                _simulation.SimulationOutput.MipHeight(foregroundSimulationLOD),
+                _simulation.SimulationOutput.format);
 
             _foregroundSimulationTex = this.CreateRWTexture(
-                _simulation.SimulationOutputHDR.MipWidth(foregroundSimulationLOD),
-                _simulation.SimulationOutputHDR.MipHeight(foregroundSimulationLOD),
-                _simulation.SimulationOutputHDR.format);
+                _simulation.SimulationOutput.MipWidth(foregroundSimulationLOD),
+                _simulation.SimulationOutput.MipHeight(foregroundSimulationLOD),
+                _simulation.SimulationOutput.format);
             
             _kernelSampleCount = 0; // Force kernel recalculation
         }
@@ -159,7 +163,7 @@ public class CloudGroupController : LitboxComponent
             float total = 0;
             for(int i = -blurSize;i <= blurSize;i++) {
                // for(int j = -blurSize;j <= blurSize;j++) {
-                    float weight = Mathf.Exp(-((i * i) / (float)blurSize * 1.5f));
+                    float weight = Mathf.Exp(-((i * i) / (float)blurSize * 0.5f));
                     _kernelWeights[i + blurSize] = weight;
                     total += weight;
                // }
@@ -174,7 +178,7 @@ public class CloudGroupController : LitboxComponent
 
             _weightsLUT = _kernelWeights.AsTexture();
             _gaussianBlurShader.SetInt("kernel_sample_count", _kernelSampleCount);
-            _gaussianBlurShader.SetFloats("kernel_weights", _kernelWeights);
+            _gaussianBlurShader.SetUnalignedFloatArray("kernel_weights", _kernelWeights);
             //_gaussianBlurShader.SetVectorArray("kernel_sample_points", _kernelSamples1);
         }
 
@@ -182,7 +186,7 @@ public class CloudGroupController : LitboxComponent
         foregroundCloudMat.SetFloat(_transmissionDepthId, transmissionDepth);
         foregroundCloudMat.SetMatrix(_foregroundSimulationUVTransformId, _simulationUVTransform);
         if(blurSize == 0) {
-            foregroundCloudMat.SetTexture(_foregroundSimulationTexId, _simulation.SimulationOutputHDR);
+            foregroundCloudMat.SetTexture(_foregroundSimulationTexId, _simulation.SimulationOutput);
             foregroundCloudMat.SetInteger(_foregroundSimuilationLodId, foregroundSimulationLOD);
         } else {
             foregroundCloudMat.SetTexture(_foregroundSimulationTexId, _foregroundSimulationTex);

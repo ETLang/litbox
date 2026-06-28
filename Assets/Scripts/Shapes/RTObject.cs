@@ -7,7 +7,7 @@ public class RTObject : LitboxComponent
     [SerializeField] public Texture texture;
     [SerializeField] public Texture normal;
     [SerializeField] public Color color = Color.white;
-    [SerializeField, Range(-10,0)] public float substrateLogDensity;
+    [SerializeField, Range(-10, 0)] public float substrateLogDensity;
     [SerializeField, Range(0, 1)] public float particleAlignment = 0;
     [SerializeField, Range(0, 1)] public float heightScale = 1;
 
