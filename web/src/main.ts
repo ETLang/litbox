@@ -1,62 +1,101 @@
-import './style.css'
-import viteLogo from './assets/vite.svg';
-import typescriptLogo from './assets/typescript.svg';
-import { setupCounter } from './counter.ts'
+import './style.css';
 import { RotatingCube } from './rotating_cube.ts';
 
-document.querySelector<HTMLDivElement>('#app')!.innerHTML = `
-<section id="center">
-  <canvas id="webgpu-canvas" width="300" height="300"></canvas>
-  <div>
-    <h1>Get started</h1>
-    <p>Edit <code>src/main.ts</code> and save to test <code>HMR</code></p>
-  </div>
-  <button id="counter" type="button" class="counter"></button>
-</section>
+// --- DOM ELEMENT SELECTION ---
+const appContainer = document.querySelector('.app-container') as HTMLElement;
+const activityBarButtons = document.querySelectorAll('.activity-bar button');
+const sidebarPane = document.querySelector('.sidebar-pane') as HTMLElement;
+const workspaceViewport = document.querySelector('.workspace-viewport') as HTMLElement;
+const canvas = document.querySelector('canvas') as HTMLCanvasElement;
+const resumeView = document.querySelector('.resume-view') as HTMLElement;
 
-<div class="ticks"></div>
+// --- VIEW DATA MODEL ---
+const viewContent = {
+    intro: {
+        sidebar: `
+            <h3>Introduction</h3>
+            <p>A brief bio and structural navigation hints.</p>
+        `,
+    },
+    litbox: {
+        sidebar: `
+            <h3>Litbox Config</h3>
+            <p>Rays/Pixel: <input type="range" min="1" max="100" value="50" class="slider"></p>
+            <p>Bounce Depth: <input type="range" min="1" max="10" value="5" class="slider"></p>
+        `,
+    },
+    fractals: {
+        sidebar: `
+            <h3>Fractal Parameters</h3>
+            <p>Zoom: <input type="range" min="1" max="1000" value="100" class="slider"></p>
+            <p>Max Iterations: <input type="range" min="10" max="1000" value="200" class="slider"></p>
+        `,
+    },
+    about: {
+        sidebar: `
+            <h3>Contact</h3>
+            <ul>
+                <li><a href="mailto:example@example.com">Email</a></li>
+                <li><a href="https://github.com" target="_blank">GitHub</a></li>
+                <li><a href="https://linkedin.com" target="_blank">LinkedIn</a></li>
+            </ul>
+        `,
+    },
+};
 
-<section id="next-steps">
-  <div id="docs">
-    <svg class="icon" role="presentation" aria-hidden="true"><use href="/icons.svg#documentation-icon"></use></svg>
-    <h2>Documentation</h2>
-    <p>Your questions, answered</p>
-    <ul>
-      <li>
-        <a href="https://vite.dev/" target="_blank">
-          <img class="logo" src="${viteLogo}" alt="" />
-          Explore Vite
-        </a>
-      </li>
-      <li>
-        <a href="https://www.typescriptlang.org" target="_blank">
-          <img class="button-icon" src="${typescriptLogo}" alt="">
-          Learn more
-        </a>
-      </li>
-    </ul>
-  </div>
-  <div id="social">
-    <svg class="icon" role="presentation" aria-hidden="true"><use href="/icons.svg#social-icon"></use></svg>
-    <h2>Connect with us</h2>
-    <p>Join the Vite community</p>
-    <ul>
-      <li><a href="https://github.com/vitejs/vite" target="_blank"><svg class="button-icon" role="presentation" aria-hidden="true"><use href="/icons.svg#github-icon"></use></svg>GitHub</a></li>
-      <li><a href="https://chat.vite.dev/" target="_blank"><svg class="button-icon" role="presentation" aria-hidden="true"><use href="/icons.svg#discord-icon"></use></svg>Discord</a></li>
-      <li><a href="https://x.com/vite_js" target="_blank"><svg class="button-icon" role="presentation" aria-hidden="true"><use href="/icons.svg#x-icon"></use></svg>X.com</a></li>
-      <li><a href="https://bsky.app/profile/vite.dev" target="_blank"><svg class="button-icon" role="presentation" aria-hidden="true"><use href="/icons.svg#bluesky-icon"></use></svg>Bluesky</a></li>
-    </ul>
-  </div>
-</section>
+// --- VIEW SWITCHING LOGIC ---
+function updateView(view) {
+    // Update container attribute for CSS targeting
+    appContainer.dataset.activeView = view;
 
-<div class="ticks"></div>
-<section id="spacer"></section>
-`
+    // Update active button state
+    activityBarButtons.forEach(button => {
+        button.classList.toggle('active', button.dataset.view === view);
+    });
 
-setupCounter(document.querySelector<HTMLButtonElement>('#counter')!)
+    // Update sidebar content
+    sidebarPane.innerHTML = viewContent[view].sidebar;
 
-const canvas = document.querySelector<HTMLCanvasElement>('#webgpu-canvas');
+    // Show/hide main content
+    const isAboutView = view === 'about';
+    resumeView.style.display = isAboutView ? 'block' : 'none';
+    canvas.style.display = isAboutView ? 'none' : 'block';
+}
+
+// --- EVENT LISTENERS ---
+activityBarButtons.forEach(button => {
+    button.addEventListener('click', () => {
+        const view = button.dataset.view;
+        if (view) {
+            updateView(view);
+        }
+    });
+});
+
+// --- INITIALIZE ---
+// Set default view
+updateView('intro');
+
+// Initialize WebGPU Cube
 if (canvas) {
     const cube = new RotatingCube(canvas);
+
+    // Resize canvas to fit its container
+    const resizeObserver = new ResizeObserver(entries => {
+        for (const entry of entries) {
+            const width = entry.contentRect.width;
+            const height = entry.contentRect.height;
+            if (canvas.width !== width || canvas.height !== height) {
+                canvas.width = width;
+                canvas.height = height;
+                // Manually trigger a render to avoid stretching during resize, as
+                // the main render loop might be paused by the browser.
+                cube.render();
+            }
+        }
+    });
+    resizeObserver.observe(workspaceViewport);
     cube.start();
+} else {
+    console.error("Canvas element not found!");
 }

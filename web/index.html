@@ -4,10 +4,51 @@
     <meta charset="UTF-8" />
     <link rel="icon" type="image/svg+xml" href="/favicon.svg" />
     <meta name="viewport" content="width=device-width, initial-scale=1.0" />
-    <title>litbox-webgpu</title>
+    <title>Litbox | E. T. Langley</title>
+    <link rel="stylesheet" href="/src/style.css">
   </head>
   <body>
-    <div id="app"></div>
+    <div class="app-container">
+      <header class="title-bar">
+        <div class="title">Litbox</div>
+        <div class="telemetry">[60.0 FPS] [CPU: 12%] [MEM: 45MB]</div>
+      </header>
+      <nav class="activity-bar">
+        <button data-view="intro" class="active">👋</button>
+        <button data-view="litbox">🕹️</button>
+        <button data-view="fractals">🌀</button>
+        <button data-view="about">📄</button>
+      </nav>
+      <aside class="sidebar-pane">
+        <!-- Content will be injected by TypeScript -->
+      </aside>
+      <main class="workspace-viewport">
+        <canvas></canvas>
+        <div class="terminal-profiler" style="display: none;">
+          <!-- Terminal/Profiler content -->
+        </div>
+        <div class="resume-view" style="display: none;">
+            <h1>Resume</h1>
+            <p>
+                <a href="#" class="download-button">[Download PDF Resume]</a>
+            </p>
+            <p>Lorem ipsum dolor sit amet, consectetur adipiscing elit. ...</p>
+        </div>
+      </main>
+      <footer class="status-bar">
+        <div class="status-left">
+          <span>branch: main</span>
+          <span>🟢 WebGPU: Active</span>
+        </div>
+        <div class="status-center">
+          <span>Click + Drag to rotate camera</span>
+        </div>
+        <div class="status-right">
+          <a href="#">[📥 Download PDF]</a>
+          <a href="#">[✉️ Contact]</a>
+        </div>
+      </footer>
+    </div>
     <script type="module" src="/src/main.ts"></script>
   </body>
 </html>

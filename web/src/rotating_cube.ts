@@ -73,7 +73,7 @@ export class RotatingCube {
         this.context.configure({
             device: this.device,
             format: this.presentationFormat,
-            alphaMode: 'opaque',
+            alphaMode: 'premultiplied',
         });
     }
 
@@ -205,8 +205,8 @@ export class RotatingCube {
             3, 0, 4,
             3, 4, 7,
             // left
-            2, 1, 5,
-            2, 5, 6,
+            2, 5, 1,
+            2, 6, 5,
         ]);
 
         this.indexBuffer = this.device.createBuffer({
@@ -241,32 +241,47 @@ export class RotatingCube {
     }
 
     private getTransformationMatrix(): Float32Array {
-        const viewMatrix = mat4.create();
-        mat4.translate(viewMatrix, viewMatrix, vec3.fromValues(0, 0, -4));
-        const now = Date.now() / 1000;
-        mat4.rotate(
-            viewMatrix,
-            viewMatrix,
-            1,
-            vec3.fromValues(Math.sin(now), Math.cos(now), 0)
-        );
-
-        const projectionMatrix = mat4.create();
-        mat4.perspective(
-            projectionMatrix,
-            (2 * Math.PI) / 5,
-            this.presentationSize[0] / this.presentationSize[1],
-            1,
-            100.0
-        );
-        
-        const modelViewProjectionMatrix = mat4.create();
-        mat4.multiply(modelViewProjectionMatrix, projectionMatrix, viewMatrix);
-
-        return modelViewProjectionMatrix as Float32Array;
+      const viewMatrix = mat4.create();
+      mat4.translate(viewMatrix, viewMatrix, vec3.fromValues(0, 0, -4));
+      const now = Date.now() / 1000;
+      mat4.rotate(
+        viewMatrix,
+        viewMatrix,
+        1,
+        vec3.fromValues(Math.sin(now), Math.cos(now), 0)
+      );
+  
+      const projectionMatrix = mat4.create();
+      const aspect = this.presentationSize[1] > 0 ? this.presentationSize[0] / this.presentationSize[1] : 1;
+      mat4.perspective(
+        projectionMatrix,
+        (2 * Math.PI) / 5,
+        aspect,
+        1,
+        100.0
+      );
+  
+      const modelViewProjectionMatrix = mat4.create();
+      mat4.multiply(modelViewProjectionMatrix, projectionMatrix, viewMatrix);
+  
+      return modelViewProjectionMatrix as Float32Array;
     }
 
-    private render(): void {
+    public render(): void {
+        // If the device is not ready, we can't render.
+        // This can happen if a resize event comes in before initialization.
+        if (!this.device) return;
+
+        if (this.canvas.width !== this.presentationSize[0] || this.canvas.height !== this.presentationSize[1]) {
+            this.presentationSize = [this.canvas.width, this.canvas.height];
+            this.depthTexture.destroy();
+            this.depthTexture = this.device.createTexture({
+                size: this.presentationSize,
+                format: 'depth24plus',
+                usage: GPUTextureUsage.RENDER_ATTACHMENT,
+            });
+        }
+
         const transformationMatrix = this.getTransformationMatrix();
         this.device.queue.writeBuffer(
             this.uniformBuffer,
@@ -283,7 +298,7 @@ export class RotatingCube {
             colorAttachments: [
                 {
                     view: textureView,
-                    clearValue: { r: 0.5, g: 0.5, b: 0.5, a: 1.0 },
+                    clearValue: { r: 0.0, g: 0.0, b: 0.0, a: 0.0 },
                     loadOp: 'clear',
                     storeOp: 'store',
                 },
