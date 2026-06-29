@@ -13,6 +13,7 @@ const resumeView = document.querySelector('.resume-view') as HTMLElement;
 const consoleContainer = document.getElementById('console-container');
 
 if (consoleContainer) {
+    const consoleContainerNonNull: HTMLElement = consoleContainer;
     const originalLog = console.log;
     const originalWarn = console.warn;
     const originalError = console.error;
@@ -21,10 +22,10 @@ if (consoleContainer) {
         const logEntry = document.createElement('div');
         logEntry.textContent = message;
         logEntry.classList.add(`log-${type}`);
-        consoleContainer.appendChild(logEntry);
+        consoleContainerNonNull.appendChild(logEntry);
         // Limit the number of messages to prevent performance issues
-        if (consoleContainer.children.length > 50) {
-            consoleContainer.removeChild(consoleContainer.children[0]);
+        if (consoleContainerNonNull.children.length > 50) {
+            consoleContainerNonNull.removeChild(consoleContainerNonNull.children[0]);
         }
     }
 
