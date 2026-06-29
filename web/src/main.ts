@@ -43,14 +43,16 @@ const viewContent = {
     },
 };
 
+type ViewKey = keyof typeof viewContent;
+
 // --- VIEW SWITCHING LOGIC ---
-function updateView(view) {
+function updateView(view: ViewKey) {
     // Update container attribute for CSS targeting
     appContainer.dataset.activeView = view;
 
     // Update active button state
     activityBarButtons.forEach(button => {
-        button.classList.toggle('active', button.dataset.view === view);
+        button.classList.toggle('active', (button as HTMLElement).dataset.view === view);
     });
 
     // Update sidebar content
@@ -65,9 +67,9 @@ function updateView(view) {
 // --- EVENT LISTENERS ---
 activityBarButtons.forEach(button => {
     button.addEventListener('click', () => {
-        const view = button.dataset.view;
-        if (view) {
-            updateView(view);
+        const view = (button as HTMLElement).dataset.view;
+        if (view && view in viewContent) {
+            updateView(view as ViewKey);
         }
     });
 });
