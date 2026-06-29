@@ -74,29 +74,49 @@ activityBarButtons.forEach(button => {
     });
 });
 
+// --- LAYOUT & RESIZE LOGIC ---
+function updateLayout() {
+    // To break the feedback loop, we must measure the viewport's size without
+    // the influence of the canvas's aspect ratio.
+    // 1. Temporarily hide the canvas so it doesn't affect the layout.
+    const originalDisplay = canvas.style.display;
+    canvas.style.display = 'none';
+
+    // 2. Now, the viewport's dimensions are purely determined by the CSS grid.
+    const rect = workspaceViewport.getBoundingClientRect();
+
+    // 3. Restore the canvas's visibility.
+    canvas.style.display = originalDisplay;
+
+    // 4. Apply the correct dimensions to the canvas.
+    if (canvas.width !== rect.width || canvas.height !== rect.height) {
+        canvas.width = rect.width;
+        canvas.height = rect.height;
+        if (cube) {
+            // Manually trigger a render to avoid stretching during resize.
+            cube.render();
+        }
+    }
+}
+
 // --- INITIALIZE ---
 // Set default view
 updateView('intro');
 
 // Initialize WebGPU Cube
+let cube: RotatingCube | null = null;
 if (canvas) {
-    const cube = new RotatingCube(canvas);
+    cube = new RotatingCube(canvas);
 
-    // Resize canvas to fit its container
-    const resizeObserver = new ResizeObserver(entries => {
-        for (const entry of entries) {
-            const width = entry.contentRect.width;
-            const height = entry.contentRect.height;
-            if (canvas.width !== width || canvas.height !== height) {
-                canvas.width = width;
-                canvas.height = height;
-                // Manually trigger a render to avoid stretching during resize, as
-                // the main render loop might be paused by the browser.
-                cube.render();
-            }
-        }
+    // Set initial size
+    updateLayout();
+
+    // Use ResizeObserver on the main container to react to any size changes
+    const resizeObserver = new ResizeObserver(() => {
+        updateLayout();
     });
-    resizeObserver.observe(workspaceViewport);
+    resizeObserver.observe(appContainer);
+    
     cube.start();
 } else {
     console.error("Canvas element not found!");
