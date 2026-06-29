@@ -9,6 +9,42 @@ const workspaceViewport = document.querySelector('.workspace-viewport') as HTMLE
 const canvas = document.querySelector('canvas') as HTMLCanvasElement;
 const resumeView = document.querySelector('.resume-view') as HTMLElement;
 
+// --- CONSOLE LOG CAPTURE ---
+const consoleContainer = document.getElementById('console-container');
+
+if (consoleContainer) {
+    const originalLog = console.log;
+    const originalWarn = console.warn;
+    const originalError = console.error;
+
+    function appendLog(message: string, type: 'log' | 'warn' | 'error') {
+        const logEntry = document.createElement('div');
+        logEntry.textContent = message;
+        logEntry.classList.add(`log-${type}`);
+        consoleContainer.appendChild(logEntry);
+        // Limit the number of messages to prevent performance issues
+        if (consoleContainer.children.length > 50) {
+            consoleContainer.removeChild(consoleContainer.children[0]);
+        }
+    }
+
+    console.log = (...args: any[]) => {
+        originalLog(...args);
+        appendLog(args.map(arg => String(arg)).join(' '), 'log');
+    };
+
+    console.warn = (...args: any[]) => {
+        originalWarn(...args);
+        appendLog(args.map(arg => String(arg)).join(' '), 'warn');
+    };
+
+    console.error = (...args: any[]) => {
+        originalError(...args);
+        appendLog(args.map(arg => String(arg)).join(' '), 'error');
+    };
+}
+
+
 // --- VIEW DATA MODEL ---
 const viewContent = {
     intro: {

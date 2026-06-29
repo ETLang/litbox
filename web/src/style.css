@@ -10,7 +10,12 @@
   --accent-color: #0099e6; /* Brighter Blue */
 }
 
+html {
+  height: 100%;
+}
+
 body {
+  height: 100%;
   margin: 0;
   font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, "Helvetica Neue", Arial, sans-serif;
   background-color: var(--bg-color);
@@ -18,10 +23,15 @@ body {
   overflow: hidden;
 }
 
+.poo {
+
+  height: 100%;
+}
+
 /* --- DESKTOP LAYOUT (GRID) --- */
 .app-container {
+  height: 100%;
   display: grid;
-  height: 100vh;
   grid-template-columns: 50px 400px 1fr;
   grid-template-rows: 40px 1fr 30px;
   grid-template-areas:
@@ -169,4 +179,38 @@ canvas {
       min-height: 44px;
       padding: 10px;
   }
+
+}
+
+/* --- ON-SCREEN CONSOLE --- */
+#console-container {
+  position: fixed;
+  bottom: 0;
+  left: 0;
+  right: 0;
+  height: 200px;
+  background-color: rgba(0, 0, 0, 0.8);
+  color: #eee;
+  font-family: monospace;
+  font-size: 14px;
+  padding: 10px;
+  overflow-y: scroll;
+  z-index: 10000;
+  border-top: 1px solid var(--border-color);
+  display: flex;
+  flex-direction: column-reverse;
+}
+
+#console-container > div {
+  padding: 2px 0;
+  border-bottom: 1px solid #444;
+}
+#console-container > div:last-child {
+  border-bottom: none;
+}
+#console-container .log-error {
+  color: #ff8080;
+}
+#console-container .log-warn {
+  color: #ffff80;
 }

@@ -69,7 +69,7 @@ export class RotatingCube {
         }
         this.context = context;
         this.presentationFormat = navigator.gpu.getPreferredCanvasFormat();
-        this.presentationSize = [this.canvas.clientWidth, this.canvas.clientHeight];
+        this.presentationSize = [this.canvas.width, this.canvas.height];
         this.context.configure({
             device: this.device,
             format: this.presentationFormat,
@@ -252,7 +252,7 @@ export class RotatingCube {
       );
   
       const projectionMatrix = mat4.create();
-      const aspect = this.canvas.clientHeight > 0 ? this.canvas.clientWidth / this.canvas.clientHeight : 1;
+      const aspect = this.canvas.height > 0 ? this.canvas.width / this.canvas.height : 1;
       mat4.perspective(
         projectionMatrix,
         (2 * Math.PI) / 5,
