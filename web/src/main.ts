@@ -1,4 +1,5 @@
 import './style.css';
+import { ModalDialog } from './modal-dialog.ts';
 import { RotatingCube } from './rotating_cube.ts';
 import { getAboutPageContent } from './about.ts';
 import { getContactForm } from './contact-form.ts';
@@ -160,4 +161,14 @@ if (canvas) {
     cube.start();
 } else {
     console.error("Canvas element not found!");
+}
+
+// --- CONTACT MODAL ---
+const contactLink = document.getElementById('contact-link');
+if (contactLink) {
+    contactLink.addEventListener('click', (e) => {
+        e.preventDefault();
+        const modal = ModalDialog.getInstance();
+        modal.show(getContactForm());
+    });
 }
