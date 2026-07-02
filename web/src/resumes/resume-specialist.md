@@ -1,7 +1,8 @@
 # Evan Lang
 ### High Performance Graphics & Interactive Systems Engineer
+[Denver, CO](#) | [🌐 GitHub](https://github.com/ETLang) | [🔗 LinkedIn](https://www.linkedin.com/in/evan-lang-67a1865/)
 
-Twenty years dedicated to high-performance, high-fidelity graphics-—from bare metal systems operations to high-level interactive user experiences and designer tools. Serving the world's tech and gaming elite, including Microsoft, Google, Meta, and Bungie, I enable teams to leverage everything modern hardware can offer to deliver powerful, beautiful results.
+Twenty years dedicated to high-performance, high-fidelity graphics—from bare metal systems operations to high-level interactive user experiences and designer tools. Serving the world's tech and gaming elite, including Microsoft, Google, Meta, and Bungie, I enable teams to leverage everything modern hardware can offer to deliver powerful, beautiful results.
 
 ---
 

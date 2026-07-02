@@ -257,6 +257,28 @@ canvas {
     padding-bottom: 0.3em;
 }
 
+.resume-view h1 + h3 + p {
+    text-align: center;
+    margin: -0.5em 0 1em;
+    font-size: 1.1em;
+    color: #a0a0a0;
+}
+
+.resume-view h1 + h3 + p a {
+    color: #e0e0e0;
+    text-decoration: none;
+    font-weight: 600;
+    margin: 0 1em;
+}
+
+.resume-view h1 + h3 + p a:first-child {
+    cursor: default;
+}
+
+.resume-view h1 + h3 + p strong {
+    margin-right: 1em;
+}
+
 /* Subtitle under h1 */
 .resume-view h1 + h3 {
     font-size: 1.2em;
@@ -267,6 +289,7 @@ canvas {
     border: none;
     text-transform: none;
     letter-spacing: normal;
+    text-align: center;
 }
 
 .resume-view h2 {
@@ -319,10 +342,6 @@ canvas {
     text-decoration: none;
 }
 
-.resume-view a:hover {
-    text-decoration: underline;
-}
-
 .resume-view strong {
     color: #fff;
     font-weight: 600;
@@ -349,7 +368,7 @@ canvas {
 .header-links a {
     color: var(--text-color);
     text-decoration: none;
-    font-size: 15px;
+    font-size: 1.2em;
     font-weight: 500;
     transition: color 0.2s ease;
 }
