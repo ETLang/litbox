@@ -28,11 +28,8 @@
           <!-- Terminal/Profiler content -->
         </div>
         <div class="resume-view" style="display: none;">
-            <h1>Resume</h1>
-            <p>
-                <a href="#" class="download-button">[Download PDF Resume]</a>
-            </p>
-            <p>Lorem ipsum dolor sit amet, consectetur adipiscing elit. ...</p>
+            <div class="resume-view-specialist"></div>
+            <div class="resume-view-generalist" style="display: none;"></div>
         </div>
       </main>
       <footer class="status-bar">
@@ -51,5 +48,21 @@
     </div>
     <div id="console-container" style="display: none;"></div>
     <script type="module" src="/src/main.ts"></script>
+    <script src="https://cdn.jsdelivr.net/npm/marked/marked.min.js"></script>
+    <script>
+        document.addEventListener('DOMContentLoaded', function() {
+            fetch('/litbox/src/resumes/resume-specialist.md')
+                .then(response => response.text())
+                .then(text => {
+                    document.querySelector('.resume-view-specialist').innerHTML = marked.parse(text);
+                });
+
+            fetch('/litbox/src/resumes/resume-generalist.md')
+                .then(response => response.text())
+                .then(text => {
+                    document.querySelector('.resume-view-generalist').innerHTML = marked.parse(text);
+                });
+        });
+    </script>
   </body>
 </html>

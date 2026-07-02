@@ -90,6 +90,7 @@ body {
   display: flex;
   flex-direction: column;
   position: relative;
+  overflow: hidden;
 }
 
 canvas {
@@ -121,10 +122,27 @@ canvas {
     text-decoration: none;
 }
 
-/* --- VIEW-SPECIFIC CONTENT --- */
+/* --- ABOUT PAGE --- */
+.app-container[data-active-view="about"] {
+    grid-template-columns: 50px 1fr;
+    grid-template-areas:
+        "header header"
+        "activity workspace"
+        "footer footer";
+}
+
+.app-container[data-active-view="about"] .sidebar-pane {
+    display: none;
+}
+
 .resume-view {
     padding: 20px;
     overflow-y: auto;
+    flex-grow: 1;
+}
+
+.resume-view-specialist,
+.resume-view-generalist {
 }
 
 .download-button {
@@ -157,11 +175,6 @@ canvas {
       /* Pinned to top 40vh */
   }
 
-  /* When 'About' is active, canvas is hidden */
-  .app-container[data-active-view="about"] {
-      grid-template-rows: 0 1fr 60px; /* Hide canvas row */
-  }
-
   .sidebar-pane {
     border-right: none;
     overflow-y: auto;
@@ -180,6 +193,14 @@ canvas {
       padding: 10px;
   }
 
+  /* --- ABOUT PAGE --- */
+  .app-container[data-active-view="about"] {
+    grid-template-columns: 1fr;
+    grid-template-rows: 1fr 60px; /* Canvas, Nav */
+    grid-template-areas:
+      "workspace"
+      "activity";
+  }
 }
 
 /* --- ON-SCREEN CONSOLE --- */
