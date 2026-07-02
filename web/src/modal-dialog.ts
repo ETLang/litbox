@@ -2,6 +2,7 @@ export class ModalDialog {
     private overlay: HTMLElement;
     private modalContent: HTMLElement;
     private static instance: ModalDialog;
+    private resizeObserver?: ResizeObserver;
 
     private constructor() {
         this.overlay = document.getElementById('contact-modal-overlay') as HTMLElement;
@@ -14,6 +15,13 @@ export class ModalDialog {
         this.overlay.addEventListener('click', (e) => {
             if (e.target === this.overlay) {
                 this.hide();
+            }
+        });
+
+        window.addEventListener('popstate', (event) => {
+            // If the modal is visible and the history state doesn't indicate it should be, hide it.
+            if (this.overlay.style.display !== 'none' && !event.state?.modalOpen) {
+                this.hide(true); // Hide without affecting history
             }
         });
 
@@ -50,6 +58,11 @@ export class ModalDialog {
 
                 if (response.ok) {
                     form.reset();
+                    // Disconnect the observer since the textarea is about to be removed.
+                    if (this.resizeObserver) {
+                        this.resizeObserver.disconnect();
+                        this.resizeObserver = undefined;
+                    }
                     sessionStorage.removeItem('contactFormEmail');
                     sessionStorage.removeItem('contactFormMessage');
                     this.modalContent.innerHTML = `
@@ -78,11 +91,22 @@ export class ModalDialog {
     }
 
     public show(content: string) {
+        // If a resize observer is active from a previous view, disconnect it.
+        if (this.resizeObserver) {
+            this.resizeObserver.disconnect();
+            this.resizeObserver = undefined;
+        }
+
         // Only set content if it's not already there, to preserve form state
         if (this.modalContent.innerHTML !== content) {
             this.modalContent.innerHTML = content;
         }
         this.overlay.style.display = 'flex';
+
+        // Push a state to the history so the back button can be used to close the modal.
+        if (!history.state?.modalOpen) {
+            history.pushState({ modalOpen: true }, '', window.location.href);
+        }
 
         // Restore form state
         const emailInput = this.modalContent.querySelector('#email') as HTMLInputElement;
@@ -91,10 +115,28 @@ export class ModalDialog {
         if (emailInput && messageInput) {
             emailInput.value = sessionStorage.getItem('contactFormEmail') || '';
             messageInput.value = sessionStorage.getItem('contactFormMessage') || '';
+
+            // When the textarea is resized by the user, its container (.modal-content)
+            // should naturally resize with it. A ResizeObserver ensures that
+            // the browser recalculates layout when the textarea size changes,
+            // making the dialog adjust its size dynamically.
+            this.resizeObserver = new ResizeObserver(() => {
+                // The presence of the observer is often enough to trigger a reflow.
+            });
+            this.resizeObserver.observe(messageInput);
         }
     }
 
-    public hide() {
+    public hide(fromPopState = false) {
+        if (this.overlay.style.display === 'none') {
+            return;
+        }
+
+        // If not triggered by popstate, go back in history.
+        if (!fromPopState && history.state?.modalOpen) {
+            history.back();
+        }
+
         // Save form state
         const emailInput = this.modalContent.querySelector('#email') as HTMLInputElement;
         const messageInput = this.modalContent.querySelector('#message') as HTMLTextAreaElement;
@@ -102,6 +144,12 @@ export class ModalDialog {
         if (emailInput && messageInput) {
             sessionStorage.setItem('contactFormEmail', emailInput.value);
             sessionStorage.setItem('contactFormMessage', messageInput.value);
+        }
+
+        // Disconnect the observer when hiding to clean up resources.
+        if (this.resizeObserver) {
+            this.resizeObserver.disconnect();
+            this.resizeObserver = undefined;
         }
 
         this.overlay.style.display = 'none';

@@ -23,11 +23,6 @@ body {
   overflow: hidden;
 }
 
-.poo {
-
-  height: 100%;
-}
-
 /* --- DESKTOP LAYOUT (GRID) --- */
 .app-container {
   height: 100%;
@@ -137,19 +132,19 @@ canvas {
 
 .resume-view {
     padding: 20px 100px;
+    display: flex;
+    flex-direction: column;
+    /* Let it fill the available space in the viewport */
+    flex: 1;
+    /* Fix for nested flex scrolling */
+    overflow-y: scroll;
 }
 
 .resume-scroll-area {
     position: relative;
     max-width: 800px;
     overflow-y: auto;
-    flex-grow: 1;
-    margin: 0 auto;
-}
-
-.resume-view-specialist,
-.resume-view-generalist {
-    max-width: 800px;
+    flex: 1;
 }
 
 .download-button {
@@ -411,6 +406,7 @@ canvas {
     background-color: var(--bg-color);
     color: var(--text-color);
     border-radius: 4px;
+    box-sizing: border-box;
 }
 
 .contact-form button {
@@ -422,6 +418,7 @@ canvas {
     border-radius: 4px;
     cursor: pointer;
     font-weight: bold;
+    box-sizing: border-box;
 }
 
 .form-success-message {
