@@ -15,6 +15,7 @@ export function getContactForm(): string {
         <textarea id="message" name="message" rows="5" required></textarea>
       </div>
       <button type="submit">Send</button>
+      <p class="form-status"></p>
     </form>
   `;
 }
