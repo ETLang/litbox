@@ -43,8 +43,7 @@ Twenty years dedicated to high-performance, high-fidelity graphics-—from bare 
 
 ## PROJECTS
 
-### Litbox Engine
-*Independent Research & Development*
+### Litbox Engine — Independent Research & Development
 * Architected a 2D ray tracing engine, implementing a tightly optimized light transport simulation and denoiser that runs well on non-RTX hardware, including mobile.
 * Evaluated pure machine learning (ML) denoising architectures as well as hybrid procedural + ML reconstruction methods.
 * Engineered runtimes for Unity and WebGPU, with future plans for Unreal Engine 5.

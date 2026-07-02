@@ -136,13 +136,14 @@ canvas {
 }
 
 .resume-view {
-    padding: 20px;
+    padding: 20px 100px;
     overflow-y: auto;
     flex-grow: 1;
 }
 
 .resume-view-specialist,
 .resume-view-generalist {
+    max-width: 800px;
 }
 
 .download-button {
@@ -201,6 +202,10 @@ canvas {
       "workspace"
       "activity";
   }
+
+  .resume-view {
+      padding: 20px;
+  }
 }
 
 /* --- ON-SCREEN CONSOLE --- */
@@ -234,4 +239,97 @@ canvas {
 }
 #console-container .log-warn {
   color: #ffff80;
+}
+
+/* --- Resume View Content --- */
+.resume-view h1, .resume-view h2, .resume-view h3, .resume-view h4 {
+    font-weight: 600;
+    color: var(--text-color);
+    margin-top: 1.5em;
+    margin-bottom: 1em;
+}
+
+.resume-view h1 {
+    font-size: 2.2em;
+    margin-top: 0;
+    border-bottom: 1px solid var(--accent-color);
+    padding-bottom: 0.3em;
+}
+
+/* Subtitle under h1 */
+.resume-view h1 + h3 {
+    font-size: 1.2em;
+    font-style: italic;
+    color: #a0a0a0; /* Lighter gray */
+    margin-top: -0.5em;
+    margin-bottom: 1em;
+    border: none;
+    text-transform: none;
+    letter-spacing: normal;
+}
+
+.resume-view h2 {
+    font-size: 1.6em;
+    color: var(--accent-color);
+    padding-bottom: 0.3em;
+    border-bottom: 1px solid var(--border-color);
+    margin-top: 2em;
+}
+
+.resume-view h3 {
+    font-size: 1.3em;
+    color: #e0e0e0; /* Slightly brighter than normal text */
+}
+
+
+.resume-view hr {
+    border: none;
+    border-top: 1px solid var(--border-color);
+    margin: 2em 0;
+}
+
+.resume-view p {
+    line-height: 1.6;
+    margin-bottom: 1em;
+}
+
+.resume-view ul {
+    list-style: none;
+    padding-left: 25px;
+    margin-bottom: 1em;
+}
+
+.resume-view li {
+    margin-bottom: 0.6em;
+    position: relative;
+}
+
+.resume-view li::before {
+    content: '▸'; /* filled pointer */
+    position: absolute;
+    left: -20px;
+    color: var(--accent-color);
+    font-size: 1.2em;
+    top: -0.1em;
+}
+
+.resume-view a {
+    color: var(--accent-color);
+    text-decoration: none;
+}
+
+.resume-view a:hover {
+    text-decoration: underline;
+}
+
+.resume-view strong {
+    color: #fff;
+    font-weight: 600;
+}
+
+.resume-view code {
+    background-color: var(--activity-bar-bg);
+    padding: 0.2em 0.4em;
+    border-radius: 3px;
+    font-family: "SFMono-Regular", Consolas, "Liberation Mono", Menlo, Courier, monospace;
 }
