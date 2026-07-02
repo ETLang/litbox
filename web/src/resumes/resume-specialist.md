@@ -5,7 +5,7 @@ Twenty years dedicated to high-performance, high-fidelity graphics-—from bare 
 
 ---
 
-## 💼 EXPERIENCE
+## EXPERIENCE
 
 ### Magic Leap / Google
 **Sr. Software Engineer** | *August 2023 – Present*
@@ -32,7 +32,7 @@ Twenty years dedicated to high-performance, high-fidelity graphics-—from bare 
 
 ---
 
-## 🛠️ SKILLS
+## SKILLS
 
 * **Languages & Systems:** C++, C#, Shaders, Python, PyTorch, SQL, DB, XAML
 * **Graphics & Frameworks:** DirectX, OpenGL, Unity, WPF, WebGL, WebGPU, WGSL
@@ -41,7 +41,7 @@ Twenty years dedicated to high-performance, high-fidelity graphics-—from bare 
 
 ---
 
-## 🚀 PROJECTS
+## PROJECTS
 
 ### Litbox Engine
 *Independent Research & Development*
@@ -65,7 +65,7 @@ Twenty years dedicated to high-performance, high-fidelity graphics-—from bare 
 
 ---
 
-## 🏆 ACHIEVEMENTS
+## ACHIEVEMENTS
 
 * **Destiny 2:** Shipped *Witch Queen* and *Lightfall*
 * **Microsoft Shareholders 2018:** HoloBeam and MIRO showcased in keynote with Satya Nadella
