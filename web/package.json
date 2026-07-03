@@ -9,12 +9,14 @@
     "preview": "vite preview"
   },
   "devDependencies": {
+    "@types/marked": "^5.0.2",
     "@webgpu/types": "^0.1.71",
     "typescript": "~6.0.2",
     "vite": "^8.1.0",
     "vite-plugin-mkcert": "^1.17.1"
   },
   "dependencies": {
-    "gl-matrix": "^3.4.4"
+    "gl-matrix": "^3.4.4",
+    "marked": "^18.0.5"
   }
 }
