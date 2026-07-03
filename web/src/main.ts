@@ -4,6 +4,7 @@ import { ModalDialog } from './modal-dialog.ts';
 import { RotatingCube } from './rotating_cube.ts';
 import { getAboutPageContent } from './about.ts';
 import { getContactForm } from './contact-form.ts';
+import introMdText from './intro.md?raw';
 
 // Import markdown files as URLs. Vite will handle resolving these paths correctly
 // for both development and production builds.
@@ -58,10 +59,7 @@ if (consoleContainer) {
 // --- VIEW DATA MODEL ---
 const viewContent = {
     intro: {
-        sidebar: `
-            <h3>Introduction</h3>
-            <p>A brief bio and structural navigation hints.</p>
-        `,
+        sidebar: introMdText,
     },
     litbox: {
         sidebar: `
@@ -88,7 +86,7 @@ const viewContent = {
 type ViewKey = keyof typeof viewContent;
 
 // --- VIEW SWITCHING LOGIC ---
-function updateView(view: ViewKey) {
+async function updateView(view: ViewKey) {
     // Update container attribute for CSS targeting
     appContainer.dataset.activeView = view;
 
@@ -100,7 +98,12 @@ function updateView(view: ViewKey) {
     const isAboutView = view === 'about';
 
     if (!isAboutView) {
-        sidebarPane.innerHTML = (viewContent[view] as { sidebar: string }).sidebar;
+        const content = viewContent[view] as { sidebar: string };
+        if (view === 'intro') {
+            sidebarPane.innerHTML = await marked.parse(content.sidebar);
+        } else {
+            sidebarPane.innerHTML = content.sidebar;
+        }
     }
 
     // Show/hide main content
@@ -110,10 +113,10 @@ function updateView(view: ViewKey) {
 
 // --- EVENT LISTENERS ---
 activityBarButtons.forEach(button => {
-    button.addEventListener('click', () => {
+    button.addEventListener('click', async () => {
         const view = (button as HTMLElement).dataset.view;
         if (view && view in viewContent) {
-            updateView(view as ViewKey);
+            await updateView(view as ViewKey);
         }
     });
 });
