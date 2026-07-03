@@ -1,4 +1,4 @@
-# Evan Lang (but general)
+# EVAN LANG (but general)
 ### High Performance Graphics & Interactive Systems Engineer
 
 Twenty years dedicated to high-performance, high-fidelity graphics-—from bare metal systems operations to high-level interactive user experiences and designer tools. Serving the world's tech and gaming elite, including Microsoft, Google, Meta, and Bungie, I enable teams to leverage everything modern hardware can offer to deliver powerful, beautiful results.

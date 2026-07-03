@@ -1,4 +1,4 @@
-# Evan Lang
+# EVAN LANG
 ### High Performance Graphics & Interactive Systems Engineer
 [Denver, CO](#) | [🌐 GitHub](https://github.com/ETLang) | [🔗 LinkedIn](https://www.linkedin.com/in/evan-lang-67a1865/)
 

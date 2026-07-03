@@ -1,4 +1,4 @@
-# Evan Lang
+# EVAN LANG
 **Performance Graphics & Interactive Systems Engineer** *Denver, CO Area*
 
 ---
