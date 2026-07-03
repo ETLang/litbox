@@ -1,13 +1,23 @@
 /* --- BASE STYLES & PALETTE --- */
 :root {
-  --bg-color: #182530; /* Darker Blue */
-  --border-color: #243542; /* Darker Blue Gray */
-  --activity-bar-bg: #1a242d; /* Darkest Blue - for separation */
-  --sidebar-bg: #1f2e3a; /* Darker Blue */
-  --title-bar-bg: #283a47; /* Dark Blue Gray */
-  --status-bar-bg: #283a47; /* Dark Blue Gray - Unified with Title Bar */
-  --text-color: #d0d0d0; /* Slightly darker text */
-  --accent-color: #0099e6; /* Brighter Blue */
+  /* --- Structural Panels --- */
+  --bg-color: #0B0B0C;            /* Pure obsidian main viewport canvas */
+  --activity-bar-bg: #101112;     /* Denser, desaturated edge panel anchoring */
+  --sidebar-bg: #141517;          /* Matte carbon middle-ground */
+  --title-bar-bg: #141517;        /* Flattens into the layout instead of glowing blue */
+  --status-bar-bg: #101112;       /* Grounded bottom chassis anchor */
+
+  /* --- Dividers & Borders --- */
+  --border-color: #222428;        /* Razor-sharp, low-contrast steel division */
+
+  /* --- Typography --- */
+  --text-color: #E9ECEF;          /* High-visibility, low-strain canvas silver */
+  --text-muted: #868E96;          /* Use for labels, dates, and non-active metadata */
+  --text-secondary-header: #DCE1E6; /* For h3 elements, aligned with main text color */
+  --text-subtitle: #9BA1A6;       /* For subtitles and other de-emphasized text */
+
+  /* --- High-Performance Accent --- */
+  --accent-color: #63E6BE;        /* Glowing mint/phosphor signal (highly visible on absolute dark) */
 }
 
 html {
@@ -102,7 +112,17 @@ body {
   grid-area: sidebar;
   background-color: var(--sidebar-bg);
   border-right: 1px solid var(--border-color);
-  padding: 20px;
+  padding: 10px;
+}
+
+.sidebar-pane a {
+  color: var(--accent-color);
+  text-decoration: none;
+  font-weight: 600;
+}
+
+.sidebar-pane a:hover {
+  text-decoration: underline;
 }
 
 .workspace-viewport {
@@ -206,6 +226,8 @@ canvas {
   .sidebar-pane {
     border-right: none;
     overflow-y: auto;
+    mask-image: linear-gradient(to bottom, transparent 0%, black 10px);
+    -webkit-mask-image: linear-gradient(to bottom, transparent 0%, black 10px);
   }
 
   .activity-bar {
@@ -277,47 +299,48 @@ canvas {
 }
 
 /* --- Resume View Content --- */
-.resume-view h1, .resume-view h2, .resume-view h3, .resume-view h4 {
+.markdown-content h1, .markdown-content h2, .markdown-content h3, .markdown-content h4 {
     font-weight: 600;
     color: var(--text-color);
     margin-top: 1.5em;
     margin-bottom: 1em;
 }
 
-.resume-view h1 {
+.markdown-content h1 {
+    /* letter-spacing: -0.03em; */
     font-size: 2.2em;
     margin-top: 0;
     border-bottom: 1px solid var(--accent-color);
     padding-bottom: 0.3em;
 }
 
-.resume-view h1 + h3 + p {
+.markdown-content h1 + h3 + p {
     text-align: center;
     margin: -0.5em 0 1em;
     font-size: 1.1em;
-    color: #a0a0a0;
+    color: var(--text-subtitle);
 }
 
-.resume-view h1 + h3 + p a {
-    color: #e0e0e0;
+.markdown-content h1 + h3 + p a {
+    color: var(--text-secondary-header);
     text-decoration: none;
     font-weight: 600;
     margin: 0 1em;
 }
 
-.resume-view h1 + h3 + p a:first-child {
+.markdown-content h1 + h3 + p a:first-child {
     cursor: default;
 }
 
-.resume-view h1 + h3 + p strong {
+.markdown-content h1 + h3 + p strong {
     margin-right: 1em;
 }
 
 /* Subtitle under h1 */
-.resume-view h1 + h3 {
+.markdown-content h1 + h3 {
     font-size: 1.2em;
     font-style: italic;
-    color: #a0a0a0; /* Lighter gray */
+    color: var(--text-subtitle);
     margin-top: -0.5em;
     margin-bottom: 1em;
     border: none;
@@ -326,43 +349,50 @@ canvas {
     text-align: center;
 }
 
-.resume-view h2 {
-    font-size: 1.6em;
+.markdown-content h2 {
+    font-family: 'JetBrains Mono', 'Fira Code', monospace;
+    font-size: 1.4em;
+    letter-spacing: 0.05em;
     color: var(--accent-color);
     padding-bottom: 0.3em;
     border-bottom: 1px solid var(--border-color);
     margin-top: 2em;
+    text-transform: uppercase;
 }
 
-.resume-view h3 {
-    font-size: 1.3em;
-    color: #e0e0e0; /* Slightly brighter than normal text */
+.markdown-content h3 {
+    font-family: 'JetBrains Mono', 'Fira Code', monospace;
+    font-size: 1.2em;
+    color: var(--text-secondary-header);
 }
 
 
-.resume-view hr {
+.markdown-content hr {
     border: none;
     border-top: 1px solid var(--border-color);
     margin: 2em 0;
 }
 
-.resume-view p {
+.markdown-content p {
+    font-size: 0.9rem;
     line-height: 1.6;
     margin-bottom: 1em;
 }
 
-.resume-view ul {
+.markdown-content ul {
+    font-size: 0.9rem;
     list-style: none;
     padding-left: 25px;
     margin-bottom: 1em;
 }
 
-.resume-view li {
+.markdown-content li {
+    font-size: 0.9rem;
     margin-bottom: 0.6em;
     position: relative;
 }
 
-.resume-view li::before {
+.markdown-content li::before {
     content: '▸'; /* filled pointer */
     position: absolute;
     left: -20px;
@@ -371,7 +401,7 @@ canvas {
     top: -0.1em;
 }
 
-.resume-view a {
+.markdown-content a {
     color: var(--accent-color);
     text-decoration: none;
 }
@@ -381,7 +411,7 @@ canvas {
     font-weight: 600;
 }
 
-.resume-view code {
+.markdown-content code {
     background-color: var(--activity-bar-bg);
     padding: 0.2em 0.4em;
     border-radius: 3px;
