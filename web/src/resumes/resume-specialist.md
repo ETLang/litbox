@@ -28,7 +28,7 @@ Twenty years dedicated to high-performance, high-fidelity graphics—from bare m
 ### Valorem Reply
 **Sr. Research Engineer** | *June 2007 – July 2020*
 * Leader and mentor of HoloLens development team
-* Architect of holographic telepresence solution **HoloBeam**, showcased in keynotes with Satya Nadella
+* Architect of holographic telepresence solution HoloBeam, showcased in keynotes with Satya Nadella
 * Designed depth codec and managed video transmission using FFMPEG in C++
 
 ---
