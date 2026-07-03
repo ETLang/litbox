@@ -4,6 +4,7 @@
     <meta charset="UTF-8" />
     <link rel="icon" type="image/svg+xml" href="/favicon.svg" />
     <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <meta http-equiv="Content-Security-Policy" content="default-src 'self'; script-src 'self' https://cdn.jsdelivr.net 'unsafe-inline'; style-src 'self' 'unsafe-inline'; img-src 'self' data:; object-src 'none';">
     <title>Litbox | E. T. Langley</title>
     <link rel="stylesheet" href="/src/style.css">
   </head>
@@ -58,22 +59,8 @@
         </div>
     </div>
 
-    <script type="module" src="/src/main.ts"></script>
-    <script src="https://cdn.jsdelivr.net/npm/marked/marked.min.js"></script>
-    <script>
-        document.addEventListener('DOMContentLoaded', function() {
-            fetch('/litbox/src/resumes/resume-specialist.md')
-                .then(response => response.text())
-                .then(text => {
-                    document.querySelector('.resume-view-specialist').innerHTML = marked.parse(text);
-                });
-
-            fetch('/litbox/src/resumes/resume-generalist.md')
-                .then(response => response.text())
-                .then(text => {
-                    document.querySelector('.resume-view-generalist').innerHTML = marked.parse(text);
-                });
-        });
-    </script>
+    <script type="module" src="/src/main.ts"></script> <!-- Your main app script -->
+    <script src="https://cdn.jsdelivr.net/npm/marked/marked.min.js"></script> <!-- Markdown parser -->
+    <script src="/src/init.js"></script> <!-- New script for fetching markdown -->
   </body>
 </html>
