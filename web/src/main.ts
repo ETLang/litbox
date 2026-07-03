@@ -7,8 +7,8 @@ import { getContactForm } from './contact-form.ts';
 
 // Import markdown files as URLs. Vite will handle resolving these paths correctly
 // for both development and production builds.
-import specialistResumeUrl from './resumes/resume-specialist.md?url';
-import generalistResumeUrl from './resumes/resume-generalist.md?url';
+import specialistResumeText from './resumes/resume-specialist.md?raw';
+import generalistResumeText from './resumes/resume-generalist.md?raw';
 
 // --- DOM ELEMENT SELECTION ---
 const appContainer = document.querySelector('.app-container') as HTMLElement;
@@ -177,26 +177,21 @@ if (contactLink) {
 }
 
 /**
- * Fetches a markdown file from a URL, parses it, and injects it into a container.
- * @param url The URL of the markdown file.
+ * Parses markdown text and injects it into a container.
+ * @param text The markdown text to parse.
  * @param containerSelector The CSS selector for the container element.
  */
-async function loadAndRenderResume(url: string, containerSelector: string) {
+async function renderResume(text: string, containerSelector: string) {
     try {
-        const response = await fetch(url);
-        if (!response.ok) {
-            throw new Error(`HTTP error! status: ${response.status}`);
-        }
-        const text = await response.text();
         const container = document.querySelector(containerSelector);
         if (container) {
             container.innerHTML = await marked.parse(text);
         }
     } catch (e) {
-        console.error(`Failed to load resume from ${url}:`, e);
+        console.error(`Failed to render resume in ${containerSelector}:`, e);
     }
 }
 
 // --- FETCH AND RENDER RESUMES ---
-loadAndRenderResume(specialistResumeUrl, '.resume-view-specialist');
-loadAndRenderResume(generalistResumeUrl, '.resume-view-generalist');
+renderResume(specialistResumeText, '.resume-view-specialist');
+renderResume(generalistResumeText, '.resume-view-generalist');
