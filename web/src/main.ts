@@ -112,6 +112,19 @@ async function updateView(view: ViewKey) {
 }
 
 // --- EVENT LISTENERS ---
+sidebarPane.addEventListener('click', async (e: MouseEvent) => {
+    // Handle navigation for links within the sidebar, like in the intro markdown.
+    const target = e.target as HTMLElement;
+    // Use .closest('a') to handle clicks on elements inside a link (e.g. <strong>)
+    const anchor = target.closest('a');
+
+    if (anchor && anchor.getAttribute('href') === '/about') {
+        e.preventDefault();
+        // This is a link to an internal "activity", so switch views instead of navigating.
+        await updateView('about');
+    }
+});
+
 activityBarButtons.forEach(button => {
     button.addEventListener('click', async () => {
         const view = (button as HTMLElement).dataset.view;

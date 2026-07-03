@@ -1,11 +1,11 @@
 /* --- BASE STYLES & PALETTE --- */
 :root {
-  --bg-color: #182530; /* Darker Blue */
-  --border-color: #243542; /* Darker Blue Gray */
-  --activity-bar-bg: #1a242d; /* Darkest Blue - for separation */
-  --sidebar-bg: #1f2e3a; /* Darker Blue */
-  --title-bar-bg: #283a47; /* Dark Blue Gray */
-  --status-bar-bg: #283a47; /* Dark Blue Gray - Unified with Title Bar */
+  --bg-color: #121a21; /* Even Darker Blue */
+  --border-color: #1c2832; /* Even Darker Blue Gray */
+  --activity-bar-bg: #141a21; /* Darkest Blue - for separation */
+  --sidebar-bg: #161f27; /* Darker Blue */
+  --title-bar-bg: #202d38; /* Dark Blue Gray */
+  --status-bar-bg: #202d38; /* Dark Blue Gray - Unified with Title Bar */
   --text-color: #d0d0d0; /* Slightly darker text */
   --accent-color: #0099e6; /* Brighter Blue */
 }
@@ -102,7 +102,17 @@ body {
   grid-area: sidebar;
   background-color: var(--sidebar-bg);
   border-right: 1px solid var(--border-color);
-  padding: 20px;
+  padding: 10px;
+}
+
+.sidebar-pane a {
+  color: var(--accent-color);
+  text-decoration: none;
+  font-weight: 600;
+}
+
+.sidebar-pane a:hover {
+  text-decoration: underline;
 }
 
 .workspace-viewport {
@@ -206,6 +216,8 @@ canvas {
   .sidebar-pane {
     border-right: none;
     overflow-y: auto;
+    mask-image: linear-gradient(to bottom, transparent 0%, black 10px);
+    -webkit-mask-image: linear-gradient(to bottom, transparent 0%, black 10px);
   }
 
   .activity-bar {

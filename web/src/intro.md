@@ -8,3 +8,5 @@ I love seeing machines run efficiently: from carefully understanding users' need
 This portfolio provides an interactive experience demonstrating the power of highly optimized GPU compute on the web. This demonstration performs 2D ray tracing with denoising—built natively without the need for RTX hardware or even a desktop PC. 
 
 [Try it on your phone!]
+
+[Technical Resume & Contact Details](/about)
