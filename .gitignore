@@ -28,3 +28,4 @@ Assets/Resources/PerformanceTestRun**
 !Packages/manifest.json
 !Packages/packages-lock.json
 wandb/**
+GEMINI.MD

@@ -1,5 +1,8 @@
 import './style.css';
+import { ModalDialog } from './modal-dialog.ts';
 import { RotatingCube } from './rotating_cube.ts';
+import { getAboutPageContent } from './about.ts';
+import { getContactForm } from './contact-form.ts';
 
 // --- DOM ELEMENT SELECTION ---
 const appContainer = document.querySelector('.app-container') as HTMLElement;
@@ -69,15 +72,11 @@ const viewContent = {
         `,
     },
     about: {
-        sidebar: `
-            <h3>Contact</h3>
-            <ul>
-                <li><a href="mailto:example@example.com">Email</a></li>
-                <li><a href="https://github.com" target="_blank">GitHub</a></li>
-                <li><a href="https://linkedin.com" target="_blank">LinkedIn</a></li>
-            </ul>
-        `,
+        content: getAboutPageContent(),
     },
+    contact: {
+        sidebar: getContactForm(),
+    }
 };
 
 type ViewKey = keyof typeof viewContent;
@@ -92,11 +91,16 @@ function updateView(view: ViewKey) {
         button.classList.toggle('active', (button as HTMLElement).dataset.view === view);
     });
 
-    // Update sidebar content
-    sidebarPane.innerHTML = viewContent[view].sidebar;
+    const isAboutView = view === 'about';
+
+    // if (isAboutView) {
+    //     sidebarPane.innerHTML = '';
+    //     resumeView.innerHTML = (viewContent.about as { content: string }).content;
+    // } else {
+    //     sidebarPane.innerHTML = (viewContent[view] as { sidebar: string }).sidebar;
+    // }
 
     // Show/hide main content
-    const isAboutView = view === 'about';
     resumeView.style.display = isAboutView ? 'block' : 'none';
     canvas.style.display = isAboutView ? 'none' : 'block';
 }
@@ -157,4 +161,14 @@ if (canvas) {
     cube.start();
 } else {
     console.error("Canvas element not found!");
+}
+
+// --- CONTACT MODAL ---
+const contactLink = document.getElementById('contact-link');
+if (contactLink) {
+    contactLink.addEventListener('click', (e) => {
+        e.preventDefault();
+        const modal = ModalDialog.getInstance();
+        modal.show(getContactForm());
+    });
 }
