@@ -93,12 +93,12 @@ function updateView(view: ViewKey) {
 
     const isAboutView = view === 'about';
 
-    // if (isAboutView) {
-    //     sidebarPane.innerHTML = '';
-    //     resumeView.innerHTML = (viewContent.about as { content: string }).content;
-    // } else {
-    //     sidebarPane.innerHTML = (viewContent[view] as { sidebar: string }).sidebar;
-    // }
+    if (isAboutView) {
+        sidebarPane.innerHTML = '';
+        resumeView.innerHTML = (viewContent.about as { content: string }).content;
+    } else {
+        sidebarPane.innerHTML = (viewContent[view] as { sidebar: string }).sidebar;
+    }
 
     // Show/hide main content
     resumeView.style.display = isAboutView ? 'block' : 'none';
