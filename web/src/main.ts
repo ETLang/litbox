@@ -93,10 +93,7 @@ function updateView(view: ViewKey) {
 
     const isAboutView = view === 'about';
 
-    if (isAboutView) {
-        sidebarPane.innerHTML = '';
-        resumeView.innerHTML = (viewContent.about as { content: string }).content;
-    } else {
+    if (!isAboutView) {
         sidebarPane.innerHTML = (viewContent[view] as { sidebar: string }).sidebar;
     }
 
