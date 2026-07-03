@@ -67,7 +67,7 @@ export class ModalDialog {
                     sessionStorage.removeItem('contactFormMessage');
                     this.modalContent.innerHTML = `
                         <div class="form-success-message">
-                            <p>Thanks for your submission!</p>
+                            <p>Thanks for your message!<br>I'll get back to you as soon as possible.</p>
                             <button id="ok-button">OK</button>
                         </div>`;
                 } else {
@@ -116,7 +116,7 @@ export class ModalDialog {
             emailInput.value = sessionStorage.getItem('contactFormEmail') || '';
             messageInput.value = sessionStorage.getItem('contactFormMessage') || '';
 
-            // When the textarea is resized by the user, its container (.modal-content)
+            // When the textare is resized by the user, its container (.modal-content)
             // should naturally resize with it. A ResizeObserver ensures that
             // the browser recalculates layout when the textarea size changes,
             // making the dialog adjust its size dynamically.
