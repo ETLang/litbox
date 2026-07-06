@@ -196,7 +196,7 @@ public class Simulation : LitboxComponent
                     lightTracers[i].IntegrationInterval = integrationInterval;
                     lightTracers[i].OverrideBounceCount = photonBounces == -1 ? null : (uint)photonBounces;
                     lightTracers[i].RaysToEmit = raysPerFrame;
-                    lightTracers[i].ApplyRadiance = false;
+                    lightTracers[i].ApplyRadiance = denoiser == null || !denoiser.enabled;
                 }
             };
         } else if(strategy == Strategy.Hybrid && !(_activeTracer[0] is HybridTracer))
@@ -441,7 +441,7 @@ public class Simulation : LitboxComponent
         TracerPostProcessor.Instance.SigmaSpatial = SigmaSpatial;
         TracerPostProcessor.Instance.KLuminance = KLuminance;
 
-        if(_activeTracer[0].ApplyRadiance || denoiser == null)
+        if(_activeTracer[0].ApplyRadiance || denoiser == null || !denoiser.enabled)
         {
             TracerPostProcessor.Instance.ComputeVarianceAndMips(_activeTracer[0].TracerOutput, _activeTracer[1].TracerOutput, SimulationOutputRaw, UnfilteredVarianceMap);
             TracerPostProcessor.Instance.FilterVariance(UnfilteredVarianceMap, VarianceMap, GBuffer.AlbedoAlpha, SimulationOutputRaw);
