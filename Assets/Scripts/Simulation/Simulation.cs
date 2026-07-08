@@ -40,10 +40,10 @@ public class Simulation : LitboxComponent
     [SerializeField] public int height = 256;
     [SerializeField] public Strategy strategy = Strategy.LightTransport;
     [SerializeField] public SimulationMode mode = SimulationMode.Realtime;
-    [SerializeField] private LayerMask rayTracedLayers;
-    [SerializeField] private int raysPerFrame = 65536;
-    [SerializeField] private int photonBounces = -1;
-    [SerializeField, Min(0.01f)] private float integrationInterval = 0.1f;
+    [SerializeField] public LayerMask rayTracedLayers;
+    [SerializeField] public int raysPerFrame = 65536;
+    [SerializeField] public int photonBounces = -1;
+    [SerializeField, Min(0.01f)] public float integrationInterval = 0.1f;
     [SerializeField] private float transmissibilityVariationEpsilon = 1e-3f;
     [SerializeField] public Denoiser3 denoiser = null; 
 
@@ -74,6 +74,20 @@ public class Simulation : LitboxComponent
 
     public long PhotonWritesPerSecond { get; private set; }
     public bool IsRunning => _needsToUpdate;
+    public Matrix4x4 ScreenSpaceToSimulationUV {
+        get {
+            Camera mainCamera = Camera.main;
+            Matrix4x4 viewFromScreen = mainCamera.projectionMatrix.inverse;
+            Matrix4x4 worldFromView = mainCamera.worldToCameraMatrix.inverse;
+            Matrix4x4 localFromWorld = transform.worldToLocalMatrix;
+            Matrix4x4 uvFromLocal = Matrix4x4.TRS(
+                new Vector3(0.5f, 0.5f, 0f), 
+                Quaternion.identity, 
+                new Vector3(1f, 1f, 1f)
+            );
+            return uvFromLocal * localFromWorld * worldFromView * viewFromScreen;
+        }
+    }
 
     int _sceneId;
     bool _validationFailed = false;
@@ -186,7 +200,7 @@ public class Simulation : LitboxComponent
             for(int i = 0;i < 2;i++) {
                 _activeTracer[i]?.Dispose();
                 _activeTracer[i] = lightTracers[i] = new LightTransportTracer();
-            }
+            } 
 
             _updateTracerProperties = () => {
                 for(int i = 0;i < 2;i++)
