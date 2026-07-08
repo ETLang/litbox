@@ -31,16 +31,6 @@ public static class BufferManager
             {
                 _purged = false;
             }
-
-            if(state == UnityEditor.PlayModeStateChange.ExitingEditMode)
-            {
-                Purge();
-            }
-
-            if(state == UnityEditor.PlayModeStateChange.EnteredPlayMode)
-            {
-                _purged = false;
-            }
         };
     }
 #endif
