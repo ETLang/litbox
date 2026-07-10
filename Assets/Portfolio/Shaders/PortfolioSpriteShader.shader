@@ -73,15 +73,17 @@ Shader "Portfolio/PortfolioSpriteShader"
             fixed4 frag (v2f i) : SV_Target
             {
                 // sample the texture
-                fixed4 col = tex2D(_MainTex, i.uv);
+                fixed4 col = tex2D(_MainTex, i.uv) * _Color;
 
                 // sample lightmap
                 fixed4 light = tex2Dlod(_LightMap, float4(i.lightUV, 0, _LightDetail));
                 light = light * _LightMod + _Ambience;
 
                 // combine
-                col *= light * _Color;
+                col *= light;
                 col += _Emissive;
+
+                col.rgb *= col.a;
 
                 return col;
             }

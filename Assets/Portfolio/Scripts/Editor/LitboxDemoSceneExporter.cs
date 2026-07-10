@@ -31,6 +31,7 @@ namespace Litbox.Portfolio {
         [System.Serializable]
         struct SimulationJson
         {
+            public int ownerId;
             public int width;
             public int height;
             public int raysPerFrame;
@@ -59,6 +60,7 @@ namespace Litbox.Portfolio {
             public int layer; // negative = renders before additive simulation. Positive = renders after
             public float opacity;
             public string image;
+            public Color colorMod; // albedo color is effectively image * colorMod
             public Color ambient;
             public Color emissive;
             public Color simContribution;
@@ -113,6 +115,14 @@ namespace Litbox.Portfolio {
         }
 
         [System.Serializable]
+        public struct TextureAtlasKeyJson
+        {
+            public string textureName;
+            public string atlasName;
+            public string uvTransform;
+        }
+
+        [System.Serializable]
         struct SceneDescription
         {
             public SimulationJson[] simulations;
@@ -125,6 +135,7 @@ namespace Litbox.Portfolio {
             public LaserLightJson[] laserLights;
             public DirectionalLightJson[] directionalLights;
             public AmbientLightJson[] ambientLights;
+            public TextureAtlasKeyJson[] textureAtlasKeys;
         }
 
         private static T NullOr<T,S>(S src, System.Func<S,T> or) where S : UnityEngine.Object where T : class
@@ -190,6 +201,7 @@ namespace Litbox.Portfolio {
                 layer = (int)sprite.layer,
                 opacity = sprite.colorMod.a,
                 image = NullOr(sprite.texture, t => t.name),
+                colorMod = sprite.colorMod,
                 ambient = sprite.ambience,
                 emissive = sprite.emissive,
                 simContribution = sprite.lightMod,
@@ -203,6 +215,7 @@ namespace Litbox.Portfolio {
         {
             var json = new SimulationJson()
             {
+                ownerId = sim.gameObject.GetEntityId(),
                 width = sim.width,
                 height = sim.height,
                 raysPerFrame = sim.raysPerFrame,
@@ -354,6 +367,25 @@ namespace Litbox.Portfolio {
                 output.sprites = rtSprites
                     .Select(ToJsonStruct)
                     .ToArray();
+
+                var allTextures = new Dictionary<string, Texture>();
+                void AddTexture(Texture t)
+                {
+                    if (t != null && !allTextures.ContainsKey(t.name)) allTextures[t.name] = t;
+                }
+                foreach (var rtObject in rtObjects)
+                {
+                    AddTexture(rtObject.texture);
+                    AddTexture(rtObject.normal);
+                }
+                foreach (var sprite in rtSprites)
+                {
+                    AddTexture(sprite.texture);
+                }
+
+                string jsonDir = Path.GetDirectoryName(path);
+                string atlasRelDir = Path.GetFileNameWithoutExtension(path) + "_atlases";
+                output.textureAtlasKeys = TextureAtlasBaker.BakeAtlases(allTextures, Path.Combine(jsonDir, atlasRelDir), atlasRelDir);
 
                 var sceneData = JsonUtility.ToJson(output, true);
                 File.WriteAllText(path, sceneData);

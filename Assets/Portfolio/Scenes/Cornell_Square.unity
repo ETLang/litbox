@@ -696,6 +696,18 @@ PrefabInstance:
     serializedVersion: 3
     m_TransformParent: {fileID: 1745051538}
     m_Modifications:
+    - target: {fileID: 2804777606743130440, guid: 624a000477f8d664ebfee715f79ec4f3, type: 3}
+      propertyPath: texture
+      value: 
+      objectReference: {fileID: 2800000, guid: 38d018bd470a5c144ab0dd297500289a, type: 3}
+    - target: {fileID: 2804777606743130440, guid: 624a000477f8d664ebfee715f79ec4f3, type: 3}
+      propertyPath: colorMod.a
+      value: 1
+      objectReference: {fileID: 0}
+    - target: {fileID: 3520042828948378482, guid: 624a000477f8d664ebfee715f79ec4f3, type: 3}
+      propertyPath: texture
+      value: 
+      objectReference: {fileID: 2800000, guid: 38d018bd470a5c144ab0dd297500289a, type: 3}
     - target: {fileID: 5568289374823251935, guid: 624a000477f8d664ebfee715f79ec4f3, type: 3}
       propertyPath: m_Mesh
       value: 
@@ -836,7 +848,15 @@ PrefabInstance:
       objectReference: {fileID: 0}
     - target: {fileID: 3415265880817932737, guid: 24bb1fd2165fe7c40bf239e3ee23741a, type: 3}
       propertyPath: m_IsActive
-      value: 0
+      value: 1
+      objectReference: {fileID: 0}
+    - target: {fileID: 6898321727002159933, guid: 24bb1fd2165fe7c40bf239e3ee23741a, type: 3}
+      propertyPath: texture
+      value: 
+      objectReference: {fileID: 2800000, guid: b6cae61007433d3dcb73c400601c1710, type: 3}
+    - target: {fileID: 6898321727002159933, guid: 24bb1fd2165fe7c40bf239e3ee23741a, type: 3}
+      propertyPath: colorMod.a
+      value: 1
       objectReference: {fileID: 0}
     m_RemovedComponents: []
     m_RemovedGameObjects: []
@@ -973,6 +993,10 @@ PrefabInstance:
     - target: {fileID: 3415265880817932737, guid: 24bb1fd2165fe7c40bf239e3ee23741a, type: 3}
       propertyPath: m_Name
       value: Square
+      objectReference: {fileID: 0}
+    - target: {fileID: 6898321727002159933, guid: 24bb1fd2165fe7c40bf239e3ee23741a, type: 3}
+      propertyPath: colorMod.a
+      value: 1
       objectReference: {fileID: 0}
     - target: {fileID: 7084864777419053238, guid: 24bb1fd2165fe7c40bf239e3ee23741a, type: 3}
       propertyPath: substrateLogDensity
@@ -1252,7 +1276,7 @@ Transform:
   m_GameObject: {fileID: 1510718109}
   serializedVersion: 2
   m_LocalRotation: {x: 0, y: 0, z: 0, w: 1}
-  m_LocalPosition: {x: 2.84, y: 0, z: -10}
+  m_LocalPosition: {x: 0, y: 0, z: -10}
   m_LocalScale: {x: 1, y: 1, z: 1}
   m_ConstrainProportionsScale: 0
   m_Children: []
@@ -1784,7 +1808,7 @@ MonoBehaviour:
   layer: 0
   sortingOrder: 0
   texture: {fileID: 0}
-  colorMod: {r: 0.9433962, g: 0.06674972, b: 0.06674972, a: 0}
+  colorMod: {r: 0.9433962, g: 0.06674972, b: 0.06674972, a: 1}
   lightMod: {r: 1, g: 1, b: 1, a: 0}
   ambience: {r: 0.1509434, g: 0.1509434, b: 0.1509434, a: 1}
   emissive: {r: 0, g: 0, b: 0, a: 1}
@@ -2658,7 +2682,7 @@ MonoBehaviour:
   layer: 0
   sortingOrder: 0
   texture: {fileID: 0}
-  colorMod: {r: 0.94509804, g: 0.94509804, b: 0.94509804, a: 0}
+  colorMod: {r: 0.94509804, g: 0.94509804, b: 0.94509804, a: 1}
   lightMod: {r: 1, g: 1, b: 1, a: 0}
   ambience: {r: 0.1509434, g: 0.1509434, b: 0.1509434, a: 1}
   emissive: {r: 0, g: 0, b: 0, a: 1}
@@ -2679,7 +2703,7 @@ MonoBehaviour:
   layer: 0
   sortingOrder: 0
   texture: {fileID: 0}
-  colorMod: {r: 0.94509804, g: 0.94509804, b: 0.94509804, a: 0}
+  colorMod: {r: 0.94509804, g: 0.94509804, b: 0.94509804, a: 1}
   lightMod: {r: 1, g: 1, b: 1, a: 0}
   ambience: {r: 0.1509434, g: 0.1509434, b: 0.1509434, a: 1}
   emissive: {r: 0, g: 0, b: 0, a: 1}
@@ -2700,7 +2724,7 @@ MonoBehaviour:
   layer: 0
   sortingOrder: 0
   texture: {fileID: 0}
-  colorMod: {r: 0.94509804, g: 0.94509804, b: 0.94509804, a: 0}
+  colorMod: {r: 0.94509804, g: 0.94509804, b: 0.94509804, a: 1}
   lightMod: {r: 1, g: 1, b: 1, a: 0}
   ambience: {r: 0.1509434, g: 0.1509434, b: 0.1509434, a: 1}
   emissive: {r: 0, g: 0, b: 0, a: 1}
@@ -2721,7 +2745,7 @@ MonoBehaviour:
   layer: 0
   sortingOrder: 0
   texture: {fileID: 0}
-  colorMod: {r: 0.047058824, g: 1, b: 0.05882353, a: 0}
+  colorMod: {r: 0.047058824, g: 1, b: 0.05882353, a: 1}
   lightMod: {r: 1, g: 1, b: 1, a: 0}
   ambience: {r: 0.1509434, g: 0.1509434, b: 0.1509434, a: 1}
   emissive: {r: 0, g: 0, b: 0, a: 1}
