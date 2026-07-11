@@ -193,25 +193,30 @@ namespace Litbox.Portfolio
 
             var textureFormat = GraphicsFormatUtility.GetTextureFormat(tex.graphicsFormat);
 
-            // DXT1 stays genuinely block-compressed end-to-end (see FormatBucket.Dxt1
-            // below). DXT5 (and its Crunched on-disk variant) still decodes losslessly
-            // via GetPixels() the same as any other format ForceReadData handles, and
-            // is folded into the RGBA32 sRGB bucket - BC3's separate alpha block isn't
-            // natively supported here.
+            // BC1/DXT1 compression is broadly unsupported on mobile GPUs, so the
+            // output of this pipeline must stay in the 3 universally-supported
+            // formats below. DXT1/DXT1Crunched (and DXT5/DXT5Crunched) all decode
+            // losslessly via GetPixels() the same as any other format ForceReadData
+            // handles, and are folded into the RGBA32 sRGB bucket.
+            //
+            // FormatBucket.Dxt1 and its native block-compressed baking path
+            // (ExtrudeBlockSlack, EncodeDxt1Container, the block-unit packing branch
+            // in BakeAtlases) are kept in this file, dormant, in case a desktop-only
+            // export path is wanted later - Classify() simply never returns it.
             bool isRgba32Like = textureFormat == TextureFormat.RGBA32
+                || textureFormat == TextureFormat.DXT1
+                || textureFormat == TextureFormat.DXT1Crunched
                 || textureFormat == TextureFormat.DXT5
                 || textureFormat == TextureFormat.DXT5Crunched;
 
-            bool isDxt1 = textureFormat == TextureFormat.DXT1 || textureFormat == TextureFormat.DXT1Crunched;
-
-            if (isRgba32Like || isDxt1)
+            if (isRgba32Like)
             {
                 if (!tex.isDataSRGB)
                 {
                     throw new InvalidOperationException(
                         $"Texture '{tex.name}' ({textureFormat}) is not sRGB; only sRGB RGBA32/DXT1/DXT5 textures are supported for atlas baking.");
                 }
-                return isDxt1 ? FormatBucket.Dxt1 : FormatBucket.Rgba32Srgb;
+                return FormatBucket.Rgba32Srgb;
             }
 
             if (textureFormat == TextureFormat.RFloat) return FormatBucket.RFloat;
