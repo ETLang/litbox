@@ -10,6 +10,7 @@ public class RTObject : LitboxComponent
     [SerializeField, Range(-10, 0)] public float substrateLogDensity;
     [SerializeField, Range(0, 1)] public float particleAlignment = 0;
     [SerializeField, Range(0, 1)] public float heightScale = 1;
+    [SerializeField] public int sortingOrder;
 
     public virtual Matrix4x4 WorldTransform
     {
@@ -48,6 +49,7 @@ public class RTObject : LitboxComponent
         DetectChanges(() => heightScale);
         DetectChanges(() => texture);
         DetectChanges(() => color);
+        DetectChanges(() => sortingOrder);
         DetectChanges(() => WorldTransform, "Transform");
 
         UpdateProperties();
@@ -75,6 +77,7 @@ public class RTObject : LitboxComponent
     void UpdateProperties() {
         var renderer = GetComponent<Renderer>();
         if(renderer != null) {
+            renderer.sortingOrder = sortingOrder;
             //renderer.GetPropertyBlock(_propertyBlock);
             if(texture) {
                 _propertyBlock.SetTexture(_mainTexId, texture);

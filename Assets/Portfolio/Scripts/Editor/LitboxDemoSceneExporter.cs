@@ -43,6 +43,7 @@ namespace Litbox.Portfolio {
         struct RaytracedJson
         {
             public int ownerId;
+            public int sortOrder;
             public float logDensity;
             public float roughness;
             public float heightScale;
@@ -181,6 +182,7 @@ namespace Litbox.Portfolio {
             var json = new RaytracedJson()
             {
                 ownerId = obj.gameObject.GetEntityId(),
+                sortOrder = obj.sortingOrder,
                 logDensity = obj.substrateLogDensity,
                 roughness = 1 - obj.particleAlignment,
                 heightScale = obj.heightScale,
