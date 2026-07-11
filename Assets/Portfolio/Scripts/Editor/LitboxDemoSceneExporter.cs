@@ -58,6 +58,7 @@ namespace Litbox.Portfolio {
         {
             public int ownerId;
             public int layer; // negative = renders before additive simulation. Positive = renders after
+            public int sortOrder;
             public float opacity;
             public string image;
             public Color colorMod; // albedo color is effectively image * colorMod
@@ -199,6 +200,7 @@ namespace Litbox.Portfolio {
             {
                 ownerId = sprite.gameObject.GetEntityId(),
                 layer = (int)sprite.layer,
+                sortOrder = sprite.sortingOrder,
                 opacity = sprite.colorMod.a,
                 image = NullOr(sprite.texture, t => t.name),
                 colorMod = sprite.colorMod,
