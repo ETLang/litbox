@@ -445,7 +445,7 @@ public class Denoiser : LitboxComponent
         _inputCompilerShader.SetTexture(_inputCompilerKernel, "radiance", source);
         _inputCompilerShader.SetTexture(_inputCompilerKernel, "variance", simulation.VarianceMap);
         _inputCompilerShader.SetTexture(_inputCompilerKernel, "albedo", simulation.GBuffer.AlbedoAlpha);
-        _inputCompilerShader.SetTexture(_inputCompilerKernel, "transmissibility", simulation.GBuffer.Transmissibility);
+        _inputCompilerShader.SetTexture(_inputCompilerKernel, "density", simulation.GBuffer.Density);
 
         for (int i = 0; i < _model.graph_inputs.Length; i++)
         {

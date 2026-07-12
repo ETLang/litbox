@@ -22,7 +22,7 @@ python training_script/train_litbox_denoiser.py ^
     --input-a-location "%TRAINING_DATA_FOLDER%/Input5_Radiance_A_*.exr" ^
     --input-b-location "%TRAINING_DATA_FOLDER%/Input5_Radiance_B_*.exr" ^
     --input-albedo-location "%TRAINING_DATA_FOLDER%/Albedo_*.png" ^
-    --input-transmissibility-location "%TRAINING_DATA_FOLDER%/Transmissibility_*.exr" ^
+    --input-density-location "%TRAINING_DATA_FOLDER%/Density_*.exr" ^
     --reference-location "%TRAINING_DATA_FOLDER%/Output_Reference_*.exr" ^
     --output-folder "%OUTPUT_FOLDER%" ^
     --test-ratio 0.1 ^

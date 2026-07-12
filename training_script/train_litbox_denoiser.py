@@ -214,7 +214,7 @@ def train(args, stats):
     "input_a_location": args.input_a_location,
     "input_b_location": args.input_b_location,
     "input_albedo_location": args.input_albedo_location,
-    "input_transmissibility_location": args.input_transmissibility_location,
+    "input_density_location": args.input_density_location,
     "reference_location": args.reference_location,
     "input_a_easy_location": args.input_a_easy_location,
     "input_b_easy_location": args.input_b_easy_location,

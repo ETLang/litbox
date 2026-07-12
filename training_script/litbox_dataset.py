@@ -14,14 +14,14 @@ from data_processing import load_image
 class LitboxDenoiserDataset(Dataset):
     def __init__(self,
                  input_a_paths: list, input_b_paths: list,
-                 albedo_paths: list, transmissibility_paths: list, reference_paths: Optional[list] = None,
+                 albedo_paths: list, density_paths: list, reference_paths: Optional[list] = None,
                  do_augment: bool = False,
                  crop_size: int = 64, upsample: int = 1, 
                  truth_transform=None):
         self.input_a_paths = input_a_paths
         self.input_b_paths = input_b_paths
         self.albedo_paths = albedo_paths
-        self.transmissibility_paths = transmissibility_paths
+        self.density_paths = density_paths
         self.reference_paths = reference_paths
         self.crop_size = crop_size
         self.upsample = upsample
@@ -43,21 +43,21 @@ class LitboxDenoiserDataset(Dataset):
         input_a_path = self.input_a_paths[idx]
         input_b_path = self.input_b_paths[idx]
         albedo_path = self.albedo_paths[idx]
-        transmissibility_path = self.transmissibility_paths[idx]
+        density_path = self.density_paths[idx]
         
         # Load input image
         input_a_tensor = load_image(input_a_path)
         input_b_tensor = load_image(input_b_path)
         albedo_tensor = load_image(albedo_path)[:3]
-        transmissibility_tensor = load_image(transmissibility_path)[:1]
+        density_tensor = load_image(density_path)[:1]
         reference_tensor = None
         
         # Verify dimensions
         h_w_a = input_a_tensor.shape[1:]
         h_w_b = input_b_tensor.shape[1:]
         h_w_albedo = albedo_tensor.shape[1:]
-        h_w_trans = transmissibility_tensor.shape[1:]
-        if not (h_w_a == h_w_b == h_w_albedo == h_w_trans):
+        h_w_density = density_tensor.shape[1:]
+        if not (h_w_a == h_w_b == h_w_albedo == h_w_density):
             raise ValueError(f"Height and width mismatch among input images at index {idx}")
         
         if self.reference_paths is not None:
@@ -66,7 +66,7 @@ class LitboxDenoiserDataset(Dataset):
             if not (reference_tensor.shape[1:] == h_w_a):
                 raise ValueError(f"Height and width mismatch between input and reference images at index {idx}")
             
-        return input_a_tensor, input_b_tensor, albedo_tensor, transmissibility_tensor, reference_tensor
+        return input_a_tensor, input_b_tensor, albedo_tensor, density_tensor, reference_tensor
 
 # Initialize LitboxDataset with a dictionary of paths. Retrieved items will match the input dictionary keys.
 class LitboxDataset(Dataset):

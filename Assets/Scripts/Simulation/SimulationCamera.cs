@@ -7,13 +7,13 @@ using UnityEngine.Rendering;
 public struct LitboxGBuffer
 {
     public RenderTexture AlbedoAlpha;
-    public RenderTexture Transmissibility;
+    public RenderTexture Density;
     public RenderTexture NormalRoughness;
     public RenderTexture QuadTreeLeaves;
 
     public bool IsValid =>
         AlbedoAlpha != null &&
-        Transmissibility != null &&
+        Density != null &&
         NormalRoughness != null &&
         QuadTreeLeaves != null;
 }
@@ -91,15 +91,15 @@ public class SimulationCamera : MonoBehaviour {
         var gBuffer = new RenderBuffer[]
         {
             GBuffer.AlbedoAlpha.colorBuffer,
-            GBuffer.Transmissibility.colorBuffer,
+            GBuffer.Density.colorBuffer,
             GBuffer.NormalRoughness.colorBuffer
         };
 
         RenderTexture rt = RenderTexture.active;
         RenderTexture.active = GBuffer.AlbedoAlpha;
         GL.Clear(true, true, new Color(0,0,0,1));
-        RenderTexture.active = GBuffer.Transmissibility;
-        GL.Clear(false, true, new Color(1,1,0,1));
+        RenderTexture.active = GBuffer.Density;
+        GL.Clear(false, true, new Color(0,0,0,1));
         RenderTexture.active = GBuffer.NormalRoughness;
         GL.Clear(false, true, new Color(0,0,0,0));
         RenderTexture.active = GBuffer.QuadTreeLeaves;
@@ -113,8 +113,8 @@ public class SimulationCamera : MonoBehaviour {
            _postRenderCommands = new CommandBuffer();
 
             var generateGBufferMipsKernel = _computeShader.FindKernel("GenerateGBufferMips");
-            int mipW = GBuffer.Transmissibility.width;
-            int mipH = GBuffer.Transmissibility.height;
+            int mipW = GBuffer.Density.width;
+            int mipH = GBuffer.Density.height;
 
             _postRenderCommands.SetGlobalInt(Shader.PropertyToID("_isRayTracing"), 0);
 
@@ -123,7 +123,7 @@ public class SimulationCamera : MonoBehaviour {
             _postRenderCommands.SetComputeIntParam(_computeShader,
                 "g_lowest_lod", (int)(GBuffer.AlbedoAlpha.mipmapCount - 3));
 
-            for(int i = 1;i < GBuffer.Transmissibility.mipmapCount;i++) {
+            for(int i = 1;i < GBuffer.Density.mipmapCount;i++) {
                 mipW /= 2;
                 mipH /= 2;
                 _postRenderCommands.SetComputeTextureParam(_computeShader, generateGBufferMipsKernel, 
@@ -131,9 +131,9 @@ public class SimulationCamera : MonoBehaviour {
                 _postRenderCommands.SetComputeTextureParam(_computeShader, generateGBufferMipsKernel,
                     "g_sourceMipLevelAlbedo", GBuffer.AlbedoAlpha, i-1);
                 _postRenderCommands.SetComputeTextureParam(_computeShader, generateGBufferMipsKernel,
-                    "g_destMipLevelTransmissibility", GBuffer.Transmissibility, i);
+                    "g_destMipLevelDensity", GBuffer.Density, i);
                 _postRenderCommands.SetComputeTextureParam(_computeShader, generateGBufferMipsKernel,
-                    "g_sourceMipLevelTransmissibility", GBuffer.Transmissibility, i-1);
+                    "g_sourceMipLevelDensity", GBuffer.Density, i-1);
                 _postRenderCommands.SetComputeTextureParam(_computeShader, generateGBufferMipsKernel,
                     "g_destMipLevelNormalSlope", GBuffer.NormalRoughness, i);
                 _postRenderCommands.SetComputeTextureParam(_computeShader, generateGBufferMipsKernel,   
@@ -142,29 +142,29 @@ public class SimulationCamera : MonoBehaviour {
                     Math.Max(1, mipW / 8), Math.Max(1, mipH / 8), 1);
             }
 
-            mipW = GBuffer.Transmissibility.width;
-            mipH = GBuffer.Transmissibility.height;
-            var computeGBufferVarianceKernel = _computeShader.FindKernel("ComputeGBufferVariance");
-            var eps = VarianceEpsilon;
-            for(int i = 1;i < GBuffer.Transmissibility.mipmapCount;i++) {
-                mipW /= 2;
-                mipH /= 2;
-                eps /= 2.0f;
-                _postRenderCommands.SetComputeFloatParam(_computeShader, 
-                    "g_TransmissibilityVariationEpsilon", eps);
-                _postRenderCommands.SetComputeTextureParam(_computeShader, computeGBufferVarianceKernel,
-                    "g_sourceMipLevelTransmissibility", GBuffer.Transmissibility, i);
-                _postRenderCommands.DispatchCompute(_computeShader, computeGBufferVarianceKernel,
-                    Math.Max(1, mipW / 8), Math.Max(1, mipH / 8), 1);
-            }
+            // mipW = GBuffer.Density.width;
+            // mipH = GBuffer.Density.height;
+            // var computeGBufferVarianceKernel = _computeShader.FindKernel("ComputeGBufferVariance");
+            // var eps = VarianceEpsilon;
+            // for(int i = 1;i < GBuffer.Density.mipmapCount;i++) {
+            //     mipW /= 2;
+            //     mipH /= 2;
+            //     eps /= 2.0f;
+            //     _postRenderCommands.SetComputeFloatParam(_computeShader, 
+            //         "g_DensityVariationEpsilon", eps);
+            //     _postRenderCommands.SetComputeTextureParam(_computeShader, computeGBufferVarianceKernel,
+            //         "g_sourceMipLevelDensity", GBuffer.Density, i);
+            //     _postRenderCommands.DispatchCompute(_computeShader, computeGBufferVarianceKernel,
+            //         Math.Max(1, mipW / 8), Math.Max(1, mipH / 8), 1);
+            // }
 
-            var generateQuadTreeKernel = _computeShader.FindKernel("GenerateGBufferQuadTree");
-            _postRenderCommands.SetComputeTextureParam(_computeShader, generateQuadTreeKernel,
-                "g_transmissibility", GBuffer.Transmissibility);
-            _postRenderCommands.SetComputeTextureParam(_computeShader, generateQuadTreeKernel,
-                "g_destQuadTreeLeaves", GBuffer.QuadTreeLeaves, 0);
-            _postRenderCommands.DispatchCompute(_computeShader, generateQuadTreeKernel,
-                Math.Max(1, GBuffer.QuadTreeLeaves.width / 8), Math.Max(1, GBuffer.QuadTreeLeaves.height / 8), 1);
+            // var generateQuadTreeKernel = _computeShader.FindKernel("GenerateGBufferQuadTree");
+            // _postRenderCommands.SetComputeTextureParam(_computeShader, generateQuadTreeKernel,
+            //     "g_density", GBuffer.Density);
+            // _postRenderCommands.SetComputeTextureParam(_computeShader, generateQuadTreeKernel,
+            //     "g_destQuadTreeLeaves", GBuffer.QuadTreeLeaves, 0);
+            // _postRenderCommands.DispatchCompute(_computeShader, generateQuadTreeKernel,
+            //     Math.Max(1, GBuffer.QuadTreeLeaves.width / 8), Math.Max(1, GBuffer.QuadTreeLeaves.height / 8), 1);
         }
 
         Graphics.ExecuteCommandBuffer(_postRenderCommands);

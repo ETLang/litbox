@@ -1,15 +1,15 @@
 #include "../Shaders/LitboxCommon.cginc"
 
-#pragma kernel MakeTransmissibilityTensor
+#pragma kernel MakeDensityTensor
 #pragma kernel MakePhotonCountTensor
 
-Texture2D<float4> in_transmissibility;
+Texture2D<float4> in_density;
 Texture2D<uint> in_photon_count;
 
-RWTexture2D<float4> out_transmissibility;
+RWTexture2D<float4> out_density;
 [numthreads(8,8,1)]
-void MakeTransmissibilityTensor(uint3 id : SV_DispatchThreadID) {
-    out_transmissibility[id.xy] = float4(in_transmissibility[id.xy].x, 0, 0, 1);
+void MakeDensityTensor(uint3 id : SV_DispatchThreadID) {
+    out_density[id.xy] = float4(in_density[id.xy].x, 0, 0, 1) / DENSITY_SCALE;
 }
 
 RWTexture2D<float4> out_photon_count;

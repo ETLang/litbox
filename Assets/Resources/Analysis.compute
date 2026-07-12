@@ -7,7 +7,7 @@
 #line 5
 
 Texture2D<float4> _in_albedo;
-Texture2D<float4> _in_transmissibility;
+Texture2D<float4> _in_density;
 Texture2D<float4> _in_normal_roughness;
 Texture2D<float4> _in_hdr_forward_a;
 Texture2D<float4> _in_hdr_forward_b;

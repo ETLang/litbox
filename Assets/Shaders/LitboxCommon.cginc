@@ -6,6 +6,8 @@
 
 #define PI (3.141592654f)
 
+#define DENSITY_SCALE 8192
+
 // Foundation
 
 struct appdata_common

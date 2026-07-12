@@ -78,7 +78,7 @@ public class CloudGroupController : LitboxComponent
             _gaussianBlurShader.RunKernel("CloudForegroundBlur", _foregroundSimulationTex.width, _foregroundSimulationTex.height,
                 ("blur_input", _simulation.SimulationOutput),
                 ("blur_output", _intermediateSimulationTex),
-                ("transmissibility", _simulation.GBuffer.Transmissibility),
+                ("density", _simulation.GBuffer.Density),
                 ("transmission_depth", transmissionDepth),
                 ("kernel_lut", _weightsLUT),
                 ("sample_offset", new Vector2(sampleOffset.x, 0)),
@@ -90,7 +90,7 @@ public class CloudGroupController : LitboxComponent
             _gaussianBlurShader.RunKernel("CloudForegroundBlur", _foregroundSimulationTex.width, _foregroundSimulationTex.height,
                 ("blur_input", _intermediateSimulationTex),
                 ("blur_output", _foregroundSimulationTex),
-                ("transmissibility", _simulation.GBuffer.Transmissibility),
+                ("density", _simulation.GBuffer.Density),
                 ("transmission_depth", transmissionDepth),
                 ("kernel_lut", _weightsLUT),
                 ("sample_offset", new Vector2(0, sampleOffset.y)),
@@ -182,7 +182,7 @@ public class CloudGroupController : LitboxComponent
             //_gaussianBlurShader.SetVectorArray("kernel_sample_points", _kernelSamples1);
         }
 
-        foregroundCloudMat.SetTexture("_TransmissibilityTex", _simulation.GBuffer.Transmissibility);
+        foregroundCloudMat.SetTexture("_DensityTex", _simulation.GBuffer.Density);
         foregroundCloudMat.SetFloat(_transmissionDepthId, transmissionDepth);
         foregroundCloudMat.SetMatrix(_foregroundSimulationUVTransformId, _simulationUVTransform);
         if(blurSize == 0) {

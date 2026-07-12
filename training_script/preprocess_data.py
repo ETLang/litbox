@@ -44,7 +44,7 @@ def get_cache_path(args):
         none_as_empty(args.input_a_location) +
         none_as_empty(args.input_b_location) +
         none_as_empty(args.input_albedo_location) +
-        none_as_empty(args.input_transmissibility_location)).encode()).hexdigest()
+        none_as_empty(args.input_density_location)).encode()).hexdigest()
     cache_dir = os.path.join(args.cache_location, ref_hash)
     os.makedirs(cache_dir, exist_ok=True)
     return cache_dir
@@ -54,12 +54,12 @@ def create_litbox_raw_data_loader(args):
                                                    input_a_easy=args.input_a_easy_location, input_b_easy=args.input_b_easy_location,
                                                    input_a_medium=args.input_a_medium_location, input_b_medium=args.input_b_medium_location,
                                                    input_a_final=args.input_a_location, input_b_final=args.input_b_location,
-                                                   albedo=args.input_albedo_location, transmissibility=args.input_transmissibility_location)
+                                                   albedo=args.input_albedo_location, density=args.input_density_location)
 
     dataset = LitboxDataset({k: v for k, v in {
         'reference': (data_files.get('reference'), 3),
         'albedo': (data_files.get('albedo'), 3),
-        'transmissibility': (data_files['transmissibility'], 1),
+        'density': (data_files['density'], 1),
         'input_a_final': (data_files.get('input_a_final'), 3),
         'input_b_final': (data_files.get('input_b_final'), 3),
         'input_a_easy' : (data_files.get('input_a_easy'), 3),
@@ -196,7 +196,7 @@ def compute_stats(args):
             welford_medium.add_all(prepare_for_welford(image_medium))
         image_final, _ = data_processing.preprocess_radiance(sample['input_a_final'], sample['input_b_final'], sample['albedo'])
         welford_final.add_all(prepare_for_welford(image_final))
-        density = data_processing.preprocess_transmissibility(sample['transmissibility'])
+        density = data_processing.preprocess_density(sample['density'])
         welford_density.add_all(prepare_for_welford(density))
         print(f"\r{index * g_batch_size:05d} / {sample_count}", end="", flush=True)
 
@@ -306,7 +306,7 @@ def build_cache(args):
             save_image_batch(index, variance_final, variance_final_template)
 
         if not test_batch_already_exists(index, density_template):
-            density = data_processing.preprocess_transmissibility(sample['transmissibility'], density_mean, density_stddev)
+            density = data_processing.preprocess_density(sample['density'], density_mean, density_stddev)
             save_image_batch(index, density, density_template)
 
         if not test_batch_already_exists(index, reference_template):

@@ -13,7 +13,7 @@ public class SimulationTexturePicker : LitboxComponent {
         AI_ToneMapped,
         Denoised_HDR,
         Albedo,
-        Transmissibility,
+        Density,
         NormalRoughness,
         QuadTree,
         AnalysisA,
@@ -84,8 +84,8 @@ public class SimulationTexturePicker : LitboxComponent {
         case TextureType.Albedo:
             value = simulation?.GBuffer.AlbedoAlpha;
             break;
-        case TextureType.Transmissibility:
-            value = simulation?.GBuffer.Transmissibility;
+        case TextureType.Density:
+            value = simulation?.GBuffer.Density;
             break;
         case TextureType.NormalRoughness:
             value = simulation?.GBuffer.NormalRoughness;
@@ -215,7 +215,7 @@ public class SimulationTexturePicker : LitboxComponent {
         _analysisShader.RunKernel(kernel, tileSize, target.width, target.height,
             ("_out_analysis", target),
             ("_in_albedo", simulation.GBuffer.AlbedoAlpha),
-            ("_in_transmissibility", simulation.GBuffer.Transmissibility),
+            ("_in_density", simulation.GBuffer.Density),
             ("_in_normal_roughness", simulation.GBuffer.NormalRoughness),
             ("_in_hdr_forward_a", simulation.TracerA.EarlyRadianceForImportanceSampling),
             ("_in_hdr_forward_b", simulation.TracerB.EarlyRadianceForImportanceSampling),

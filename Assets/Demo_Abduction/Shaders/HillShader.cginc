@@ -1,5 +1,6 @@
 #include "UnityCG.cginc"
 #include "../../Shaders/ToneMapping.cginc"
+#define DENSITY_SCALE 8192
 
 struct appdata
 {
@@ -119,7 +120,7 @@ v2f hill_vert(appdata v)
 struct gbuffer_output
 {
     float4 albedo : SV_Target0;
-    float4 transmissibility : SV_Target1;
+    float4 density : SV_Target1;
     float4 normal : SV_Target2;
 };
 
@@ -150,12 +151,12 @@ gbuffer_output hill_frag(v2f i)
     float3 specular_color = _SpecularColor.rgb * specular_factor;
     
     float3 final_color = lerp(diffuse_color + specular_color, _Haze.rgb, _Haze.a);
-    float t = 1 - _substrateDensity * farmland_color.a / sqrt(_ScreenParams.x * _ScreenParams.y) * 100;
+    float d = DENSITY_SCALE * _substrateDensity * farmland_color.a / sqrt(_ScreenParams.x * _ScreenParams.y) * 100;
     gbuffer_output output;
 
     output.albedo = float4(final_color, 1) * farmland_color.a;
 
-    output.transmissibility = float4(t, t, 0, 1);
+    output.density = float4(d, d, 0, 1);
     output.normal = float4(i.sim_normal, 0.1);
     return output;
 }

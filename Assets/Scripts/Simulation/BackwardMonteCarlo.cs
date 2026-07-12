@@ -96,7 +96,7 @@ public class BackwardMonteCarlo : Disposable
         if(ImportanceMap == null) return;
         
         var albedo = (Texture)GBuffer.AlbedoAlpha ?? Texture2D.whiteTexture;
-        var transmissibility = (Texture)GBuffer.Transmissibility ?? Texture2D.whiteTexture;
+        var density = (Texture)GBuffer.Density ?? Texture2D.blackTexture;
 
         int width = InputImage.width;
         int height = InputImage.height;
@@ -107,7 +107,7 @@ public class BackwardMonteCarlo : Disposable
             ("g_hdr", InputImage),
             ("g_output_hdr", AccumulationImage),
             ("g_albedo", albedo),
-            ("g_transmissibility", transmissibility),
+            ("g_density", density),
             ("g_importanceMap", ImportanceMap),
             ("g_mieScatteringLUT", BufferManager.MieScatteringLUT),
             ("g_teardropScatteringLUT", BufferManager.TeardropScatteringLUT),

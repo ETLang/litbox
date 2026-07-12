@@ -4,7 +4,7 @@
 // Inputs
 Texture2D<half4> _in_albedo;
 //Texture2D<float4> _in_radiance;
-Texture2D<float4> _in_transmissibility;
+Texture2D<float4> _in_density;
 Texture2D<float> _in_volatility_0;
 
 // Parameters
@@ -46,10 +46,10 @@ void CSMain(uint3 id : SV_DispatchThreadID) {
     // float3 radiance_min = min(min(radiance_a, radiance_b), min(radiance_c, radiance_d));
     // float3 radiance_max = max(max(radiance_a, radiance_b), max(radiance_c, radiance_d));
 
-    half density_a = -log(_in_transmissibility[src_id].x);
-    half density_b = -log(_in_transmissibility[src_id + uint2(1, 0)].x);
-    half density_c = -log(_in_transmissibility[src_id + uint2(0, 1)].x);
-    half density_d = -log(_in_transmissibility[src_id + uint2(1, 1)].x);
+    half density_a = -log(1 - _in_density[src_id].x / DENSITY_SCALE);
+    half density_b = -log(1 - _in_density[src_id + uint2(1, 0)].x / DENSITY_SCALE);
+    half density_c = -log(1 - _in_density[src_id + uint2(0, 1)].x / DENSITY_SCALE);
+    half density_d = -log(1 - _in_density[src_id + uint2(1, 1)].x / DENSITY_SCALE);
     half density_min = min(min(density_a, density_b), min(density_c, density_d));
     half density_max = max(max(density_a, density_b), max(density_c, density_d));
 

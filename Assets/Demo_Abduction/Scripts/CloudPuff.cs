@@ -65,8 +65,7 @@ public class CloudPuff : MonoBehaviour
         } else {
             // Link the alpha of the foreground and background to the density of the cloud
             var transmissibilityPerPixel = Mathf.Pow(1-Mathf.Pow(10, rayTracedObject.substrateLogDensity), 1);
-            var transmissibilityPerPuff = Mathf.Pow(transmissibilityPerPixel, transform.localScale.x * puffThickness / 2);
-            var puffDensity = 1-transmissibilityPerPuff;
+            var puffDensity = 1 - Mathf.Pow(transmissibilityPerPixel, transform.localScale.x * puffThickness / 2);
 
             if(backgroundObject)
             {
@@ -84,7 +83,7 @@ public class CloudPuff : MonoBehaviour
                 var c = foregroundColor;
                 c.a = puffDensity;
                 foregroundColor = c;
-                obscurityStrength = 10 * puffThickness;// / Mathf.Sqrt(transmissibilityPerPuff);
+                obscurityStrength = 10 * puffThickness;
                 _props.SetColor(_ColorId, c);
                 _props.SetFloat(_ObscurityStrengthId, obscurityStrength);
                 foregroundObject.SetPropertyBlock(_props);

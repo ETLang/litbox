@@ -11,7 +11,7 @@ Texture2D<float4> _Input;
 Texture2D<float>  _Variance; // Note: VarianceMap is currently 1/4 the resolution of the main input
 Texture2D<float4> _Albedo;
 Texture2D<float4> _NormalRoughness;
-Texture2D<float4> _Transmissibility;
+Texture2D<float4> _Density;
 Texture2D<float> _Quadtree;
 
 // Read-write output
@@ -21,7 +21,7 @@ float4 _InputSize; // x: Width, y: Height, z: 1/Width, w: 1/Height
 
 float _NormalSensitivity;    // Tolerance for normal differences (e.g., 8.0)
 float _AlbedoSensitivity;    // Tolerance for albedo differences (e.g., 4.0)
-float _TransmissibilitySensitivity; // Tolerance for transmissibility differences
+float _DensitySensitivity; // Tolerance for density differences
 float _VarianceSensitivity;
 float _VarianceScale;        // Maps variance to initial starting MIP depth
 float _DarknessNoiseFloor;   // Low-light floor
@@ -53,8 +53,8 @@ void CSMain(uint3 id : SV_DispatchThreadID)
     float3 centerAlbedo = centerG1.rgb;
     float4 centerG2 = _NormalRoughness.SampleLevel(sampler_point_clamp, uv, 0);
     float3 centerNormal = centerG2.xyz;// * 2.0f - 1.0f;
-    float centerTrans = _Transmissibility.SampleLevel(sampler_point_clamp, uv, 0).x;
-    float logCenterTrans = log(centerTrans + 1e-6f);
+    float centerDensity = _Density.SampleLevel(sampler_point_clamp, uv, 0).x;
+    float logcenterDensity = log(centerDensity + 1e-6f);
     float centerVariance = _Variance.SampleLevel(sampler_linear_clamp, uv, 0).x;
     float3 centerRadiance = _Input.SampleLevel(sampler_linear_clamp, uv, 0).rgb; // TODO: probably sampler_linear_clamp?
     float centerLuminance = Luminance(centerRadiance);
@@ -92,7 +92,7 @@ void CSMain(uint3 id : SV_DispatchThreadID)
     if (startMip == 0)
     {
 #if APPLY_RADIANCE
-        _Output[id.xy] = float4(centerRadiance * centerAlbedo * (1-centerTrans), 1);
+        _Output[id.xy] = float4(centerRadiance * centerAlbedo * (1-centerDensity), 1);
 #else
         _Output[id.xy] = float4(centerRadiance, 1.0f);
 #endif
@@ -136,8 +136,8 @@ void CSMain(uint3 id : SV_DispatchThreadID)
         float3 sampleAlbedo = sampleG1.rgb;
         float4 sampleG2 = _NormalRoughness.SampleLevel(sampler_point_clamp, current.uv, current.mip);
         float3 sampleNormal = sampleG2.xyz;// * 2.0f - 1.0f;
-        float sampleTrans = _Transmissibility.SampleLevel(sampler_point_clamp, current.uv, current.mip).x;
-        float logSampleTrans = log(sampleTrans + 1e-6f);
+        float sampleDensity = _Density.SampleLevel(sampler_point_clamp, current.uv, current.mip).x;
+        float logSampleDensity = log(sampleDensity + 1e-6f);
         float sampleVariance = _Variance.SampleLevel(sampler_linear_clamp, current.uv, current.mip).x;
 
 
@@ -146,8 +146,8 @@ void CSMain(uint3 id : SV_DispatchThreadID)
         // float wNormal = pow(normalDiff, _NormalSensitivity);
         // float albedoDiff = distance(centerAlbedo, sampleAlbedo);
         // float wAlbedo = exp(-albedoDiff * _AlbedoSensitivity);
-        // float transDiff = abs(logCenterTrans - logSampleTrans);
-        // float wTrans = saturate(1.1f * exp(-transDiff * _TransmissibilitySensitivity) - 0.1f);
+        // float transDiff = abs(logcenterDensity - logSampleDensity);
+        // float wTrans = saturate(1.1f * exp(-transDiff * _DensitySensitivity) - 0.1f);
         // float varDiff = max(0, centerVariance - sampleVariance);
         // float wVariance = exp(-varDiff * _VarianceSensitivity);
 
@@ -157,8 +157,8 @@ void CSMain(uint3 id : SV_DispatchThreadID)
         float albedoDiff = distance(centerAlbedo, sampleAlbedo);
         float wAlbedo = 1 - saturate(albedoDiff / _AlbedoSensitivity);
         wAlbedo *= wAlbedo;
-        float transDiff = abs(logCenterTrans - logSampleTrans);
-        float wTrans = 1 - saturate(transDiff / _TransmissibilitySensitivity);
+        float transDiff = abs(logcenterDensity - logSampleDensity);
+        float wTrans = 1 - saturate(transDiff / (DENSITY_SCALE * _DensitySensitivity));
         wTrans *= wTrans;
         float varDiff = min(0, centerVariance - sampleVariance);
         float wVariance = 1 - saturate(-varDiff / _VarianceSensitivity);
@@ -208,7 +208,7 @@ void CSMain(uint3 id : SV_DispatchThreadID)
     }
 
 #if APPLY_RADIANCE
-    _Output[id.xy] = accumulatedColor / totalWeight * float4(centerAlbedo * (1-centerTrans), 1);
+    _Output[id.xy] = accumulatedColor / totalWeight * float4(centerAlbedo * (1-centerDensity), 1);
 #else
     _Output[id.xy] = accumulatedColor / totalWeight;
 #endif

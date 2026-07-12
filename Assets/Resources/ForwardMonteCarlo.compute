@@ -367,7 +367,7 @@ void ConvertToHDR (uint3 id : SV_DispatchThreadID, uint2 localID : SV_GroupThrea
 #if APPLY_RADIANCE
     albedo = g_albedo[id.xy].rgb;
 #if FINALIZE_OUTSCATTER_DENSITY
-    outScatterDensity *= (1 - g_transmissibility[id.xy].x);
+    outScatterDensity *= g_density[id.xy].x / DENSITY_SCALE;
 #endif
 #endif
 

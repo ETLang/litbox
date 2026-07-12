@@ -7,7 +7,7 @@
 Texture2D<float4> radiance;
 Texture2D<float> variance;
 Texture2D<float4> albedo;
-Texture2D<float4> transmissibility;
+Texture2D<float4> density;
 SamplerState sampler_radiance;
 
 RWTexture2DArray<float4> output;
@@ -42,7 +42,7 @@ void CSMain(uint3 id : SV_DispatchThreadID)
     {
         float3 alb = albedo.SampleLevel(sampler_radiance, uv, mip_level).rgb;
 
-        float trans = transmissibility.SampleLevel(sampler_radiance, uv, mip_level).r;
+        float trans = 1 - density.SampleLevel(sampler_radiance, uv, mip_level).r / DENSITY_SCALE;
         float density = -log10(1.0 - clamp(trans, 0.0, 1.0 - 1e-6));
         density = (density - density_mean) / (density_stddev + 1e-6);
 

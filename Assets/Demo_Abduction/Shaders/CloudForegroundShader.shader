@@ -25,6 +25,8 @@ Shader "Abduction/CloudForeground"
             #include "UnityCG.cginc"
             #include "../../Shaders/ToneMapping.cginc"
 
+            #define DENSITY_SCALE 8192
+
             struct appdata
             {
                 float4 vertex : POSITION;
@@ -44,7 +46,7 @@ Shader "Abduction/CloudForeground"
             sampler2D _MainTex;
             sampler2D _ForegroundAmbientTex;
             sampler2D _ForegroundSimulationTex;
-            sampler2D _TransmissibilityTex;
+            sampler2D _DensityTex;
             int _ForegroundSimulationLOD;
             float4x4 _ForegroundSimulationUVTransform;
 
@@ -71,7 +73,7 @@ Shader "Abduction/CloudForeground"
                 float4 c = tex2D(_MainTex, i.uv);
                 float alpha = c.a * _Color.a;
 
-                float obscurity = 1-tex2Dlod(_TransmissibilityTex, float4(i.screen_uv, 0, 0)).r;
+                float obscurity = tex2Dlod(_DensityTex, float4(i.screen_uv, 0, 0)).r / DENSITY_SCALE;
                 float3 simulatedLight = tex2Dlod(_ForegroundSimulationTex, float4(i.screen_uv,0,_ForegroundSimulationLOD)).rgb;
                 float3 ambientLight = tex2D(_ForegroundAmbientTex, i.uv).rgb * _ForegroundAmbientColor;
                 float sphereApproximation = (1-obscurity);

@@ -209,7 +209,7 @@ public class ForwardMonteCarlo : Disposable
             ("g_needs_accumulation", _needsAccumulationBuffer),
             ("g_output_hdr", OutputImageHDR),
             ("g_albedo", _gBuffer.AlbedoAlpha),
-            ("g_transmissibility", _gBuffer.Transmissibility));
+            ("g_density", _gBuffer.Density));
     }
 
     public async Task<long> GetCurrentWriteCountAsync()
@@ -278,7 +278,7 @@ public class ForwardMonteCarlo : Disposable
             ("g_accumulated_output_hdr", AccumulationImage),
             ("g_needs_accumulation", _needsAccumulationBuffer),
             ("g_albedo", _gBuffer.AlbedoAlpha),
-            ("g_transmissibility", _gBuffer.Transmissibility),
+            ("g_density", _gBuffer.Density),
             ("g_normalAlignment", _gBuffer.NormalRoughness),
             ("g_quadTreeLeaves", _gBuffer.QuadTreeLeaves),
             ("g_mieScatteringLUT", BufferManager.MieScatteringLUT),

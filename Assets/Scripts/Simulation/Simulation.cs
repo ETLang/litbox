@@ -4,6 +4,7 @@ using UnityEngine;
 using System.Linq;
 using UnityEngine.UI;
 using System.Text;
+using Unity.VisualScripting;
 
 
 public delegate void SimulationStepEvent(int frameCount);
@@ -44,7 +45,9 @@ public class Simulation : LitboxComponent
     [SerializeField] public int raysPerFrame = 65536;
     [SerializeField] public int photonBounces = -1;
     [SerializeField, Min(0.01f)] public float integrationInterval = 0.1f;
-    [SerializeField] private float transmissibilityVariationEpsilon = 1e-3f;
+
+    [RenamedFrom("transmissibilityVariationEpsilon")]
+    [SerializeField] private float densityVariationEpsilon = 1e-3f;
     [SerializeField] public Denoiser3 denoiser = null; 
 
     [Header("Variance Weights")]
@@ -310,9 +313,9 @@ public class Simulation : LitboxComponent
     {
         LitboxGBuffer gBuffer = new LitboxGBuffer
         {
-            AlbedoAlpha = this.CreateRWTextureWithMips(width, height, RenderTextureFormat.ARGBFloat, 32),
-            Transmissibility = this.CreateRWTextureWithMips(width, height, RenderTextureFormat.ARGBFloat),
-            NormalRoughness = this.CreateRWTextureWithMips(width, height, RenderTextureFormat.ARGBFloat),
+            AlbedoAlpha = this.CreateRWTextureWithMips(width, height, RenderTextureFormat.ARGB32, 32),
+            Density = this.CreateRWTextureWithMips(width, height, RenderTextureFormat.RGHalf),
+            NormalRoughness = this.CreateRWTextureWithMips(width, height, RenderTextureFormat.ARGBHalf),
             QuadTreeLeaves = this.CreateRWTexture(width, height, RenderTextureFormat.ARGBHalf),
         };
 
@@ -320,7 +323,7 @@ public class Simulation : LitboxComponent
 
         if(_realContentCamera != null) {
             _realContentCamera.GBuffer = GBuffer;
-            _realContentCamera.VarianceEpsilon = transmissibilityVariationEpsilon;
+            _realContentCamera.VarianceEpsilon = densityVariationEpsilon;
 
             // Important to "prime" everything related to the camera
             _realContentCamera.GetComponent<Camera>().Render();

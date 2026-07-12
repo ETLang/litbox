@@ -7,7 +7,7 @@ Texture2D<float4> _Input;
 Texture2D<float>  _Variance; // Note: VarianceMap is currently 1/4 the resolution of the main input
 Texture2D<float4> _Albedo;
 Texture2D<float4> _NormalRoughness;
-Texture2D<float4> _Transmissibility;
+Texture2D<float4> _Density;
 
 // Read-write output
 RWTexture2D<float4> _Output;

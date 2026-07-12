@@ -73,7 +73,7 @@ public class TrainingManager : DisposalHelperComponent {
     string _previewPathPNG;
     string _referencePathEXR;
     string _albedoPathPNG;
-    string _transmissibilityPathEXR;
+    string _densityPathEXR;
 
     RenderTexture[] profileSamples;
     ComputeShader _sceneOutputPrepShader;
@@ -98,7 +98,7 @@ public class TrainingManager : DisposalHelperComponent {
                 _previewPathPNG = null;
                 _referencePathEXR = null;
                 _albedoPathPNG = null;
-                _transmissibilityPathEXR = null;
+                _densityPathEXR = null;
                 _generatedSamples++;
                 if(profileSamples != null) {
                     foreach(var sample in profileSamples) {
@@ -131,7 +131,7 @@ public class TrainingManager : DisposalHelperComponent {
             _activeProfile++;
 
             _albedoPathPNG = Path.Combine(_datasetPath, $"Albedo_{sampleId:00000}.png");
-            _transmissibilityPathEXR = Path.Combine(_datasetPath, $"Transmissibility_{sampleId:00000}.exr");
+            _densityPathEXR = Path.Combine(_datasetPath, $"Density_{sampleId:00000}.exr");
             if(_activeProfile == inputProfiles.Length) {
                 _previewPathPNG = Path.Combine(_datasetPath, $"Output_Preview_{sampleId:00000}.png");
                 _referencePathEXR = Path.Combine(_datasetPath, $"Output_Reference_{sampleId:00000}.exr");
@@ -257,14 +257,14 @@ public class TrainingManager : DisposalHelperComponent {
             _simulation.GBuffer.AlbedoAlpha.SaveTexturePNG(_albedoPathPNG);
         }
 
-        if(!File.Exists(_transmissibilityPathEXR)) {
+        if(!File.Exists(_densityPathEXR)) {
             var img = GetTempEXRImage();
-            _sceneOutputPrepShader.RunKernel("MakeTransmissibilityTensor", img.width, img.height,
-                ("in_transmissibility", _simulation.GBuffer.Transmissibility),
+            _sceneOutputPrepShader.RunKernel("MakeDensityTensor", img.width, img.height,
+                ("in_density", _simulation.GBuffer.Density),
                 //("in_photon_count", _simulation.PhotonDensityBuffer),
-                ("out_transmissibility", img));
-            //img.SaveTextureEXR(_transmissibilityPathEXR);
-            _simulation.GBuffer.Transmissibility.SaveTextureEXR(_transmissibilityPathEXR);
+                ("out_density", img));
+            //img.SaveTextureEXR(_densityPathEXR);
+            _simulation.GBuffer.Density.SaveTextureEXR(_densityPathEXR);
         }
 
         if(_radianceAPathEXR != null) {

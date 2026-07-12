@@ -102,7 +102,7 @@ void Simulate_Camera (uint3 id : SV_DispatchThreadID) {
     float2 uv = origin / targetSize;
     float3 directLight = g_hdr[id.xy].rgb;
     float3 localAlbedo = g_albedo[id.xy].rgb;
-    float localOutscatter = 1-g_transmissibility[id.xy].x;
+    float localOutscatter = g_density[id.xy].x / DENSITY_SCALE;
 
     Ray accumulated_photon = {
         origin,

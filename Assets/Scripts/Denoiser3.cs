@@ -23,7 +23,7 @@ public class Denoiser3 : LitboxComponent
 
     public float normalSensitivity = 8.0f;
     public float albedoSensitivity = 4.0f;
-    public float transmissibilitySensitivity = 1.0f;
+    public float densitySensitivity = 1.0f;
     public float varianceSensitivity = 10.0f;
     public float varianceScale = 4;
     public float darknessNoiseFloor = 0.002f;
@@ -75,13 +75,13 @@ public class Denoiser3 : LitboxComponent
     {
         var quadtree = BufferManager.AcquireTexture(simulation.width / 2, simulation.height / 2, RenderTextureFormat.RFloat, true);
 
-        TracerPostProcessor.Instance.GenerateDenoisingFilterQuadtree(simulation.GBuffer.AlbedoAlpha, simulation.GBuffer.NormalRoughness, simulation.GBuffer.Transmissibility, source, quadtree);
+        TracerPostProcessor.Instance.GenerateDenoisingFilterQuadtree(simulation.GBuffer.AlbedoAlpha, simulation.GBuffer.NormalRoughness, simulation.GBuffer.Density, source, quadtree);
 
         _denoiserShader.SetTexture(_denoiseKernel, "_Input", source);
         _denoiserShader.SetTexture(_denoiseKernel, "_Variance", simulation.VarianceMap);
         _denoiserShader.SetTexture(_denoiseKernel, "_Albedo", simulation.GBuffer.AlbedoAlpha);
         _denoiserShader.SetTexture(_denoiseKernel, "_NormalRoughness", simulation.GBuffer.NormalRoughness);
-        _denoiserShader.SetTexture(_denoiseKernel, "_Transmissibility", simulation.GBuffer.Transmissibility);
+        _denoiserShader.SetTexture(_denoiseKernel, "_Density", simulation.GBuffer.Density);
         _denoiserShader.SetTexture(_denoiseKernel, "_Output", output);
         _denoiserShader.SetTexture(_denoiseKernel, "_Quadtree", quadtree);
 
@@ -89,7 +89,7 @@ public class Denoiser3 : LitboxComponent
 
         _denoiserShader.SetFloat("_NormalSensitivity", normalSensitivity);
         _denoiserShader.SetFloat("_AlbedoSensitivity", albedoSensitivity);
-        _denoiserShader.SetFloat("_TransmissibilitySensitivity", transmissibilitySensitivity);
+        _denoiserShader.SetFloat("_DensitySensitivity", densitySensitivity);
         _denoiserShader.SetFloat("_VarianceSensitivity", varianceSensitivity);
         _denoiserShader.SetFloat("_VarianceScale", varianceScale);
         _denoiserShader.SetFloat("_DarknessNoiseFloor", darknessNoiseFloor);

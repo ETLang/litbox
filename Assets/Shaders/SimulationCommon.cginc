@@ -9,8 +9,8 @@ DECLARE_LUT(float3, g_teardropScatteringLUT)
 DECLARE_LUT_3D(float4, g_bdrfLUT)
 
 Texture2D<float4> g_albedo;
-Texture2D<float4> g_transmissibility;
-SamplerState samplerg_transmissibility;
+Texture2D<float4> g_density;
+SamplerState samplerg_density;
 Texture2D<float4> g_normalAlignment;
 SamplerState samplerg_normalAlignment;
 Texture2D<float4> g_quadTreeLeaves;
@@ -413,7 +413,7 @@ void Integrate(inout Ray photon, uint bounces, IMonteCarloMethod state) {
             ctx.lod = 0;//g_quadTreeLeaves.SampleLevel(sampler_point_clamp, ctx.testUV, 0).x;
 
             //do {
-                ctx.transmissibilityNext = g_transmissibility.SampleLevel(samplerg_transmissibility, ctx.testUV, ctx.lod);
+                ctx.transmissibilityNext = 1 - g_density.SampleLevel(samplerg_density, ctx.testUV, ctx.lod) / DENSITY_SCALE;
                 ctx.uHitNext = ctx.uHitCurrent + (1 << ctx.lod);
                 overshoot = state.Test(ctx);
                 

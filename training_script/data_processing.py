@@ -29,7 +29,7 @@ def register_dataset_args(parser, require_ref_location):
     parser.add_argument('--input-a-location', help='Path to input imageset A')
     parser.add_argument('--input-b-location', help='Path to input imageset B')
     parser.add_argument('--input-albedo-location', help='Path to albedo imageset')
-    parser.add_argument('--input-transmissibility-location', help='Path to transmissibility imageset')
+    parser.add_argument('--input-density-location', help='Path to density imageset')
     parser.add_argument('--reference-location', required=require_ref_location, help='Path to reference images for training')
 
 def validate_dataset_args(args, parser):
@@ -158,14 +158,14 @@ def preprocess_radiance(radiance_a, radiance_b, albedo, mean: torch.Tensor = Non
         rel_variance = (rel_variance - mean_view) / (stddev_view + 1e-6)
     return radiance, rel_variance
 
-def preprocess_transmissibility(transmissibility, mean: torch.Tensor = None, stddev: torch.Tensor = None):
-    density = -torch.log10(1 - torch.clamp(transmissibility, min=0, max=1-1e-6))
+def preprocess_density(density, mean: torch.Tensor = None, stddev: torch.Tensor = None):
+    log_density = -torch.log10(torch.clamp(density, min=0, max=1-1e-6))
 
     if mean is not None and stddev is not None:
         mean_view = mean.view(1,1,1,1)
         stddev_view = stddev.view(1,1,1,1)
-        density = (density - mean_view) / (stddev_view + 1e-6)
-    return density
+        log_density = (log_density - mean_view) / (stddev_view + 1e-6)
+    return log_density
 
 def preprocess_reference(reference, mean: torch.Tensor = None, stddev: torch.Tensor = None):
     reference = torch.log10(reference + 1e-6)

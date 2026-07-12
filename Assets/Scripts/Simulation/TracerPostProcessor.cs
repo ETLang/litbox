@@ -4,7 +4,7 @@ using UnityEngine;
 
 internal delegate void D_ComputeVolatilityLevel0(DispatchSize size, TextureView _in_normal, TextureView _out_volatility);
 internal delegate void D_ComputeDenoiserQuadtreeLevel0(DispatchSize size,
-    TextureView _in_albedo, TextureView _in_radiance, TextureView _in_transmissibility, TextureView _in_volatility_0,
+    TextureView _in_albedo, TextureView _in_radiance, TextureView _in_density, TextureView _in_volatility_0,
     float _albedo_luminance_threshold, float _albedo_chroma_threshold, float _volatility_threshold, float _log_density_threshold,
     TextureView _out_albedo_min, TextureView _out_albedo_max,
     // TextureView _out_radiance_min, TextureView _out_radiance_max,
@@ -167,7 +167,7 @@ public class TracerPostProcessor : Disposable
     public RenderTexture Quadtree {get;set;}
 
 
-    public void GenerateDenoisingFilterQuadtree(RenderTexture albedo, RenderTexture normal, RenderTexture transmissibility, RenderTexture hdrFinal, RenderTexture destQuadtree)
+    public void GenerateDenoisingFilterQuadtree(RenderTexture albedo, RenderTexture normal, RenderTexture density, RenderTexture hdrFinal, RenderTexture destQuadtree)
     {
         var albedoMin = AlbedoMin ?? BufferManager.AcquireTexture(destQuadtree, RenderTextureFormat.ARGBHalf);
         AlbedoMin = albedoMin;
@@ -183,7 +183,7 @@ public class TracerPostProcessor : Disposable
 
         ComputeVolatilityLevel0((normal.width, normal.height), normal, volatilityLevel0);
         ComputeDenoiserQuadtreeLevel0((destQuadtree.width, destQuadtree.height),
-            albedo.SelectMip(0), hdrFinal.SelectMip(0), transmissibility.SelectMip(0), volatilityLevel0,
+            albedo.SelectMip(0), hdrFinal.SelectMip(0), density.SelectMip(0), volatilityLevel0,
             AlbedoLuminanceThreshold, AlbedoChromaThreshold, VolatilityThreshold, LogDensityThreshold,
             albedoMin.SelectMip(0), albedoMax.SelectMip(0), logDensityRangeVolatility.SelectMip(0), destQuadtree.SelectMip(0));
 

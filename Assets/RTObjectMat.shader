@@ -13,7 +13,7 @@ Shader "RT/Object"
         Pass
         {
             Blend 0 One OneMinusSrcAlpha
-            Blend 1 Zero SrcColor
+            Blend 1 One One
             Blend 2 One Zero
 
             ZWrite Off
@@ -38,10 +38,12 @@ Shader "RT/Object"
                 float4 vertex : SV_POSITION;
             };
 
+            #define DENSITY_SCALE 8192
+
             struct gbuffer_output
             {
                 float4 albedo : SV_Target0;
-                float4 transmissibility: SV_Target1;
+                float4 density: SV_Target1;
                 float4 normal : SV_Target2;
             };
 
@@ -72,12 +74,14 @@ Shader "RT/Object"
                 float4 n = tex2D(_NormalTex, i.uv);
 
                 float imageDensity = _substrateDensity * c.a;
-                float imageTransmissibility = 1 - imageDensity;
+                float imageTransmittance = 1 - imageDensity;
 
-                float t = pow(imageTransmissibility, 100.0/_ScreenParams.y);
+                float t = pow(imageTransmittance, 100.0/_ScreenParams.y);
+
+                float density = (1 - t) * DENSITY_SCALE;
 
                 output.albedo = float4(c.rgb * _Color.rgb,1) * c.a * _Color.a;
-                output.transmissibility = float4(t,t,0,1);
+                output.density = float4(density,density,0,1);
                 output.normal = float4(i.normal, _particleAlignment);
                 return output;
             }

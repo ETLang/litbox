@@ -82,7 +82,7 @@ public class Denoiser2 : LitboxComponent
         _denoiserShader.SetTexture(_denoiseKernel, "_Variance", _simulation.VarianceMap);
         _denoiserShader.SetTexture(_denoiseKernel, "_Albedo", _simulation.GBuffer.AlbedoAlpha);
         _denoiserShader.SetTexture(_denoiseKernel, "_NormalRoughness", _simulation.GBuffer.NormalRoughness);
-        _denoiserShader.SetTexture(_denoiseKernel, "_Transmissibility", _simulation.GBuffer.Transmissibility);
+        _denoiserShader.SetTexture(_denoiseKernel, "_Density", _simulation.GBuffer.Density);
         _denoiserShader.SetTexture(_denoiseKernel, "_Output", DenoisedOutput);
 
         _denoiserShader.SetFloat("_VarianceThresholdMin", varianceThresholdMin);
