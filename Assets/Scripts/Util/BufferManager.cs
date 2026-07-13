@@ -261,7 +261,7 @@ public static class BufferManager
             if(_teardropScatteringLUT == null)
             {
                 float strength = 6;
-                _teardropScatteringLUT = LUT.CreateTeardropScatteringLUT(strength).AsTexture();
+                _teardropScatteringLUT = LUT.CreateTeardropScatteringLUT(strength).AsTexture(TextureFormat.RGBAHalf);
                 _teardropScatteringLUT.name = $"Teardrop Scattering LUT (Strength={strength})";
             }
             return _teardropScatteringLUT;
@@ -278,7 +278,7 @@ public static class BufferManager
             if(_purged) return null;
             if(_bdrfLUT == null)
             {
-                _bdrfLUT = LUT.CreateBDRFLUT().AsTexture();
+                _bdrfLUT = LUT.CreateBDRFLUT().AsTexture(TextureFormat.RGBAHalf);
                 _bdrfLUT.name = "BDRF LUT";
             }
             return _bdrfLUT;

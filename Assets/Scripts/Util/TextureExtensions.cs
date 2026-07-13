@@ -92,36 +92,36 @@ public static class TextureExtensions {
         }
     }
 
-    public static Texture AsTexture(this float[] lut) {
-        var texture = new Texture2D(lut.Length, 1, TextureFormat.RFloat, false, true);
+    public static Texture AsTexture(this float[] lut, TextureFormat format = TextureFormat.RFloat) {
+        var texture = new Texture2D(lut.Length, 1, format, false, true);
         texture.SetPixels(lut.Select(x => new Color(x, 0, 0, 0)).ToArray());
         texture.Apply();
         return texture;
     }
 
-    public static Texture AsTexture(this float2[] lut) {
-        var texture = new Texture2D(lut.Length, 1, TextureFormat.RGFloat, false, true);
+    public static Texture AsTexture(this float2[] lut, TextureFormat format = TextureFormat.RGFloat) {
+        var texture = new Texture2D(lut.Length, 1, format, false, true);
         texture.SetPixels(lut.Select(v => new Color(v.x, v.y, 0, 0)).ToArray());
         texture.Apply();
         return texture;
     }
 
-    public static Texture AsTexture(this float3[] lut) {
-        var texture = new Texture2D(lut.Length, 1, TextureFormat.RGBAFloat, false, true);
+    public static Texture AsTexture(this float3[] lut, TextureFormat format = TextureFormat.RGBAFloat) {
+        var texture = new Texture2D(lut.Length, 1, format, false, true);
         texture.SetPixels(lut.Select(v => new Color(v.x, v.y, v.z, 0)).ToArray());
         texture.Apply();
         return texture;
     }
 
-    public static Texture AsTexture(this float4[] lut) {
-        var texture = new Texture2D(lut.Length, 1, TextureFormat.RGFloat, false, true);
+    public static Texture AsTexture(this float4[] lut, TextureFormat format = TextureFormat.RGBAFloat) {
+        var texture = new Texture2D(lut.Length, 1, format, false, true);
         texture.SetPixels(lut.Select(v => new Color(v.x, v.y, v.z, v.w)).ToArray());
         texture.Apply();
         return texture;
     }
 
-    public static Texture AsTexture(this float[,] lut) {
-        var texture = new Texture2D(lut.GetLength(0), lut.GetLength(1), TextureFormat.RFloat, false, true);
+    public static Texture AsTexture(this float[,] lut, TextureFormat format = TextureFormat.RFloat) {
+        var texture = new Texture2D(lut.GetLength(0), lut.GetLength(1), format, false, true);
         Color[] c = new Color[lut.GetLength(0) * lut.GetLength(1)];
         for(int i = 0;i < lut.GetLength(0);i++) {
             for(int j = 0;j < lut.GetLength(1);j++) {
@@ -134,8 +134,8 @@ public static class TextureExtensions {
         return texture;
     }
 
-    public static Texture AsTexture(this float2[,] lut) {
-        var texture = new Texture2D(lut.GetLength(0), lut.GetLength(1), TextureFormat.RGFloat, false, true);
+    public static Texture AsTexture(this float2[,] lut, TextureFormat format = TextureFormat.RGFloat) {
+        var texture = new Texture2D(lut.GetLength(0), lut.GetLength(1), format, false, true);
         Color[] c = new Color[lut.GetLength(0) * lut.GetLength(1)];
         for(int i = 0;i < lut.GetLength(0);i++) {
             for(int j = 0;j < lut.GetLength(1);j++) {
@@ -148,8 +148,8 @@ public static class TextureExtensions {
         return texture;
     }
 
-    public static Texture AsTexture(this float3[,] lut) {
-        var texture = new Texture2D(lut.GetLength(0), lut.GetLength(1), TextureFormat.RGBAFloat, false, true);
+    public static Texture AsTexture(this float3[,] lut, TextureFormat format = TextureFormat.RGBAFloat) {
+        var texture = new Texture2D(lut.GetLength(0), lut.GetLength(1), format, false, true);
         Color[] c = new Color[lut.GetLength(0) * lut.GetLength(1)];
         for(int i = 0;i < lut.GetLength(0);i++) {
             for(int j = 0;j < lut.GetLength(1);j++) {
@@ -162,8 +162,8 @@ public static class TextureExtensions {
         return texture;
     }
 
-    public static Texture AsTexture(this float4[,] lut) {
-        var texture = new Texture2D(lut.GetLength(0), lut.GetLength(1), TextureFormat.RGBAFloat, false, true);
+    public static Texture AsTexture(this float4[,] lut, TextureFormat format = TextureFormat.RGBAFloat) {
+        var texture = new Texture2D(lut.GetLength(0), lut.GetLength(1), format, false, true);
         Color[] c = new Color[lut.GetLength(0) * lut.GetLength(1)];
         for(int i = 0;i < lut.GetLength(0);i++) {
             for(int j = 0;j < lut.GetLength(1);j++) {
@@ -176,8 +176,8 @@ public static class TextureExtensions {
         return texture;
     }
 
-    public static Texture AsTexture(this float[,,] lut) {
-        var texture = new Texture3D(lut.GetLength(0), lut.GetLength(1), lut.GetLength(2), TextureFormat.RFloat, false, true);
+    public static Texture AsTexture(this float[,,] lut, TextureFormat format = TextureFormat.RFloat) {
+        var texture = new Texture3D(lut.GetLength(0), lut.GetLength(1), lut.GetLength(2), format, false, true);
         Color[] c = new Color[lut.GetLength(0) * lut.GetLength(1) * lut.GetLength(2)];
         for(int i = 0;i < lut.GetLength(0);i++) {
             for(int j = 0;j < lut.GetLength(1);j++) {
@@ -192,8 +192,8 @@ public static class TextureExtensions {
         return texture;
     }
 
-    public static Texture AsTexture(this float2[,,] lut) {
-        var texture = new Texture3D(lut.GetLength(0), lut.GetLength(1), lut.GetLength(2), TextureFormat.RGFloat, false, true);
+    public static Texture AsTexture(this float2[,,] lut, TextureFormat format = TextureFormat.RGFloat) {
+        var texture = new Texture3D(lut.GetLength(0), lut.GetLength(1), lut.GetLength(2), format, false, true);
         Color[] c = new Color[lut.GetLength(0) * lut.GetLength(1) * lut.GetLength(2)];
         for(int i = 0;i < lut.GetLength(0);i++) {
             for(int j = 0;j < lut.GetLength(1);j++) {
@@ -208,8 +208,8 @@ public static class TextureExtensions {
         return texture;
     }
 
-    public static Texture AsTexture(this float3[,,] lut) {
-        var texture = new Texture3D(lut.GetLength(0), lut.GetLength(1), lut.GetLength(2), TextureFormat.RGBAFloat, false, true);
+    public static Texture AsTexture(this float3[,,] lut, TextureFormat format = TextureFormat.RGBAFloat) {
+        var texture = new Texture3D(lut.GetLength(0), lut.GetLength(1), lut.GetLength(2), format, false, true);
         Color[] c = new Color[lut.GetLength(0) * lut.GetLength(1) * lut.GetLength(2)];
         for(int i = 0;i < lut.GetLength(0);i++) {
             for(int j = 0;j < lut.GetLength(1);j++) {
@@ -224,8 +224,8 @@ public static class TextureExtensions {
         return texture;
     }
 
-    public static Texture AsTexture(this float4[,,] lut) {
-        var texture = new Texture3D(lut.GetLength(0), lut.GetLength(1), lut.GetLength(2), TextureFormat.RGBAFloat, false, true);
+    public static Texture AsTexture(this float4[,,] lut, TextureFormat format = TextureFormat.RGBAFloat) {
+        var texture = new Texture3D(lut.GetLength(0), lut.GetLength(1), lut.GetLength(2), format, false, true);
         Color[] c = new Color[lut.GetLength(0) * lut.GetLength(1) * lut.GetLength(2)];
         for(int i = 0;i < lut.GetLength(0);i++) {
             for(int j = 0;j < lut.GetLength(1);j++) {
