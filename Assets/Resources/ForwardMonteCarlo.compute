@@ -6,6 +6,7 @@
 #pragma multi_compile __ FINALIZE_OUTSCATTER_DENSITY
 #pragma multi_compile __ SKIP_ACCUMULATION
 #pragma multi_compile __ APPLY_RADIANCE
+#pragma multi_compile MAX_STEPS_TIER_256 MAX_STEPS_TIER_512 MAX_STEPS_TIER_1024 MAX_STEPS_TIER_2048
 
 #pragma kernel Simulate_DefaultLight
 #pragma kernel Simulate_PointLight

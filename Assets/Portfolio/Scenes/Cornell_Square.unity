@@ -354,7 +354,7 @@ MonoBehaviour:
   raysPerFrame: 65536
   photonBounces: -1
   integrationInterval: 0.1
-  transmissibilityVariationEpsilon: 0.001
+  densityVariationEpsilon: 0.001
   denoiser: {fileID: 443151172}
   SigmaSpatial: 1.2
   SigmaAlbedo: 0.05
@@ -439,7 +439,7 @@ MonoBehaviour:
   m_EditorClassIdentifier: Assembly-CSharp::Denoiser3
   normalSensitivity: 8
   albedoSensitivity: 4
-  transmissibilitySensitivity: 1
+  densitySensitivity: 1
   varianceSensitivity: 10
   varianceScale: 4
   darknessNoiseFloor: 0.002
@@ -1201,6 +1201,7 @@ GameObject:
   - component: {fileID: 1510718112}
   - component: {fileID: 1510718111}
   - component: {fileID: 1510718110}
+  - component: {fileID: 1510718113}
   m_Layer: 0
   m_Name: Main Camera
   m_TagString: MainCamera
@@ -1282,6 +1283,21 @@ Transform:
   m_Children: []
   m_Father: {fileID: 0}
   m_LocalEulerAnglesHint: {x: 0, y: 0, z: 0}
+--- !u!114 &1510718113
+MonoBehaviour:
+  m_ObjectHideFlags: 0
+  m_CorrespondingSourceObject: {fileID: 0}
+  m_PrefabInstance: {fileID: 0}
+  m_PrefabAsset: {fileID: 0}
+  m_GameObject: {fileID: 1510718109}
+  m_Enabled: 0
+  m_EditorHideFlags: 0
+  m_Script: {fileID: 11500000, guid: 9c0d92786a1b3f54695265a77fb5d8e7, type: 3}
+  m_Name: 
+  m_EditorClassIdentifier: Assembly-CSharp::ForceHDR_UE5
+  exposure: 0
+  whitePointLog: {x: 2, y: 2, z: 2}
+  blackPointLog: {x: -4, y: -4, z: -4}
 --- !u!1 &1745051537
 GameObject:
   m_ObjectHideFlags: 0
@@ -1610,6 +1626,7 @@ MonoBehaviour:
   substrateLogDensity: -0.13
   particleAlignment: 0.154
   heightScale: 1
+  sortingOrder: 0
 --- !u!33 &1684711080092373537
 MeshFilter:
   m_ObjectHideFlags: 0
@@ -2353,6 +2370,7 @@ MonoBehaviour:
   substrateLogDensity: -2.47
   particleAlignment: 0
   heightScale: 1
+  sortingOrder: 0
 --- !u!212 &5097338014046615687
 SpriteRenderer:
   m_ObjectHideFlags: 0
@@ -2769,6 +2787,7 @@ MonoBehaviour:
   substrateLogDensity: -0.13
   particleAlignment: 0.154
   heightScale: 1
+  sortingOrder: 0
 --- !u!114 &7084864777027815899
 MonoBehaviour:
   m_ObjectHideFlags: 0
@@ -2787,6 +2806,7 @@ MonoBehaviour:
   substrateLogDensity: -0.13
   particleAlignment: 0.154
   heightScale: 1
+  sortingOrder: 0
 --- !u!114 &7084864777153509661
 MonoBehaviour:
   m_ObjectHideFlags: 0
@@ -2805,6 +2825,7 @@ MonoBehaviour:
   substrateLogDensity: -0.13
   particleAlignment: 0.154
   heightScale: 1
+  sortingOrder: 0
 --- !u!114 &7084864777264472944
 MonoBehaviour:
   m_ObjectHideFlags: 0
@@ -2823,6 +2844,7 @@ MonoBehaviour:
   substrateLogDensity: -0.13
   particleAlignment: 0.154
   heightScale: 1
+  sortingOrder: 0
 --- !u!33 &7283640793225570916
 MeshFilter:
   m_ObjectHideFlags: 0

@@ -4,6 +4,25 @@
 #include "LitboxCommon.cginc"
 #include "Random.cginc"
 
+// Integrate()'s per-bounce-phase ray-march step cap (see its for(steps...) loop below) - the
+// diagonal of the simulation's target size in pixels, since that's the longest a single
+// search-or-refine phase can legitimately run before its own uEscape/transmitPotential exit
+// condition fires. Selected via one of the mutually-exclusive MAX_STEPS_TIER_* keywords
+// (ForwardMonteCarlo.compute's #pragma multi_compile), set from C# based on the active
+// Simulation's width/height - see ForwardMonteCarlo.cs. Falls back to the original hardcoded
+// value if no tier keyword is set.
+#if defined(MAX_STEPS_TIER_256)
+    #define MAX_INTEGRATION_STEPS 363
+#elif defined(MAX_STEPS_TIER_512)
+    #define MAX_INTEGRATION_STEPS 725
+#elif defined(MAX_STEPS_TIER_1024)
+    #define MAX_INTEGRATION_STEPS 1449
+#elif defined(MAX_STEPS_TIER_2048)
+    #define MAX_INTEGRATION_STEPS 2897
+#else
+    #define MAX_INTEGRATION_STEPS 2000
+#endif
+
 DECLARE_LUT(float2, g_mieScatteringLUT)
 DECLARE_LUT(float3, g_teardropScatteringLUT)
 DECLARE_LUT_3D(float4, g_bdrfLUT)
@@ -406,7 +425,7 @@ void Integrate(inout Ray photon, uint bounces, IMonteCarloMethod state) {
 
         state.BeginTraversal(ctx);
         bool continueRunning = true;
-        for(int steps = 0;steps < 2000;steps++) {
+        for(int steps = 0;steps < MAX_INTEGRATION_STEPS;steps++) {
             bool overshoot = false;
 
             // TODO: Reassess the utility of the quadtree. Tests showed no performance improvement using it.

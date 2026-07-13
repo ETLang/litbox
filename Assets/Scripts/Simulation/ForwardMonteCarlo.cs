@@ -26,6 +26,7 @@ public class ForwardMonteCarlo : Disposable
                 _outputImageHDR = BufferManager.AcquireTexture(w, h, RenderTextureFormat.ARGBFloat, true);
                 UpdateIntegrationInterval();
                 UpdateImportanceSamplingTarget();
+                UpdateMaxIntegrationStepsTier(w, h);
             }
         }
     }
@@ -57,6 +58,41 @@ public class ForwardMonteCarlo : Disposable
     {
         if(GBuffer.AlbedoAlpha) {
             _forwardIntegrationShader.SetVector("g_importance_sampling_target", _importanceSamplingTarget * new Vector2(GBuffer.AlbedoAlpha.width, GBuffer.AlbedoAlpha.height));
+        }
+    }
+
+    // The 4 keywords declared on ForwardMonteCarlo.compute's single MAX_STEPS_TIER_* multi_compile
+    // line. Unity only uses "several keywords on one multi_compile line" to determine which
+    // *combinations* get compiled (exactly one of these 4, never more) - it does NOT automatically
+    // disable the others when EnableKeyword is called for a new one, unlike what the mutual-exclusive
+    // compile-time semantics might suggest. UpdateMaxIntegrationStepsTier below must do that itself.
+    private static readonly string[] MaxIntegrationStepsTiers = {
+        "MAX_STEPS_TIER_256",
+        "MAX_STEPS_TIER_512",
+        "MAX_STEPS_TIER_1024",
+        "MAX_STEPS_TIER_2048",
+    };
+
+    // Selects Integrate()'s MAX_INTEGRATION_STEPS tier (see SimulationCommon.cginc) so the
+    // ray-march step cap tracks this simulation's actual resolution instead of a one-size-fits-all
+    // constant - picking a tighter compile-time bound measurably improves performance even though
+    // it doesn't change which rays terminate early (see the WebGPU port's mobile-perf-tuning notes
+    // for the full reasoning: a smaller *known* loop bound lets the shader compiler generate
+    // cheaper code, independent of how many iterations actually run).
+    private void UpdateMaxIntegrationStepsTier(int width, int height)
+    {
+        int size = Mathf.Max(width, height);
+        string tier = size <= 256 ? "MAX_STEPS_TIER_256"
+            : size <= 512 ? "MAX_STEPS_TIER_512"
+            : size <= 1024 ? "MAX_STEPS_TIER_1024"
+            : "MAX_STEPS_TIER_2048";
+
+        foreach (string candidate in MaxIntegrationStepsTiers) {
+            if (candidate == tier) {
+                _forwardIntegrationShader.EnableKeyword(candidate);
+            } else {
+                _forwardIntegrationShader.DisableKeyword(candidate);
+            }
         }
     }
     #endregion
