@@ -26,6 +26,8 @@ namespace Litbox.Portfolio {
             public int ownerId;
             public float verticalSize;
             public float exposure;
+            public Vector3 blackPointLog;
+            public Vector3 whitePointLog;
         }
 
         [System.Serializable]
@@ -171,7 +173,9 @@ namespace Litbox.Portfolio {
             {
                 ownerId = cam.gameObject.GetEntityId(),
                 verticalSize = cam.orthographicSize,
-                exposure = toneMapper?.exposure ?? 0.0f
+                exposure = toneMapper?.exposure ?? 0.0f,
+                blackPointLog = toneMapper?.blackPointLog ?? new Vector3(-3.0f, -3.0f, -3.0f),
+                whitePointLog = toneMapper?.whitePointLog ?? new Vector3(3.0f, 3.0f, 3.0f)
             };
 
             return json;
