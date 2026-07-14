@@ -708,6 +708,10 @@ PrefabInstance:
       propertyPath: texture
       value: 
       objectReference: {fileID: 2800000, guid: 38d018bd470a5c144ab0dd297500289a, type: 3}
+    - target: {fileID: 3520042828948378482, guid: 624a000477f8d664ebfee715f79ec4f3, type: 3}
+      propertyPath: particleAlignment
+      value: 0
+      objectReference: {fileID: 0}
     - target: {fileID: 5568289374823251935, guid: 624a000477f8d664ebfee715f79ec4f3, type: 3}
       propertyPath: m_Mesh
       value: 
@@ -855,6 +859,18 @@ PrefabInstance:
       value: 
       objectReference: {fileID: 2800000, guid: b6cae61007433d3dcb73c400601c1710, type: 3}
     - target: {fileID: 6898321727002159933, guid: 24bb1fd2165fe7c40bf239e3ee23741a, type: 3}
+      propertyPath: ambience.b
+      value: 0.4976415
+      objectReference: {fileID: 0}
+    - target: {fileID: 6898321727002159933, guid: 24bb1fd2165fe7c40bf239e3ee23741a, type: 3}
+      propertyPath: ambience.g
+      value: 0.4976415
+      objectReference: {fileID: 0}
+    - target: {fileID: 6898321727002159933, guid: 24bb1fd2165fe7c40bf239e3ee23741a, type: 3}
+      propertyPath: ambience.r
+      value: 0.5
+      objectReference: {fileID: 0}
+    - target: {fileID: 6898321727002159933, guid: 24bb1fd2165fe7c40bf239e3ee23741a, type: 3}
       propertyPath: colorMod.a
       value: 1
       objectReference: {fileID: 0}
@@ -997,6 +1013,10 @@ PrefabInstance:
     - target: {fileID: 6898321727002159933, guid: 24bb1fd2165fe7c40bf239e3ee23741a, type: 3}
       propertyPath: colorMod.a
       value: 1
+      objectReference: {fileID: 0}
+    - target: {fileID: 7084864777419053238, guid: 24bb1fd2165fe7c40bf239e3ee23741a, type: 3}
+      propertyPath: particleAlignment
+      value: 0
       objectReference: {fileID: 0}
     - target: {fileID: 7084864777419053238, guid: 24bb1fd2165fe7c40bf239e3ee23741a, type: 3}
       propertyPath: substrateLogDensity
@@ -1227,7 +1247,7 @@ Camera:
   m_Enabled: 1
   serializedVersion: 2
   m_ClearFlags: 1
-  m_BackGroundColor: {r: 0.034421492, g: 0.05409091, b: 0.085, a: 0}
+  m_BackGroundColor: {r: 0, g: 0, b: 0, a: 0}
   m_projectionMatrixMode: 1
   m_GateFitMode: 2
   m_FOVAxisMode: 0
@@ -1295,9 +1315,9 @@ MonoBehaviour:
   m_Script: {fileID: 11500000, guid: 9c0d92786a1b3f54695265a77fb5d8e7, type: 3}
   m_Name: 
   m_EditorClassIdentifier: Assembly-CSharp::ForceHDR_UE5
-  exposure: 0
+  exposure: -0.4
   whitePointLog: {x: 2, y: 2, z: 2}
-  blackPointLog: {x: -4, y: -4, z: -4}
+  blackPointLog: {x: -3, y: -3, z: -3}
 --- !u!1 &1745051537
 GameObject:
   m_ObjectHideFlags: 0
@@ -2369,8 +2389,8 @@ MonoBehaviour:
   color: {r: 1, g: 1, b: 1, a: 1}
   substrateLogDensity: -2.47
   particleAlignment: 0
-  heightScale: 1
-  sortingOrder: 0
+  heightScale: 0.315
+  sortingOrder: -1
 --- !u!212 &5097338014046615687
 SpriteRenderer:
   m_ObjectHideFlags: 0
@@ -2882,8 +2902,8 @@ MonoBehaviour:
   m_Script: {fileID: 11500000, guid: d03468ac19c7764bc86a37b5521090fd, type: 3}
   m_Name: 
   m_EditorClassIdentifier: 
-  simulation: {fileID: 0}
-  type: 15
+  simulation: {fileID: 443151169}
+  type: 0
 --- !u!4 &7759423914761228972
 Transform:
   m_ObjectHideFlags: 0
