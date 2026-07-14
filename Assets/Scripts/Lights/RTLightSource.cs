@@ -11,7 +11,7 @@ public class RTLightSource : LitboxComponent
 
     public Vector4 Energy
     {
-        get => (Vector4)gameObject.GetComponent<SpriteRenderer>().color * intensity * intensity;
+        get => (Vector4)gameObject.GetComponent<SpriteRenderer>().color.linear * intensity * intensity;
     }
 
     public virtual Matrix4x4 WorldTransform
