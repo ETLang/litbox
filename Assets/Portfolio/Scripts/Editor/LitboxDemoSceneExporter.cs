@@ -202,6 +202,9 @@ namespace Litbox.Portfolio {
 
         private static SpriteJson ToJsonStruct(RTDemoSprite sprite)
         {
+            // TODO: Such a hack to encode ellipses. Remove by implementing actual meshes.
+            var rtPartner = sprite.transform.parent.GetComponentInChildren<RTObject>();
+
             var json = new SpriteJson()
             {
                 ownerId = sprite.gameObject.GetEntityId(),
@@ -213,7 +216,8 @@ namespace Litbox.Portfolio {
                 ambient = sprite.ambience,
                 emissive = sprite.emissive,
                 simContribution = sprite.lightMod,
-                simBlur = sprite.lightDetail
+                simBlur = sprite.lightDetail,
+                primitiveShape = rtPartner is RTRect ? "rect" : rtPartner is RTEllipse ? "ellipse" : null
             };
 
             return json;
