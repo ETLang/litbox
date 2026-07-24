@@ -40,7 +40,7 @@ Shader "Abduction/Cloud"
 
             float4 _Color;
             float _substrateDensity;
-            float _particleAlignment;
+            float _roughness;
             float _heightScale;
 
 

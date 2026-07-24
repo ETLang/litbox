@@ -33,7 +33,7 @@ public class RTActorEditor : Editor
             actor.rayTraced.normal = (Texture)EditorGUILayout.ObjectField("Normal", actor.rayTraced.normal, typeof(Texture), actor.rayTraced);
             actor.rayTraced.color = EditorGUILayout.ColorField("Color", actor.rayTraced.color);
             actor.rayTraced.substrateLogDensity = EditorGUILayout.Slider("Density", actor.rayTraced.substrateLogDensity, -5, 0);
-            actor.rayTraced.particleAlignment = 1-EditorGUILayout.Slider("Rougness", 1-actor.rayTraced.particleAlignment, 0, 1);
+            actor.rayTraced.roughness = EditorGUILayout.Slider("Rougness", actor.rayTraced.roughness, 0, 1);
             actor.rayTraced.heightScale = EditorGUILayout.Slider("Height Scale", actor.rayTraced.heightScale, 0, 1);
 
             EditorGUILayout.EndVertical();

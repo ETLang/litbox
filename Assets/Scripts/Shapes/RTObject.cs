@@ -1,5 +1,6 @@
 using System.Collections;
 using System.Collections.Generic;
+using Unity.VisualScripting;
 using UnityEngine;
 
 public class RTObject : LitboxComponent
@@ -8,7 +9,7 @@ public class RTObject : LitboxComponent
     [SerializeField] public Texture normal;
     [SerializeField] public Color color = Color.white;
     [SerializeField, Range(-10, 0)] public float substrateLogDensity;
-    [SerializeField, Range(0, 1)] public float particleAlignment = 0;
+    [SerializeField, Range(0, 1), RenamedFrom("particleAlignment")] public float roughness = 0.7f;
     [SerializeField, Range(0, 1)] public float heightScale = 1;
     [SerializeField] public int sortingOrder;
 
@@ -23,7 +24,7 @@ public class RTObject : LitboxComponent
     private MaterialPropertyBlock _propertyBlock;
 
     private static int _substrateDensityId = Shader.PropertyToID("_substrateDensity");
-    private static int _particleAlignmentId = Shader.PropertyToID("_particleAlignment");
+    private static int _roughnessId = Shader.PropertyToID("_roughness");
     private static int _colorId = Shader.PropertyToID("_Color");
     private static int _normalTexId = Shader.PropertyToID("_NormalTex");
     private static int _mainTexId = Shader.PropertyToID("_MainTex");
@@ -45,7 +46,7 @@ public class RTObject : LitboxComponent
         //DetectChanges(() => WorldTransform);
         DetectChanges(() => normal);
         DetectChanges(() => substrateLogDensity);
-        DetectChanges(() => particleAlignment);
+        DetectChanges(() => roughness);
         DetectChanges(() => heightScale);
         DetectChanges(() => texture);
         DetectChanges(() => color);
@@ -91,7 +92,7 @@ public class RTObject : LitboxComponent
             }
             _propertyBlock.SetColor(_colorId, color);
             _propertyBlock.SetFloat(_substrateDensityId, SubstrateDensity);
-            _propertyBlock.SetFloat(_particleAlignmentId, particleAlignment);
+            _propertyBlock.SetFloat(_roughnessId, roughness);
             _propertyBlock.SetFloat(_heightScaleId, heightScale);
             renderer.SetPropertyBlock(_propertyBlock);
         }

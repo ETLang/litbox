@@ -53,7 +53,7 @@ Shader "RT/Object"
 
             float4 _Color;
             float _substrateDensity;
-            float _particleAlignment;
+            float _roughness;
             float _heightScale;
 
 
@@ -82,7 +82,7 @@ Shader "RT/Object"
 
                 output.albedo = float4(c.rgb * _Color.rgb,1) * c.a * _Color.a;
                 output.density = float4(density,density,0,1);
-                output.normal = float4(i.normal, _particleAlignment);
+                output.normal = float4(i.normal, 1 - _roughness);
                 return output;
             }
             ENDCG

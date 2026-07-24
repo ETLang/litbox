@@ -188,7 +188,7 @@ namespace Litbox.Portfolio {
                 ownerId = obj.gameObject.GetEntityId(),
                 sortOrder = obj.sortingOrder,
                 logDensity = obj.substrateLogDensity,
-                roughness = 1 - obj.particleAlignment,
+                roughness = obj.roughness,
                 heightScale = obj.heightScale,
                 albedo = obj.color,
                 albedoMap = NullOr(obj.texture, t => t.name),

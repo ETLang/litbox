@@ -40,7 +40,7 @@ Shader "Abductor/SilhouetteShader"
 
             float4 _Color;
             float _substrateDensity;
-            float _particleAlignment;
+            float _roughness;
             float _heightScale;
             float _Metallic;
             float3 _Ambience;
