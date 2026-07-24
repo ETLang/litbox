@@ -249,7 +249,7 @@ MonoBehaviour:
   raysPerFrame: 128000
   photonBounces: -1
   integrationInterval: 0.1
-  transmissibilityVariationEpsilon: 0.001
+  densityVariationEpsilon: 0.001
   denoiser: {fileID: 443151172}
   SigmaSpatial: 1.2
   SigmaAlbedo: 0.05
@@ -334,11 +334,10 @@ MonoBehaviour:
   m_EditorClassIdentifier: Assembly-CSharp::Denoiser3
   normalSensitivity: 8
   albedoSensitivity: 4
-  transmissibilitySensitivity: 1
-  varianceSensitivity: 10
+  densitySensitivity: 1
   varianceScale: 4
   darknessNoiseFloor: 0.002
-  splitThreshold: 0.3
+  maxSplitDistance: 2
   maxLOD: 4
 --- !u!21 &655637734
 Material:
@@ -585,8 +584,9 @@ MonoBehaviour:
   normal: {fileID: 0}
   color: {r: 1, g: 1, b: 1, a: 1}
   substrateLogDensity: 0
-  particleAlignment: 0.476
+  roughness: 0.7
   heightScale: 1
+  sortingOrder: 0
 --- !u!33 &1010830929
 MeshFilter:
   m_ObjectHideFlags: 0
@@ -1296,8 +1296,9 @@ MonoBehaviour:
   normal: {fileID: 0}
   color: {r: 1, g: 1, b: 1, a: 1}
   substrateLogDensity: 0
-  particleAlignment: 0.907
+  roughness: 0.7
   heightScale: 1
+  sortingOrder: 0
 --- !u!1 &5481894281194020201
 GameObject:
   m_ObjectHideFlags: 0

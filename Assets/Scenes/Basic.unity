@@ -1810,7 +1810,7 @@ MonoBehaviour:
   m_PrefabInstance: {fileID: 0}
   m_PrefabAsset: {fileID: 0}
   m_GameObject: {fileID: 2218171819048626328}
-  m_Enabled: 0
+  m_Enabled: 1
   m_EditorHideFlags: 0
   m_Script: {fileID: 11500000, guid: bf9fd95a0736fd94e9e715e07d158acc, type: 3}
   m_Name: 
@@ -1818,10 +1818,9 @@ MonoBehaviour:
   normalSensitivity: 8
   albedoSensitivity: 0.1
   densitySensitivity: 1
-  varianceSensitivity: 0.1
   varianceScale: 10
   darknessNoiseFloor: 1
-  splitThreshold: 0.3
+  maxSplitDistance: 2
   maxLOD: 4
 --- !u!4 &7046779350545214439
 Transform:

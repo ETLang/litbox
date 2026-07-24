@@ -1,0 +1,96 @@
+#include "../Shaders/LitboxCommon.cginc"
+#pragma kernel CSMain
+
+// Small guided post-filter over the final (post-Denoiser3, post-albedo/density-combine) lit image -
+// cleans up the per-pixel dither noise Denoiser3's temporal seed jitter trades the coherent
+// lattice-alignment Moire for. Backported from src/litbox/shaders/dither_filter.wgsl - see
+// CLAUDE.md's "Denoiser architecture and philosophy" for the full argument.
+//
+// Same three structural terms as Denoiser3's DecideWeight (albedo/normal/density) - reused because
+// "is this plausibly the same surface" is the same question there. No radiance-similarity term:
+// this pass exists purely to average away residual per-pixel noise in the color itself, so gating
+// on that noise's own similarity would suppress the filter's own effect.
+//
+// Deliberately much cheaper than Denoiser3's hierarchical guided blur: fixed 5x5 radius, no
+// traversal/quadtree, plain per-texel loads - this polishes Denoiser3's already-converged output,
+// it doesn't replace its blur-size/split logic.
+
+Texture2D<float4> _in_lightmap;
+Texture2D<float4> _in_albedo;
+Texture2D<float4> _in_normal;
+Texture2D<float4> _in_density;
+
+RWTexture2D<float4> _out_lightmap;
+
+#define RADIUS 2 // 5x5
+#define SIGMA_SPATIAL 1.5f
+// Matches Denoiser3's own sensitivity defaults - same structural-similarity tolerances, reused
+// rather than re-derived, since both filters ask the same "is this plausibly the same surface"
+// question.
+#define ALBEDO_SENSITIVITY 0.3f
+#define NORMAL_SENSITIVITY 8.0f
+#define DENSITY_SENSITIVITY 1.0f
+
+float GaussianWeight(float x, float sigma) {
+    return exp(-(x * x) / (2.0f * sigma * sigma));
+}
+
+// densityValue is already descaled ([0,1], raw texel / DENSITY_SCALE).
+float OpticalDepth(float densityValue) {
+    return -log(max(1e-6f, 1.0f - densityValue));
+}
+
+[numthreads(NUMTHREADS_2D)]
+void CSMain(uint3 id : SV_DispatchThreadID)
+{
+    float2 size = TextureSize(_in_lightmap);
+    if (id.x >= (uint)size.x || id.y >= (uint)size.y) { return; }
+
+    int2 center = int2(id.xy);
+    float3 centerColor = _in_lightmap[center].rgb;
+    float3 centerAlbedo = _in_albedo[center].rgb;
+    float3 centerNormal = _in_normal[center].xyz;
+    float centerDensityValue = _in_density[center].x / DENSITY_SCALE;
+    float centerOpticalDepth = OpticalDepth(centerDensityValue);
+
+    float3 accumulated = float3(0, 0, 0);
+    float totalWeight = 0.0f;
+
+    [unroll]
+    for (int j = -RADIUS; j <= RADIUS; j++)
+    {
+        [unroll]
+        for (int i = -RADIUS; i <= RADIUS; i++)
+        {
+            int2 sampleCoord = center + int2(i, j);
+            if (sampleCoord.x < 0 || sampleCoord.y < 0 || sampleCoord.x >= (int)size.x || sampleCoord.y >= (int)size.y)
+            {
+                continue;
+            }
+
+            float3 sampleColor = _in_lightmap[sampleCoord].rgb;
+            float3 sampleAlbedo = _in_albedo[sampleCoord].rgb;
+            float3 sampleNormal = _in_normal[sampleCoord].xyz;
+            float sampleDensityValue = _in_density[sampleCoord].x / DENSITY_SCALE;
+
+            float spatialWeight = GaussianWeight(length(float2(i, j)), SIGMA_SPATIAL);
+
+            float albedoWeight = 1.0f - saturate(distance(centerAlbedo, sampleAlbedo) / ALBEDO_SENSITIVITY);
+            albedoWeight *= albedoWeight;
+
+            float normalDot = saturate(dot(normalize(centerNormal), normalize(sampleNormal)));
+            float normalWeight = pow(normalDot, NORMAL_SENSITIVITY);
+
+            float opticalDepthDiff = abs(centerOpticalDepth - OpticalDepth(sampleDensityValue));
+            float densityWeight = 1.0f - saturate(opticalDepthDiff / DENSITY_SENSITIVITY);
+            densityWeight *= densityWeight;
+
+            float weight = spatialWeight * albedoWeight * normalWeight * densityWeight;
+            accumulated += sampleColor * weight;
+            totalWeight += weight;
+        }
+    }
+
+    float3 filtered = totalWeight > 0.0f ? accumulated / totalWeight : centerColor;
+    _out_lightmap[center] = float4(filtered, 1.0f);
+}

@@ -1,17 +1,31 @@
 #include "../Shaders/LitboxCommon.cginc"
+#include "../Shaders/Random.cginc"
+
+// Hierarchical guided blur over the raw simulation output (_Input), via a quadtree-style
+// "consideration stack" per output pixel. Backported from this project's WebGPU implementation,
+// src/litbox/shaders/denoise.wgsl - see CLAUDE.md's "Denoiser architecture and philosophy" for the
+// full design argument; only load-bearing rationale is repeated here.
+//
+// APPLY_RADIANCE folds albedo/(1-density) into the final image, post-blur, using the CENTER
+// pixel's own material properties (never a per-sample or blurred value) - albedo/density describe
+// the material AT the output pixel, independent of which neighbors' irradiance fed the blur.
 
 #pragma multi_compile __ APPLY_RADIANCE
 
 #pragma kernel CSMain
 
-#define STACK_SIZE 64
+#define STACK_SIZE 32
+#define SEED_RADIUS 1
 
 // Read-only inputs
-Texture2D<float4> _Input;
-Texture2D<float>  _Variance; // Note: VarianceMap is currently 1/4 the resolution of the main input
+Texture2D<float4> _Input;   // Raw combined irradiance, full box-filtered mip chain (see TracerPostProcessor.ComputeVarianceAndMips).
+Texture2D<float>  _Variance; // Filtered variance (see TracerPostProcessor.FilterVariance) - quarter res, single level.
 Texture2D<float4> _Albedo;
 Texture2D<float4> _NormalRoughness;
-Texture2D<float4> _Density;
+Texture2D<float4> _Density; // Raw value scaled by DENSITY_SCALE.
+// Baked min/max-range quadtree (see ComputeDenoiserQuadtreeLevel0/ComputeDenoiserQuadtree), half
+// _Input resolution with its own 0-indexed mip chain: level i answers "should _Input mip (i+1)
+// split into mip-i children" - so mip - 1, not mip, is the correct index into this texture's space.
 Texture2D<float> _Quadtree;
 
 // Read-write output
@@ -19,199 +33,205 @@ RWTexture2D<float4> _Output;
 
 float4 _InputSize; // x: Width, y: Height, z: 1/Width, w: 1/Height
 
-float _NormalSensitivity;    // Tolerance for normal differences (e.g., 8.0)
-float _AlbedoSensitivity;    // Tolerance for albedo differences (e.g., 4.0)
-float _DensitySensitivity; // Tolerance for density differences
-float _VarianceSensitivity;
-float _VarianceScale;        // Maps variance to initial starting MIP depth
-float _DarknessNoiseFloor;   // Low-light floor
-float _MaxLOD;          // Deepest allowed mip level (e.g., 5.0 or 6.0)
-float _SplitThreshold;       // Structural similarity weight below which we split a pixel (e.g., 0.3)
+float _NormalSensitivity;
+float _AlbedoSensitivity;
+float _DensitySensitivity;
+float _VarianceScale;
+float _DarknessNoiseFloor;
+float _MaxLOD;               // Blur-amount driver and its own cap (DecideBlurSize multiplies AND clamps by this).
+float _SigmaLuminanceTight;
+float _SigmaLuminanceLoose;
+float _KLuminance;
+float _MaxSplitDistance;
+float _FrameIndex;
 
 // Node structure representing a virtual region in our mip pyramid execution stack
 struct TreeSampleNode {
-    float2 uv;    // UV coordinate of the sample
-    int mip;      // Current mip level of this sample
-    float size;   // Normalized spatial size/weight of this node's footprint
+    float2 uv;
+    int mip;
 };
 
-TreeSampleNode MakeNode(float2 uv, int mip, float size)
-{
-    TreeSampleNode node = {uv, mip, size};
+TreeSampleNode MakeNode(float2 uv, int mip) {
+    TreeSampleNode node = {uv, mip};
     return node;
+}
+
+float GaussianWeight(float x, float sigma) {
+    return exp(-(x * x) / (2.0f * sigma * sigma));
+}
+
+// densityValue is already descaled ([0,1], raw texel / DENSITY_SCALE) - gives density a
+// perceptually-linear similarity metric instead of comparing the raw nonlinear coverage value.
+float OpticalDepth(float densityValue) {
+    return -log(max(1e-6f, 1.0f - densityValue));
+}
+
+// Evidence: filteredVariance and _Input's own mip chain (already a box filter, so a coarse mip IS
+// the local mean - no separate blur pass needed). Combined with max(), not a blend: relative
+// variance under-reports noise in rarely-hit dark regions (both A/B half-samples land near zero,
+// so their difference is deceptively small), but mean brightness doesn't share that blind spot -
+// whichever signal says "blur more" wins.
+float DecideBlurSize(float centerVariance, float localLuminance) {
+    float darknessShortfall = saturate((_DarknessNoiseFloor - localLuminance) / (_DarknessNoiseFloor + 1e-3f));
+    float adjustedVariance = _MaxLOD * max(centerVariance * _VarianceScale, darknessShortfall);
+    return clamp(adjustedVariance, 0.0f, _MaxLOD);
+}
+
+// O(1) lookup into the baked quadtree, gated by a distance bias against splitting far from the
+// query pixel: as a candidate's distance from the query grows relative to its own footprint,
+// DecideWeight's spatialWeight discounts it heavily regardless of how accurately it resolves, so
+// refining it further is wasted work. Normalized by the node's OWN (shrinking) texel size, not the
+// fixed seed size DecideWeight's spatialWeight uses - see this project's denoiser plan for why that
+// distinction matters (a node-relative ratio is what makes the cutoff depth-aware).
+bool ShouldSplit(float2 uv, int mip, float2 queryUv, float2 texelSize) {
+    if (mip <= 0) { return false; }
+
+    float2 nodeTexelSize = texelSize * (float)(1 << mip);
+    float distanceInNodeTexels = length(uv - queryUv) / max(nodeTexelSize.x, nodeTexelSize.y);
+    if (distanceInNodeTexels > _MaxSplitDistance) { return false; }
+
+    return _Quadtree.SampleLevel(sampler_point_clamp, uv, mip - 1).x != 0.0f;
+}
+
+// spatialWeight * structuralWeight * radianceWeight * nodeSize:
+// - structuralWeight (albedo x normal x density) rejects cross-material bleed; the normal term
+//   also protects a smooth shading gradient on a curved, uniform-albedo surface.
+// - radianceWeight rejects cross-feature bleed structuralWeight can't see (e.g. a region uniform
+//   in every G-Buffer channel that still contains a real irradiance feature). sigmaAdaptive is
+//   adaptive on the CENTER pixel's own variance, reusing TracerPostProcessor.FilterVariance's
+//   validated sigma pattern verbatim.
+// - spatialWeight is normalized by the fixed seedTexelSize (deliberately different from
+//   ShouldSplit's node-relative distance metric - see this project's denoiser plan).
+// - nodeSize (4^-depth-below-seed) is a partition-of-unity area weight: guarantees a region that
+//   fully resolves to mip 0 contributes the same total weight mass as it would have unsplit.
+float4 DecideWeight(
+    float2 queryUv, float3 centerAlbedo, float3 centerNormal, float centerOpticalDepth,
+    float centerLuminance, float sigmaAdaptive, float2 seedTexelSize, TreeSampleNode node, float nodeSize)
+{
+    float nodeMip = (float)node.mip;
+    float3 sampleAlbedo = _Albedo.SampleLevel(sampler_point_clamp, node.uv, nodeMip).rgb;
+    float3 sampleNormal = _NormalRoughness.SampleLevel(sampler_point_clamp, node.uv, nodeMip).xyz;
+    float sampleDensityValue = _Density.SampleLevel(sampler_point_clamp, node.uv, nodeMip).x / DENSITY_SCALE;
+    float3 sampleColor = _Input.SampleLevel(sampler_linear_clamp, node.uv, nodeMip).rgb;
+    float sampleLuminance = Luminance(sampleColor);
+
+    float albedoDiff = distance(centerAlbedo, sampleAlbedo);
+    float wAlbedo = 1.0f - saturate(albedoDiff / _AlbedoSensitivity);
+    wAlbedo *= wAlbedo;
+
+    float normalDot = saturate(dot(normalize(centerNormal), normalize(sampleNormal)));
+    float wNormal = pow(normalDot, _NormalSensitivity);
+
+    float opticalDepthDiff = abs(centerOpticalDepth - OpticalDepth(sampleDensityValue));
+    float wDensity = 1.0f - saturate(opticalDepthDiff / _DensitySensitivity);
+    wDensity *= wDensity;
+
+    float structuralWeight = wAlbedo * wNormal * wDensity;
+    float radianceWeight = GaussianWeight(abs(centerLuminance - sampleLuminance), sigmaAdaptive);
+
+    float distanceInSeeds = length(node.uv - queryUv) / max(seedTexelSize.x, seedTexelSize.y);
+    float spatialWeight = exp(-distanceInSeeds * distanceInSeeds);
+
+    float weight = spatialWeight * structuralWeight * radianceWeight * nodeSize;
+    return float4(sampleColor * weight, weight);
 }
 
 [numthreads(8, 8, 1)]
 void CSMain(uint3 id : SV_DispatchThreadID)
 {
-    if (any(id.xy >= _InputSize.xy)) return;
+    if (any(id.xy >= _InputSize.xy)) { return; }
 
     float2 uv = (float2(id.xy) + 0.5f) * _InputSize.zw;
+    float2 texelSize = _InputSize.zw;
 
-    // Gather target characteristics
-    float4 centerG1 = _Albedo.SampleLevel(sampler_point_clamp, uv, 0);
-    float3 centerAlbedo = centerG1.rgb;
-    float4 centerG2 = _NormalRoughness.SampleLevel(sampler_point_clamp, uv, 0);
-    float3 centerNormal = centerG2.xyz;// * 2.0f - 1.0f;
-    float centerDensity = _Density.SampleLevel(sampler_point_clamp, uv, 0).x;
-    float logcenterDensity = log(centerDensity + 1e-6f);
+    float3 centerAlbedo = _Albedo.SampleLevel(sampler_point_clamp, uv, 0).rgb;
+    float3 centerNormal = _NormalRoughness.SampleLevel(sampler_point_clamp, uv, 0).xyz;
+    float centerDensityValue = _Density.SampleLevel(sampler_point_clamp, uv, 0).x / DENSITY_SCALE;
+    float centerOpticalDepth = OpticalDepth(centerDensityValue);
     float centerVariance = _Variance.SampleLevel(sampler_linear_clamp, uv, 0).x;
-    float3 centerRadiance = _Input.SampleLevel(sampler_linear_clamp, uv, 0).rgb; // TODO: probably sampler_linear_clamp?
-    float centerLuminance = Luminance(centerRadiance);
+    float3 centerIrradiance = _Input.SampleLevel(sampler_linear_clamp, uv, 0).rgb;
 
-    float localLuminance;
-    {
-        float2 halfLod3TexelSize = 4.0 * _InputSize.zw;
-        float4 center = _Input.SampleLevel(sampler_linear_clamp, uv, 3);
-        float4 a  = _Input.SampleLevel(sampler_linear_clamp, uv + float2(halfLod3TexelSize.x, halfLod3TexelSize.y), 3);
-        float4 b  = _Input.SampleLevel(sampler_linear_clamp, uv + float2(-halfLod3TexelSize.x, halfLod3TexelSize.y), 3);
-        float4 c  = _Input.SampleLevel(sampler_linear_clamp, uv + float2(halfLod3TexelSize.x, -halfLod3TexelSize.y), 3);
-        float4 d  = _Input.SampleLevel(sampler_linear_clamp, uv + float2(-halfLod3TexelSize.x, -halfLod3TexelSize.y), 3);
+    float inputWidth, inputHeight, inputMipLevels;
+    _Input.GetDimensions(0, inputWidth, inputHeight, inputMipLevels);
+    int maxMip = (int)inputMipLevels - 1;
+    int localLuminanceMip = min(3, maxMip);
+    float localLuminance = Luminance(_Input.SampleLevel(sampler_linear_clamp, uv, (float)localLuminanceMip).rgb);
 
-        // Weights from 3x3 gaussian kernel (diamond part): 2 for center, 1 for neighbors.
-        float4 blurredColor = (a + b + c + d) / 4.0;
-        localLuminance = Luminance(blurredColor.rgb);
-    }
+    float blurSize = DecideBlurSize(centerVariance, localLuminance);
+    int startMip = clamp((int)round(blurSize), 0, maxMip);
 
-    // Consideration Factors
-    // Each factor needs a weight, and a quadtree threshold (defined with the quadtree stuff)
-    // A) Luminance Range - Accumulated samples should lie within a similar luminance range
-    // B) Darkness - Dark areas should be max blurred spatially and temporally
-    // C) Firefly Mask - Fireflies should count torwards dark area computation, but structured bright spots should not.
-    // D) Distance from target - Distant samples statistically count for less
-
-    float darknessShortfall = saturate((_DarknessNoiseFloor - localLuminance) / (_DarknessNoiseFloor + 1e-3f));
-    float adjustedVariance = _MaxLOD * max(centerVariance * _VarianceScale, darknessShortfall);
-
-    // 3. Determine Initial Starting Mip level based on noise
-    // High variance/darkness starts deep (e.g., Mip 4 or 5), low variance starts sharp
-    int startMip = (int)clamp(adjustedVariance, 0.0f, _MaxLOD);
-    //int startMip = _MaxLOD;
-
-    // Short-circuit: if completely clean, skip tree tracking entirely
     if (startMip == 0)
     {
 #if APPLY_RADIANCE
-        _Output[id.xy] = float4(centerRadiance * centerAlbedo * (1-centerDensity), 1);
+        _Output[id.xy] = float4(centerIrradiance * centerAlbedo * centerDensityValue, 1.0f);
 #else
-        _Output[id.xy] = float4(centerRadiance, 1.0f);
+        _Output[id.xy] = float4(centerIrradiance, 1.0f);
 #endif
         return;
     }
 
-    TreeSampleNode stack[STACK_SIZE]; 
+    float sigmaAdaptive = lerp(_SigmaLuminanceTight, _SigmaLuminanceLoose,
+        smoothstep(0.0f, 1.0f / _KLuminance, centerVariance));
+    float centerLuminance = Luminance(centerIrradiance);
+
+    float2 seedTexelSize = texelSize * (float)(1 << startMip);
+    // Per-pixel hash jitter (up to half a seed-texel) on the top-level seed placement only - see
+    // this project's denoiser plan: without it, all 9 seeds' "which quadtree cell am I in" state
+    // flips at a fixed pixel interval matching the quadtree's grid pitch, visible as coherent
+    // banding on an otherwise flat surface. _FrameIndex is wrapped at a small bound (see
+    // Denoiser3.Denoise) so this offset decorrelates frame-to-frame without approaching f32's
+    // exact-integer precision cliff.
+    float2 temporalOffset = float2(_FrameIndex * 37.0f, _FrameIndex * 17.0f);
+    float2 seedJitter = (hash22(float2(id.xy) + temporalOffset) - 0.5f) * seedTexelSize;
+
+    TreeSampleNode stack[STACK_SIZE];
     int stackCount = 0;
 
-    // Seed the stack with a 3x3 neighborhood at the starting baseline mip level
-    // We compute the texel offsets matching the current starting mip scale
-    float2 texelSizeAtMip = _InputSize.zw * (float)(1 << startMip);
-
     [unroll]
-    for (int dy = -1; dy <= 1; ++dy)
+    for (int dy = -SEED_RADIUS; dy <= SEED_RADIUS; dy++)
     {
         [unroll]
-        for (int dx = -1; dx <= 1; ++dx)
+        for (int dx = -SEED_RADIUS; dx <= SEED_RADIUS; dx++)
         {
-            float2 sampleUV = uv + float2(dx, dy) * texelSizeAtMip;
-            TreeSampleNode node = { sampleUV, startMip, 1.0f };
-            
-            stack[stackCount] = node;
+            stack[stackCount] = MakeNode(uv + float2(dx, dy) * seedTexelSize + seedJitter, startMip);
             stackCount++;
         }
     }
 
-    // 5. Quadtree Execution Loop
-    float4 accumulatedColor = float4(0,0,0,0);// float4((1-darknessShortfall) *centerRadiance, 0);
-    float totalWeight = 1e-5f;
+    float4 accumulated = float4(0, 0, 0, 0);
 
-    // Process stack elements until exhausted or buffer bounds are met
-    while (stackCount > 0 && stackCount < STACK_SIZE)
+    while (stackCount > 0)
     {
-        // Pop top node from execution stack
         stackCount--;
         TreeSampleNode current = stack[stackCount];
+        int depth = startMip - current.mip;
+        float nodeSize = pow(0.25f, (float)depth);
 
-        // Fetch Structural Profile for the sample point (Sampled from the Full-Res Guide)
-        float4 sampleG1 = _Albedo.SampleLevel(sampler_point_clamp, current.uv, current.mip);
-        float3 sampleAlbedo = sampleG1.rgb;
-        float4 sampleG2 = _NormalRoughness.SampleLevel(sampler_point_clamp, current.uv, current.mip);
-        float3 sampleNormal = sampleG2.xyz;// * 2.0f - 1.0f;
-        float sampleDensity = _Density.SampleLevel(sampler_point_clamp, current.uv, current.mip).x;
-        float logSampleDensity = log(sampleDensity + 1e-6f);
-        float sampleVariance = _Variance.SampleLevel(sampler_linear_clamp, current.uv, current.mip).x;
-
-
-        // Calculate Structural Affinity Metric (How well does this sample match our center pixel?)
-        // float normalDiff = saturate(dot(centerNormal, sampleNormal));
-        // float wNormal = pow(normalDiff, _NormalSensitivity);
-        // float albedoDiff = distance(centerAlbedo, sampleAlbedo);
-        // float wAlbedo = exp(-albedoDiff * _AlbedoSensitivity);
-        // float transDiff = abs(logcenterDensity - logSampleDensity);
-        // float wTrans = saturate(1.1f * exp(-transDiff * _DensitySensitivity) - 0.1f);
-        // float varDiff = max(0, centerVariance - sampleVariance);
-        // float wVariance = exp(-varDiff * _VarianceSensitivity);
-
-        // float normalDiff = saturate(dot(centerNormal, sampleNormal));
-        // float wNormal = pow(normalDiff, _NormalSensitivity);
-        float wNormal = 1;
-        float albedoDiff = distance(centerAlbedo, sampleAlbedo);
-        float wAlbedo = 1 - saturate(albedoDiff / _AlbedoSensitivity);
-        wAlbedo *= wAlbedo;
-        float transDiff = abs(logcenterDensity - logSampleDensity);
-        float wTrans = 1 - saturate(transDiff / (DENSITY_SCALE * _DensitySensitivity));
-        wTrans *= wTrans;
-        float varDiff = min(0, centerVariance - sampleVariance);
-        float wVariance = 1 - saturate(-varDiff / _VarianceSensitivity);
-        wVariance *= wVariance;
-
-        float structuralWeight = 1;//wNormal * wAlbedo * wTrans * wVariance;
-
-        float maxDist = _InputSize.zw * (float)(1 << startMip);
-        float distanceU = 2 * distance(current.uv, uv) / maxDist;
-       // float spatialWeight = saturate(1 - distance(current.uv, uv) / maxDist);
-       float spatialWeight = exp(-distanceU * distanceU);
-
-        structuralWeight *= spatialWeight;
-
-        // Check if this node strikes an edge and requires a Quadtree split
-        // Condition: structural match is low AND we haven't hit the sharpest M0 layer yet
-        if (current.mip > 0) //structuralWeight < _SplitThreshold && current.mip > 0)
+        if (ShouldSplit(current.uv, current.mip, uv, texelSize) && stackCount + 4 <= STACK_SIZE)
         {
-            // Shatter this node into 4 child samples at the next higher detail level (current.mip - 1)
             int childMip = current.mip - 1;
-            float2 childTexelSize = _InputSize.zw * (float)(1 << childMip);
-            float childSize = current.size * 0.25f; // Energy conservation: area scales down by 4
-
-            // Check stack space bounds before pushing children
-            if (stackCount <= STACK_SIZE - 4)
-            {
-                // Push 4 subpixel offsets surrounding the parent node location
-                stack[stackCount]     = MakeNode(current.uv + float2(-0.5f, -0.5f) * childTexelSize, childMip, childSize);
-                stack[stackCount + 1] = MakeNode(current.uv + float2( 0.5f, -0.5f) * childTexelSize, childMip, childSize);
-                stack[stackCount + 2] = MakeNode(current.uv + float2(-0.5f,  0.5f) * childTexelSize, childMip, childSize);
-                stack[stackCount + 3] = MakeNode(current.uv + float2( 0.5f,  0.5f) * childTexelSize, childMip, childSize);
-                stackCount += 4;
-                continue; // Skip gathering color for the parent; its children will handle it
-            }
+            float2 childTexelSize = texelSize * (float)(1 << childMip);
+            stack[stackCount]     = MakeNode(current.uv + float2(-0.5f, -0.5f) * childTexelSize, childMip);
+            stack[stackCount + 1] = MakeNode(current.uv + float2( 0.5f, -0.5f) * childTexelSize, childMip);
+            stack[stackCount + 2] = MakeNode(current.uv + float2(-0.5f,  0.5f) * childTexelSize, childMip);
+            stack[stackCount + 3] = MakeNode(current.uv + float2( 0.5f,  0.5f) * childTexelSize, childMip);
+            stackCount += 4;
+            continue;
         }
 
-        // Leaf Node Resolution: If the node is structurally sound OR reached M0, accumulate its value
-        float4 sampledColor = _Input.SampleLevel(sampler_linear_clamp, current.uv, current.mip);
-        
-        if(current.mip == 0) {
-            // Scale weight by the node size to guarantee energy conservation across varying mip resolutions
-            float absoluteWeight = structuralWeight * current.size;
-
-            accumulatedColor += sampledColor * absoluteWeight;
-            totalWeight += absoluteWeight;
-        }
+        // Leaf: either ShouldSplit said no, or the stack had no room to split further - resolved at
+        // its current (coarser) mip either way. Unlike accumulating only at mip 0, this bounds a
+        // stack-overflow leaf to a quality degradation (locally blurrier) rather than an energy loss
+        // (locally dark/wrong), while nodeSize keeps its contribution correctly scaled.
+        accumulated += DecideWeight(uv, centerAlbedo, centerNormal, centerOpticalDepth, centerLuminance,
+            sigmaAdaptive, seedTexelSize, current, nodeSize);
     }
 
-#if APPLY_RADIANCE
-    _Output[id.xy] = accumulatedColor / totalWeight * float4(centerAlbedo * (1-centerDensity), 1);
-#else
-    _Output[id.xy] = accumulatedColor / totalWeight;
-#endif
+    float3 blurred = accumulated.a > 0.0f ? accumulated.rgb / accumulated.a : centerIrradiance;
 
-   // _Output[id.xy] = float4(localLuminance.xxx, 1);
+#if APPLY_RADIANCE
+    _Output[id.xy] = float4(blurred * centerAlbedo * centerDensityValue, 1.0f);
+#else
+    _Output[id.xy] = float4(blurred, 1.0f);
+#endif
 }

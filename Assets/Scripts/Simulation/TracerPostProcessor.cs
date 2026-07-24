@@ -16,6 +16,9 @@ internal delegate void D_ComputeDenoiserQuadtree(DispatchSize size, TextureView 
     TextureView _out_albedo_min, TextureView _out_albedo_max,
     // TextureView _out_radiance_min, TextureView _out_radiance_max,
     TextureView _out_density_min_max_volatility, TextureView _out_quadtree);
+internal delegate void D_DitherFilter(DispatchSize size,
+    TextureView _in_lightmap, TextureView _in_albedo, TextureView _in_normal, TextureView _in_density,
+    TextureView _out_lightmap);
 
 
 public class TracerPostProcessor : Disposable
@@ -66,6 +69,7 @@ public class TracerPostProcessor : Disposable
     private D_ComputeVolatilityLevel0 ComputeVolatilityLevel0;
     private D_ComputeDenoiserQuadtreeLevel0 ComputeDenoiserQuadtreeLevel0;
     private D_ComputeDenoiserQuadtree ComputeDenoiserQuadtree;
+    private D_DitherFilter DitherFilter;
 
     private TracerPostProcessor()
     {
@@ -73,6 +77,7 @@ public class TracerPostProcessor : Disposable
         ComputeVolatilityLevel0 = GpuOps.GetCallable<D_ComputeVolatilityLevel0>("ComputeVolatilityLevel0");
         ComputeDenoiserQuadtreeLevel0 = GpuOps.GetCallable<D_ComputeDenoiserQuadtreeLevel0>("ComputeDenoiserQuadtreeLevel0");
         ComputeDenoiserQuadtree = GpuOps.GetCallable<D_ComputeDenoiserQuadtree>("ComputeDenoiserQuadtree");
+        DitherFilter = GpuOps.GetCallable<D_DitherFilter>("DitherFilter");
 
         _computeCVAndMipsKernel = new int[]
         {
@@ -201,5 +206,13 @@ public class TracerPostProcessor : Disposable
         //BufferManager.Release(ref logDensityRangeVolatility);
         // BufferManager.Release(ref radianceMin);
         // BufferManager.Release(ref radianceMax);
+    }
+
+    // Guided post-filter over Denoiser3's just-written (not yet final) result - see
+    // DitherFilter.compute. source must not alias dest: this is a neighbor-gathering filter, so an
+    // in-place read/write would race.
+    public void ApplyDitherFilter(RenderTexture source, RenderTexture albedo, RenderTexture normal, RenderTexture density, RenderTexture dest)
+    {
+        DitherFilter((dest.width, dest.height), source, albedo, normal, density, dest);
     }
 }

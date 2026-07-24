@@ -19,6 +19,8 @@ MonoBehaviour:
     Shader: {fileID: 7200000, guid: a3bafec4146ecf649b5f53d3203b1b66, type: 3}
   - Name: ComputeVolatilityLevel0
     Shader: {fileID: 7200000, guid: 38e331577d029de41802c37ea4782eb4, type: 3}
+  - Name: DitherFilter
+    Shader: {fileID: 7200000, guid: 557d232b7a6f2b449aed8947e72126d8, type: 3}
   - Name: Analysis
     Shader: {fileID: 7200000, guid: 18249705625b3794a892af2600123ead, type: 3}
   - Name: BackwardMonteCarlo
