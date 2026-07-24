@@ -231,7 +231,11 @@ public class ForwardMonteCarlo : Disposable
             totalLuma += Luminance(light.Energy);
         }
 
-        if(totalLuma == 0) { return; }
+        if(totalLuma == 0)
+        {
+            OutputImageHDR.Clear(new Color(0,0,0,0));
+            return;
+        }
 
         foreach (var light in lights)
         {
