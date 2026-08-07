@@ -210,6 +210,47 @@ public class ForwardMonteCarlo : Disposable
         return Vector4.Dot(_LuminanceWeight, energy);
     }
 
+    private struct DirectionalLightSegment
+    {
+        public Vector2 Direction;
+        public Vector2 SegmentStart;
+        public Vector2 SegmentVector;
+        public float Length;
+    }
+
+    // How much further past the target rect's half-diagonal to push the segment/its push-back
+    // distance, purely as a rounding-error safety margin (grazing rays at the exact diagonal
+    // distance could otherwise clip the rect's corner).
+    private const float DirectionalLightSegmentMargin = 1.02f;
+
+    // Builds a line segment perpendicular to the light's direction (in target-pixel space) that's
+    // guaranteed to clear the [0,width]x[0,height] target rect from any direction, so a random
+    // point on it is a valid ray origin. The rect's half-diagonal is the smallest distance that
+    // works for every direction (no point in the rect is farther from its center than that), so
+    // it's used both as the segment's half-length and as how far back to push it from the rect's
+    // center along the incoming direction.
+    private static DirectionalLightSegment ComputeDirectionalLightSegment(Matrix4x4 lightToTargetSpace, float width, float height)
+    {
+        Vector3 transformed = lightToTargetSpace.MultiplyVector(new Vector3(0, -1, 0));
+        Vector2 direction = new Vector2(transformed.x, transformed.y);
+        float directionLength = direction.magnitude;
+        direction = directionLength > 0 ? direction / directionLength : new Vector2(0, -1);
+
+        Vector2 perp = new Vector2(-direction.y, direction.x);
+        float halfDiagonal = 0.5f * Mathf.Sqrt(width * width + height * height) * DirectionalLightSegmentMargin;
+
+        Vector2 segmentCenter = new Vector2(width, height) * 0.5f - direction * halfDiagonal;
+        Vector2 segmentStart = segmentCenter - perp * halfDiagonal;
+
+        return new DirectionalLightSegment
+        {
+            Direction = direction,
+            SegmentStart = segmentStart,
+            SegmentVector = perp * (2 * halfDiagonal),
+            Length = 2 * halfDiagonal,
+        };
+    }
+
     public void Integrate(params RTLightSource[] lights)
     {
         if(_gBuffer.AlbedoAlpha == null)
@@ -272,6 +313,7 @@ public class ForwardMonteCarlo : Disposable
         string kernelFormat = "Simulate_{0}";
 
         float p = 0;
+        float directionalEnergyScale = 1;
 
         switch (light)
         {
@@ -297,12 +339,16 @@ public class ForwardMonteCarlo : Disposable
                 break;
             case RTDirectionalLight dir:
                 simulateKernel = string.Format(kernelFormat, "DirectionalLight");
-                _forwardIntegrationShader.SetVector("g_directionalLightDirection", lightToTargetSpace.MultiplyVector(new Vector3(0, -1, 0)));
+                var segment = ComputeDirectionalLightSegment(lightToTargetSpace, OutputImageHDR.width, OutputImageHDR.height);
+                _forwardIntegrationShader.SetVector("g_directionalLightDirection", segment.Direction);
+                _forwardIntegrationShader.SetVector("g_directionalLightSegmentStart", segment.SegmentStart);
+                _forwardIntegrationShader.SetVector("g_directionalLightSegmentVector", segment.SegmentVector);
+                directionalEnergyScale = 1f / segment.Length;
                 break;
         }
 
         float integrationInterval = Mathf.Max(1, IntegrationInterval * OutputImageHDR.height);
-        float integrationIntervalEnergyAdjustment = 1.0f / integrationInterval;
+        float integrationIntervalEnergyAdjustment = 1.0f / integrationInterval * directionalEnergyScale;
         _forwardIntegrationShader.SetFloat("g_lightEmissionOutscatter", emissionOutscatter);
         _forwardIntegrationShader.SetVector("g_lightEnergy", light.Energy * (float)photonEnergy * integrationIntervalEnergyAdjustment);
         _forwardIntegrationShader.SetInt("g_bounces", (int)bounces);

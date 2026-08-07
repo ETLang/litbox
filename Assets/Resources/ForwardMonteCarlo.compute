@@ -36,6 +36,8 @@ float4x4 g_lightToTarget;
 float3 g_lightEnergy;
 float g_lightEmissionOutscatter;
 float2 g_directionalLightDirection;
+float2 g_directionalLightSegmentStart;
+float2 g_directionalLightSegmentVector;
 float2 g_lightPinch;
 
 // HDR Conversion
@@ -287,12 +289,12 @@ struct ForwardMonteCarlo : BaseContext, IMonteCarloMethod
     Ray EmitDirectionalLight() {
         Ray emitted;
 
-        float2 perp = g_directionalLightDirection.yx;
-        perp.y *= -1;
+        // g_directionalLightSegmentStart/Vector describe a line segment perpendicular to
+        // g_directionalLightDirection, computed CPU-side (ForwardMonteCarlo.cs) so that it clears
+        // the simulation area from any direction and its length can be used to normalize photon
+        // intensity (g_lightEnergy is pre-divided by that length) independent of target resolution.
         emitted.Direction = g_directionalLightDirection;
-
-        emitted.Origin = 0.5 - g_directionalLightDirection + perp * (rand.Next() * 1.415 - 0.7075);
-        emitted.Origin *= targetSize;
+        emitted.Origin = g_directionalLightSegmentStart + g_directionalLightSegmentVector * rand.Next();
         emitted.Energy = g_lightEnergy;
 
         return emitted;
