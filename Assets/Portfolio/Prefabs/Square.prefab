@@ -122,7 +122,7 @@ MeshFilter:
   m_PrefabInstance: {fileID: 0}
   m_PrefabAsset: {fileID: 0}
   m_GameObject: {fileID: 5166862835382206818}
-  m_Mesh: {fileID: 0}
+  m_Mesh: {fileID: 4300000, guid: ed72d733b231be84481db480713f58e0, type: 2}
 --- !u!114 &7084864777419053238
 MonoBehaviour:
   m_ObjectHideFlags: 0
@@ -139,8 +139,10 @@ MonoBehaviour:
   normal: {fileID: 0}
   color: {r: 0.9528302, g: 0.8944019, b: 0.8944019, a: 1}
   substrateLogDensity: 0
-  particleAlignment: 1
+  roughness: 0.7
   heightScale: 1
+  sortingOrder: 0
+  mesh: {fileID: 4300000, guid: ed72d733b231be84481db480713f58e0, type: 2}
 --- !u!1 &9197510764919219563
 GameObject:
   m_ObjectHideFlags: 0
@@ -246,7 +248,7 @@ MonoBehaviour:
   layer: 0
   sortingOrder: 0
   texture: {fileID: 0}
-  colorMod: {r: 1, g: 1, b: 1, a: 0}
+  colorMod: {r: 1, g: 1, b: 1, a: 1}
   lightMod: {r: 1, g: 1, b: 1, a: 0}
   ambience: {r: 0.1509434, g: 0.1509434, b: 0.1509434, a: 1}
   emissive: {r: 0, g: 0, b: 0, a: 1}

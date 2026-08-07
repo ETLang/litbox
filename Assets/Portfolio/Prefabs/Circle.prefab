@@ -105,7 +105,7 @@ MonoBehaviour:
   layer: 0
   sortingOrder: 0
   texture: {fileID: 0}
-  colorMod: {r: 1, g: 1, b: 1, a: 0}
+  colorMod: {r: 1, g: 1, b: 1, a: 1}
   lightMod: {r: 1, g: 1, b: 1, a: 0}
   ambience: {r: 0.1509434, g: 0.1509434, b: 0.1509434, a: 1}
   emissive: {r: 0, g: 0, b: 0, a: 1}
