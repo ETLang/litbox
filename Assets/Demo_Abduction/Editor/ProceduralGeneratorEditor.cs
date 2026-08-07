@@ -77,3 +77,9 @@ public class GenerateHillTextureEditor : ProceduralGeneratorEditor { }
 
 [CustomEditor(typeof(GenerateCloudTexture))]
 public class GenerateCloudTextureEditor : ProceduralGeneratorEditor { }
+
+[CustomEditor(typeof(GenerateRTRectMesh))]
+public class GenerateRTRectMeshEditor : ProceduralGeneratorEditor { }
+
+[CustomEditor(typeof(GenerateRTEllipseMesh))]
+public class GenerateRTEllipseMeshEditor : ProceduralGeneratorEditor { }
