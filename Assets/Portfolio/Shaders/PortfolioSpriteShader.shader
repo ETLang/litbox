@@ -16,7 +16,7 @@ Shader "Portfolio/PortfolioSpriteShader"
     {
         Tags { "RenderType"="Transparent" "Queue"="Transparent" }
         LOD 100
-        Blend SrcAlpha OneMinusSrcAlpha
+        Blend One OneMinusSrcAlpha
         ZTest Off
         ZWrite Off
 
@@ -76,13 +76,14 @@ Shader "Portfolio/PortfolioSpriteShader"
                 fixed4 col = tex2D(_MainTex, i.uv) * _Color;
 
                 // sample lightmap
-                fixed4 light = tex2Dlod(_LightMap, float4(i.lightUV, 0, _LightDetail));
+                fixed4 light = tex2Dlod(_LightMap, float4(i.lightUV, 0, min(4, _LightDetail)));
                 light = light * _LightMod + _Ambience;
 
                 // combine
                 col *= light;
                 col += _Emissive;
 
+                col.a = 1;
                 col.rgb *= col.a;
 
                 return col;
