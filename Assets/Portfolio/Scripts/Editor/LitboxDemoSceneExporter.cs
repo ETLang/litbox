@@ -7,6 +7,9 @@ using UnityEngine;
 namespace Litbox.Portfolio {
     public class LitboxDemoSceneExporter
     {
+        private const string _RectMeshPath = "Assets/Procedural/RTRect_Mesh.asset";
+        private const string _EllipseMeshPath = "Assets/Procedural/RTEllipse_Mesh.asset";
+
         [System.Serializable]
         struct ObjectJson
         {
@@ -70,6 +73,7 @@ namespace Litbox.Portfolio {
             public Color simContribution;
             public float simBlur;
             public string primitiveShape;
+            public bool bypassTonemapping;
         }
 
         [System.Serializable]
@@ -200,10 +204,9 @@ namespace Litbox.Portfolio {
             return json;
         }
 
-        private static SpriteJson ToJsonStruct(RTDemoSprite sprite)
+        private static SpriteJson ToJsonStruct(RTDemoSprite sprite, Mesh rectMesh, Mesh ellipseMesh)
         {
-            // TODO: Such a hack to encode ellipses. Remove by implementing actual meshes.
-            var rtPartner = sprite.transform.parent.GetComponentInChildren<RTObject>();
+            var mesh = sprite.GetComponent<MeshFilter>().sharedMesh;
 
             var json = new SpriteJson()
             {
@@ -217,7 +220,8 @@ namespace Litbox.Portfolio {
                 emissive = sprite.emissive,
                 simContribution = sprite.lightMod,
                 simBlur = sprite.lightDetail,
-                primitiveShape = rtPartner is RTRect ? "rect" : rtPartner is RTEllipse ? "ellipse" : null
+                primitiveShape = mesh == rectMesh ? "rect" : mesh == ellipseMesh ? "ellipse" : null,
+                bypassTonemapping = sprite.bypassTonemapping,
             };
 
             return json;
@@ -318,6 +322,9 @@ namespace Litbox.Portfolio {
         [MenuItem("Litbox/Export Scene to JSON")]
         public static void ExportSceneToJson()
         {
+            Mesh rectMesh = AssetDatabase.LoadAssetAtPath<Mesh>(_RectMeshPath);
+            Mesh ellipseMesh = AssetDatabase.LoadAssetAtPath<Mesh>(_EllipseMeshPath);
+
             string path = EditorUtility.SaveFilePanel(
                 "Export Scene to JSON",
                 "Assets",
@@ -377,7 +384,7 @@ namespace Litbox.Portfolio {
                     .ToArray();
 
                 output.sprites = rtSprites
-                    .Select(ToJsonStruct)
+                    .Select(sprite => ToJsonStruct(sprite, rectMesh, ellipseMesh))
                     .ToArray();
 
                 var allTextures = new Dictionary<string, Texture>();

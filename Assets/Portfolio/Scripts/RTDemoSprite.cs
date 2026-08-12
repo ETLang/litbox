@@ -20,6 +20,7 @@ public class RTDemoSprite : LitboxComponent
     [SerializeField, ColorUsage(false, true)] public Color emissive = Color.white;
     [SerializeField, Range(0,1)] public float metallic = 0;
     [SerializeField] public float lightDetail;
+    [SerializeField] public bool bypassTonemapping;
 
     private static int _colorId = Shader.PropertyToID("_Color");
     private static int _mainTexId = Shader.PropertyToID("_MainTex");
