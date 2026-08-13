@@ -354,7 +354,7 @@ MonoBehaviour:
   raysPerFrame: 65536
   photonBounces: -1
   integrationInterval: 0.1
-  densityVariationEpsilon: 0.001
+  densityVariationEpsilon: 0.05
   denoiser: {fileID: 443151172}
   SigmaSpatial: 1.2
   SigmaAlbedo: 0.05
@@ -1691,9 +1691,10 @@ MonoBehaviour:
   normal: {fileID: 0}
   color: {r: 1, g: 0.048949808, b: 0.048949808, a: 1}
   substrateLogDensity: -0.13
-  particleAlignment: 0.154
+  roughness: 0.7
   heightScale: 1
   sortingOrder: 0
+  mesh: {fileID: 4300000, guid: ed72d733b231be84481db480713f58e0, type: 2}
 --- !u!33 &1684711080092373537
 MeshFilter:
   m_ObjectHideFlags: 0
@@ -1898,6 +1899,7 @@ MonoBehaviour:
   emissive: {r: 0, g: 0, b: 0, a: 1}
   metallic: 0
   lightDetail: 0
+  bypassTonemapping: 0
 --- !u!1 &3415265880294869164
 GameObject:
   m_ObjectHideFlags: 0
@@ -2435,7 +2437,7 @@ MonoBehaviour:
   normal: {fileID: 0}
   color: {r: 1, g: 1, b: 1, a: 1}
   substrateLogDensity: -2.47
-  particleAlignment: 0
+  roughness: 0.7
   heightScale: 0.315
   sortingOrder: -1
 --- !u!212 &5097338014046615687
@@ -2773,6 +2775,7 @@ MonoBehaviour:
   emissive: {r: 0, g: 0, b: 0, a: 1}
   metallic: 0
   lightDetail: 0
+  bypassTonemapping: 0
 --- !u!114 &6898321726585993808
 MonoBehaviour:
   m_ObjectHideFlags: 0
@@ -2794,6 +2797,7 @@ MonoBehaviour:
   emissive: {r: 0, g: 0, b: 0, a: 1}
   metallic: 0
   lightDetail: 0
+  bypassTonemapping: 0
 --- !u!114 &6898321726728735382
 MonoBehaviour:
   m_ObjectHideFlags: 0
@@ -2815,6 +2819,7 @@ MonoBehaviour:
   emissive: {r: 0, g: 0, b: 0, a: 1}
   metallic: 0
   lightDetail: 0
+  bypassTonemapping: 0
 --- !u!114 &6898321726886203643
 MonoBehaviour:
   m_ObjectHideFlags: 0
@@ -2836,6 +2841,7 @@ MonoBehaviour:
   emissive: {r: 0, g: 0, b: 0, a: 1}
   metallic: 0
   lightDetail: 0
+  bypassTonemapping: 0
 --- !u!114 &7084864776770157617
 MonoBehaviour:
   m_ObjectHideFlags: 0
@@ -2852,9 +2858,10 @@ MonoBehaviour:
   normal: {fileID: 0}
   color: {r: 0.94509804, g: 0.94509804, b: 0.94509804, a: 1}
   substrateLogDensity: -0.13
-  particleAlignment: 0.154
+  roughness: 0.7
   heightScale: 1
   sortingOrder: 0
+  mesh: {fileID: 4300000, guid: ed72d733b231be84481db480713f58e0, type: 2}
 --- !u!114 &7084864777027815899
 MonoBehaviour:
   m_ObjectHideFlags: 0
@@ -2871,9 +2878,10 @@ MonoBehaviour:
   normal: {fileID: 0}
   color: {r: 0.94509804, g: 0.94509804, b: 0.94509804, a: 1}
   substrateLogDensity: -0.13
-  particleAlignment: 0.154
+  roughness: 0.7
   heightScale: 1
   sortingOrder: 0
+  mesh: {fileID: 4300000, guid: ed72d733b231be84481db480713f58e0, type: 2}
 --- !u!114 &7084864777153509661
 MonoBehaviour:
   m_ObjectHideFlags: 0
@@ -2890,9 +2898,10 @@ MonoBehaviour:
   normal: {fileID: 0}
   color: {r: 0.94509804, g: 0.94509804, b: 0.94509804, a: 1}
   substrateLogDensity: -0.13
-  particleAlignment: 0.154
+  roughness: 0.7
   heightScale: 1
   sortingOrder: 0
+  mesh: {fileID: 4300000, guid: ed72d733b231be84481db480713f58e0, type: 2}
 --- !u!114 &7084864777264472944
 MonoBehaviour:
   m_ObjectHideFlags: 0
@@ -2909,9 +2918,10 @@ MonoBehaviour:
   normal: {fileID: 0}
   color: {r: 0.04705882, g: 1, b: 0.058639146, a: 1}
   substrateLogDensity: -0.13
-  particleAlignment: 0.154
+  roughness: 0.7
   heightScale: 1
   sortingOrder: 0
+  mesh: {fileID: 4300000, guid: ed72d733b231be84481db480713f58e0, type: 2}
 --- !u!33 &7283640793225570916
 MeshFilter:
   m_ObjectHideFlags: 0
