@@ -204,6 +204,7 @@ namespace Litbox.Portfolio
             // in BakeAtlases) are kept in this file, dormant, in case a desktop-only
             // export path is wanted later - Classify() simply never returns it.
             bool isRgba32Like = textureFormat == TextureFormat.RGBA32
+                || textureFormat == TextureFormat.RGB24
                 || textureFormat == TextureFormat.DXT1
                 || textureFormat == TextureFormat.DXT1Crunched
                 || textureFormat == TextureFormat.DXT5
@@ -214,8 +215,11 @@ namespace Litbox.Portfolio
                 if (!tex.isDataSRGB)
                 {
                     throw new InvalidOperationException(
-                        $"Texture '{tex.name}' ({textureFormat}) is not sRGB; only sRGB RGBA32/DXT1/DXT5 textures are supported for atlas baking.");
+                        $"Texture '{tex.name}' ({textureFormat}) is not sRGB; only sRGB RGBA32/RGB24/DXT1/DXT5 textures are supported for atlas baking.");
                 }
+                // RGB24 has no alpha channel; ForceReadData() reads it via GetPixels(),
+                // which reports alpha=1 for RGB24 source data, so it folds into the
+                // RGBA32 bucket with no separate conversion step needed here.
                 return FormatBucket.Rgba32Srgb;
             }
 
@@ -223,7 +227,7 @@ namespace Litbox.Portfolio
             if (textureFormat == TextureFormat.RGBAFloat) return FormatBucket.RgbaFloat;
 
             throw new InvalidOperationException(
-                $"Texture '{tex.name}' has unsupported format {textureFormat}; only sRGB RGBA32/DXT1/DXT5, RFloat, and RGBAFloat are supported for atlas baking.");
+                $"Texture '{tex.name}' has unsupported format {textureFormat}; only sRGB RGBA32/RGB24/DXT1/DXT5, RFloat, and RGBAFloat are supported for atlas baking.");
         }
 
         private static int CeilDiv(int a, int b) => (a + b - 1) / b;
